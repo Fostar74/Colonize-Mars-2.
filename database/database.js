@@ -1,4 +1,4 @@
-const {unitPrice,upgradePrice} = require("../shared/unitEconomy");
+const {unitPrice,upgradePrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
