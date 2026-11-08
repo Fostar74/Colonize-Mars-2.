@@ -8,7 +8,7 @@ import solarIcon from "../images/solar.png";
 const Quests = () => {
   const [activeTab, setActiveTab] = useState("main");
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
-  const [claimed, setClaimed] = useState(false);
+  const [claimed, setClaimed] = useState(false);\n  const [secondClaimed, setSecondClaimed] = useState(false);\n  const [armyCount, setArmyCount] = useState(0);
   const [claimError, setClaimError] = useState("");
   const [claimBusy, setClaimBusy] = useState(false);
   const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
@@ -22,7 +22,7 @@ const Quests = () => {
       const data = await response.json();
       if (data.gameProgress) {
         setStructures(data.gameProgress.structures || {});
-        setClaimed(!!data.gameProgress.questClaimed);
+        setClaimed(!!data.gameProgress.questClaimed);\n        setSecondClaimed(!!data.gameProgress.quest2Claimed);\n        setArmyCount(Object.values(data.gameProgress.army || {}).reduce((a,b)=>a+Number(b||0),0));
       }
     } catch (_) {}
   };
@@ -45,6 +45,18 @@ const Quests = () => {
     } catch (e) { setClaimError(e.message); }
     finally { setClaimBusy(false); }
   };
+  const claimSecond = async () => {
+    setClaimBusy(true); setClaimError("");
+    try {
+      const response = await fetch(base + "/claim-second-quest", { method:"POST", headers:headers(), body:JSON.stringify({userId}) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Cannot claim reward");
+      setSecondClaimed(true);
+      sessionStorage.setItem("resources", JSON.stringify(data.resources));
+      window.dispatchEvent(new Event("game-progress-updated"));
+    } catch (e) { setClaimError(e.message); }
+    finally { setClaimBusy(false); }
+  };
   const productionBuildings = ["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"];
   const completedMines = productionBuildings.filter(name => Number(structures[name]?.level ?? structures[name] ?? 0) >= 3).length;
   const [cyberKnightLevel, setCyberKnightLevel] = useState(1);
@@ -61,13 +73,13 @@ const Quests = () => {
         <div className="quest-title">Upgrade all production buildings to level 3</div>
         <div className="quest-progress">{claimed ? "Completed — reward claimed" : completedMines === 4 ? "Completed — collect your reward" : `${completedMines} / 4`}</div>
         <div className="quest-rewards">
-          <span>500</span><img src={goldIcon} alt="Gold" />
+          <span>3000</span><img src={goldIcon} alt="Gold" />
           <span>500</span><img src={ironIcon} alt="Iron" />
           <span>500</span><img src={waterIcon} alt="Water" />
           <span>500</span><img src={solarIcon} alt="Solar" />
         </div>
         {claimError && <p role="alert">{claimError}</p>}
-        {claimed ? <button disabled>Reward claimed</button> : completedMines === 4 ? <button disabled={claimBusy} onClick={claim}>Claim 500 of each resource</button> : <button onClick={handleMainQuest}>Show Me</button>}
+        {claimed ? <button disabled>Reward claimed</button> : completedMines === 4 ? <button disabled={claimBusy} onClick={claim}>Claim 3000 of each resource</button> : <button onClick={handleMainQuest}>Show Me</button>}
       </div>
     </div>
   );
