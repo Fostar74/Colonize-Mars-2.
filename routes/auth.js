@@ -166,6 +166,21 @@ router.post("/tutorial/claim", requireSession, (req,res) => {
   } catch(error) { console.error("Tutorial claim:",error); res.status(500).json({message:"Reward unavailable."}); }
 });
 
+router.get("/daily-login/:userId",requireSession,(req,res)=>{
+  try {
+    const result=db.getDailyLogin(Number(req.params.userId));
+    if (!result) return res.status(404).json({message:"Player not found."});
+    res.json(result);
+  } catch(error) {console.error("Daily login:",error);res.status(500).json({message:"Login rewards unavailable."});}
+});
+router.post("/daily-login/claim",requireSession,(req,res)=>{
+  try {
+    const result=db.claimDailyLogin(Number(req.body.userId));
+    if(result.error) return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch(error) {console.error("Claim daily login:",error);res.status(500).json({message:"Unable to claim login reward."});}
+});
+
 router.post("/claim-second-quest", requireSession, (req, res) => {
   try {
     const result = db.claimSecondQuest(req.body.userId);
