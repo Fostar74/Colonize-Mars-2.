@@ -39,7 +39,7 @@ function Map() {
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
   const [hqIcon, setHqIcon] = useState(null);
-  const [hoveredTitle, setHoveredTitle] = useState("");
+  const [hoveredTitle, setHoveredTitle] = useState("");\n  const [cursorCoord, setCursorCoord] = useState(null);
   const [mineIcons, setMineIcons] = useState({});
   const [alienIcon, setAlienIcon] = useState(null);
 
@@ -66,11 +66,17 @@ function Map() {
     })),
   ];
 
-  const alienBases = Array.from({ length: 25 }, (_, i) => ({
-    x: (i * 4 + 10) % mapSize,
-    y: (i * 7 + 15) % mapSize,
-    level: i + 1,
-  }));
+  // Alien strongholds occupy multiple rings: level 20 in the center, level 1 at the edge.
+  const alienBases = Array.from({ length: 100 }, (_, i) => {
+    const level = 20 - Math.floor(i / 5);
+    const radius = (20 - level) * 4.6;
+    const angle = (i % 5) * (Math.PI * 2 / 5) + level * 1.17;
+    return {
+      x: Math.round(100 + radius * Math.cos(angle)),
+      y: Math.round(100 + radius * Math.sin(angle)),
+      level
+    };
+  });
 
   useEffect(() => {
     const gold = new Image();
@@ -243,7 +249,7 @@ function Map() {
 
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
+    const mouseY = e.clientY - rect.top;\n    setCursorCoord({x:Math.floor((mouseX-offset.x)/tileSize),y:Math.floor((mouseY-offset.y)/tileSize)});
 
     let hovered = null;
 
@@ -330,7 +336,7 @@ function Map() {
           zIndex: 10,
         }}
       >
-        <input type="text" id="usernameInput" placeholder="Search Username" />
+        <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>\n        <input type="text" id="usernameInput" placeholder="Search Username" />
         <button onClick={searchByUsername}>Search</button>
         <br />
         <input type="number" id="xCoord" placeholder="X (1–200)" />
