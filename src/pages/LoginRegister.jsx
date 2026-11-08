@@ -2,7 +2,7 @@ import React, { useState } from "react";
 import "./LoginRegister.css";
 import background from "../images/mars-background.jpg"; // ✅ Correct image path
 
-const API_BASE = (process.env.REACT_APP_API_URL || "http://localhost:3001").replace(/\/$/, "");
+const API_BASE = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
 
 function LoginRegister() {
   const [isRegister, setIsRegister] = useState(false);
