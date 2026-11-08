@@ -151,7 +151,7 @@ function CyberKnightPanel({ onClose }) {
                   <h4>{item.name}</h4>
                   <p>Item Level: {item.level}</p>
                   <ul>
-                    {item.stats.map((s, i) => (
+                    {(item.stats || []).map((s, i) => (
                       <li key={i}>{s}</li>
                     ))}
                   </ul>
