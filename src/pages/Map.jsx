@@ -279,7 +279,7 @@ function Map() {
     setMarchNotice("");
     setMarchLoading(true);
     try {
-      const base=(process.env.REACT_APP_API_URL || window.location.origin).replace(/\\/$/,"");
+      const base=(process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"");
       const response=await fetch(base+"/get-progress/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}});
       if(!response.ok) throw new Error("Could not load your army. Please log in again.");
       const data=await response.json();
