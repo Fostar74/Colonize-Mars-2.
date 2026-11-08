@@ -6,7 +6,7 @@ import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
 const Quests = () => {
-  const [activeTab, setActiveTab] = useState("main");
+  const [activeTab, setActiveTab] = useState("main");\n  const [tutorial, setTutorial] = useState([]);
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
   const [claimed, setClaimed] = useState(false);\n  const [secondClaimed, setSecondClaimed] = useState(false);\n  const [armyCount, setArmyCount] = useState(0);
   const [claimError, setClaimError] = useState("");
@@ -20,7 +20,7 @@ const Quests = () => {
       const response = await fetch(base + "/get-progress/" + encodeURIComponent(userId), { headers: headers() });
       if (!response.ok) return;
       const data = await response.json();
-      if (data.gameProgress) {
+      const tutorialResponse = await fetch(base + "/tutorial/" + encodeURIComponent(userId), {headers:headers()});\n      if (tutorialResponse.ok) { const t=await tutorialResponse.json(); setTutorial(t.missions || []); }\n      if (data.gameProgress) {
         setStructures(data.gameProgress.structures || {});
         setClaimed(!!data.gameProgress.questClaimed);\n        setSecondClaimed(!!data.gameProgress.quest2Claimed);\n        setArmyCount(Object.values(data.gameProgress.army || {}).reduce((a,b)=>a+Number(b||0),0));
       }
@@ -66,21 +66,41 @@ const Quests = () => {
   const handleLevelUpKnight = () => { setCyberKnightLevel(1); alert("Cyber Knight leveling is not available yet."); };
   const handleGatherMine = () => { setGatheredMine(false); alert("Mine gathering is not available yet."); };
 
+  const claimTutorial = async (missionId) => {
+    setClaimBusy(true); setClaimError("");
+    try {
+      const response = await fetch(base + "/tutorial/claim", {
+        method:"POST",headers:headers(),body:JSON.stringify({userId,missionId})
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Cannot claim reward");
+      sessionStorage.setItem("resources",JSON.stringify(data.resources));
+      window.dispatchEvent(new Event("game-progress-updated"));
+      await refresh();
+    } catch(error) { setClaimError(error.message); }
+    finally { setClaimBusy(false); }
+  };
+
   const renderMainQuests = () => (
     <div className="quest-section">
-      <h3>Main Quest</h3>
-      <div className="quest-box">
-        <div className="quest-title">Upgrade all production buildings to level 3</div>
-        <div className="quest-progress">{claimed ? "Completed — reward claimed" : completedMines === 4 ? "Completed — collect your reward" : `${completedMines} / 4`}</div>
-        <div className="quest-rewards">
-          <span>3000</span><img src={goldIcon} alt="Gold" />
-          <span>500</span><img src={ironIcon} alt="Iron" />
-          <span>500</span><img src={waterIcon} alt="Water" />
-          <span>500</span><img src={solarIcon} alt="Solar" />
+      <h3>Colonize Mars — Tutorial Missions ({tutorial.filter(m=>m.claimed).length}/{tutorial.length})</h3>
+      {claimError && <p role="alert">{claimError}</p>}
+      {tutorial.map(m => (
+        <div className="quest-box" key={m.id} style={{opacity:m.unlocked?1:0.55}}>
+          <div className="quest-title">{m.id}. {m.title}</div>
+          <p>{m.description}</p>
+          <div className="quest-progress">{m.claimed ? "Completed — reward claimed" :
+            !m.unlocked ? "Locked — complete previous mission" :
+            !m.available ? "Feature under development" :
+            m.completed ? "Completed — collect your reward" :
+            m.progress + " / " + m.target}</div>
+          <div className="quest-rewards">Reward: {m.reward.toLocaleString()} each — Gold, Iron, Water, Solar</div>
+          {m.claimed ? <button disabled>Reward claimed</button> :
+            !m.unlocked || !m.available ? <button disabled>{m.unlocked?"Coming soon":"Locked"}</button> :
+            m.completed ? <button disabled={claimBusy} onClick={()=>claimTutorial(m.id)}>Claim reward</button> :
+            <button onClick={handleMainQuest}>Show Me</button>}
         </div>
-        {claimError && <p role="alert">{claimError}</p>}
-        {claimed ? <button disabled>Reward claimed</button> : completedMines === 4 ? <button disabled={claimBusy} onClick={claim}>Claim 3000 of each resource</button> : <button onClick={handleMainQuest}>Show Me</button>}
-      </div>
+      ))}
     </div>
   );
 
