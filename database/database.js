@@ -75,6 +75,17 @@ function initializeDatabase() {
         UNIQUE(x, y)
       )
     `);
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS game_runtime (
+        user_id INTEGER PRIMARY KEY REFERENCES users(id),
+        production_at INTEGER NOT NULL,
+        building_job TEXT,
+        training_job TEXT,
+        army TEXT NOT NULL DEFAULT '{}',
+        unit_upgrades TEXT NOT NULL DEFAULT '{}',
+        quest_claimed INTEGER NOT NULL DEFAULT 0
+      )
+    `);
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);
@@ -252,40 +263,142 @@ class DatabaseManager {
     })();
   }
 
+  // All economy changes are server-authoritative and performed in SQLite transactions.
+  runtime(userId) {
+    db.prepare("INSERT OR IGNORE INTO game_runtime(user_id, production_at) VALUES (?, ?)").run(userId, Date.now());
+    return db.prepare("SELECT * FROM game_runtime WHERE user_id = ?").get(userId);
+  }
+
+  syncGame(userId) {
+    return db.transaction(() => {
+      const row = this.progressQueries.getProgress.get(userId);
+      if (!row) return null;
+      const state = this.runtime(userId);
+      const now = Date.now();
+      const resources = JSON.parse(row.resources);
+      const structures = JSON.parse(row.structures);
+      const army = JSON.parse(state.army);
+      let buildingJob = state.building_job ? JSON.parse(state.building_job) : null;
+      let trainingJob = state.training_job ? JSON.parse(state.training_job) : null;
+      let changed = false;
+      // Resource production is calculated from server time, including while logged out.
+      const elapsed = Math.max(0, (now - state.production_at) / 1000);
+      const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
+      for (const [resource, name] of Object.entries(rates)) {
+        const level = Number(structures[name] || 0);
+        if (level > 0 && elapsed > 0) {
+          resources[resource] = Math.floor((Number(resources[resource]) || 0) + level * elapsed / 10);
+          changed = true;
+        }
+      }
+      if (buildingJob && buildingJob.endsAt <= now) {
+        structures[buildingJob.name] = buildingJob.level;
+        buildingJob = null;
+        changed = true;
+      }
+      if (trainingJob && trainingJob.endsAt <= now) {
+        army[trainingJob.unit] = (Number(army[trainingJob.unit]) || 0) + trainingJob.quantity;
+        trainingJob = null;
+        changed = true;
+      }
+      db.prepare("UPDATE game_runtime SET production_at=?, building_job=?, training_job=?, army=? WHERE user_id=?")
+        .run(now, buildingJob ? JSON.stringify(buildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), userId);
+      if (changed) db.prepare("UPDATE game_progress SET resources=?, structures=?, last_saved=CURRENT_TIMESTAMP WHERE id=?")
+        .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
+      return {
+        castle: JSON.parse(row.castle_data), resources, structures, army,
+        buildingJob, trainingJob, unitUpgrades: JSON.parse(state.unit_upgrades),
+        questClaimed: !!state.quest_claimed,
+        productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Number(structures[name] || 0) * 0.1])),
+        serverTime: now
+      };
+    })();
+  }
+
   upgradeBuilding(userId, name) {
     const allowed = ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor", "Cargo Depot", "Defense Grid", "Upgrade Lab", "Bio-Lab", "Training Center", "Combat Simulator", "Vehicle Bay", "Drone Factory"];
     if (!allowed.includes(name)) return { error: "Unknown building." };
     return db.transaction(() => {
-      const row = this.progressQueries.getProgress.get(userId);
-      if (!row) return { error: "Player progress not found." };
-      const resources = JSON.parse(row.resources);
-      const structures = JSON.parse(row.structures);
-      const level = Number(structures[name] || 0);
-      if (!Number.isInteger(level) || level < 0 || level >= 20) return { error: "Maximum building level reached." };
+      const current = this.syncGame(userId);
+      if (!current) return { error: "Player progress not found." };
+      if (current.buildingJob) return { error: "Construction already in progress." };
+      const level = Number(current.structures[name] || 0);
+      if (level >= 20) return { error: "Maximum building level reached." };
       const cost = { Gold: 100 * (level + 1), Iron: 80 * (level + 1), Water: 60 * (level + 1), Solar: 40 * (level + 1) };
-      if (Object.keys(cost).some(key => !Number.isFinite(resources[key]) || resources[key] < cost[key])) return { error: "Not enough resources." };
-      for (const key of Object.keys(cost)) resources[key] -= cost[key];
-      structures[name] = level + 1;
-      db.prepare("UPDATE game_progress SET resources = ?, structures = ?, last_saved = CURRENT_TIMESTAMP WHERE id = ?")
-        .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
-      return { resources, structures, level: level + 1, cost };
+      if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
+      for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
+      const duration = 15 * (level + 1) * 1000;
+      const job = { name, level: level + 1, endsAt: Date.now() + duration };
+      db.prepare("UPDATE game_runtime SET building_job=? WHERE user_id=?").run(JSON.stringify(job), userId);
+      db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+        .run(JSON.stringify(current.resources), userId);
+      return { ...current, resources: current.resources, buildingJob: job };
+    })();
+  }
+
+  trainUnits(userId, unit, quantity) {
+    const categories = {
+      Ground: ["Explorer Trooper", "Exo-Soldier", "Plasma Bladesman", "Nano Shieldman"],
+      Ranged: ["Railgunner", "Pulse Sniper", "Drone Operator"],
+      Mobile: ["Rover Scout", "Hoverbike Rider", "Mech Walker", "Hover Drone Rider"],
+      "Heavy Systems": ["Demolition Bot", "Missile Carrier", "Particle Blaster", "Orbital Strike Beacon"],
+      Elite: ["Martian Noble", "AI General", "Gene Warrior"]
+    };
+    if (!Object.values(categories).flat().includes(unit) || !Number.isInteger(quantity) || quantity < 1 || quantity > 10000)
+      return { error: "Invalid unit or quantity." };
+    return db.transaction(() => {
+      const current = this.syncGame(userId);
+      if (!current) return { error: "Player progress not found." };
+      if (current.trainingJob) return { error: "Training already in progress." };
+      const cost = { Gold: 100 * quantity, Iron: 80 * quantity, Water: 60 * quantity, Solar: 40 * quantity };
+      if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
+      for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
+      const job = { unit, quantity, endsAt: Date.now() + quantity * 30000 };
+      db.prepare("UPDATE game_runtime SET training_job=? WHERE user_id=?").run(JSON.stringify(job), userId);
+      db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+        .run(JSON.stringify(current.resources), userId);
+      return { ...current, trainingJob: job };
+    })();
+  }
+
+  upgradeUnit(userId, unit, stat) {
+    const units = ["Explorer Trooper", "Exo-Soldier", "Plasma Bladesman", "Nano Shieldman", "Railgunner", "Pulse Sniper", "Drone Operator", "Rover Scout", "Hoverbike Rider", "Mech Walker", "Hover Drone Rider", "Demolition Bot", "Missile Carrier", "Particle Blaster", "Orbital Strike Beacon", "Martian Noble", "AI General", "Gene Warrior"];
+    if (!units.includes(unit) || !["attack", "defense"].includes(stat)) return { error: "Invalid upgrade." };
+    return db.transaction(() => {
+      const current = this.syncGame(userId);
+      const upgrades = current.unitUpgrades;
+      const values = upgrades[unit] || { attack: 3, defense: 2 };
+      if (values[stat] >= 20) return { error: "Maximum upgrade level." };
+      const price = 100 * (values[stat] + 1);
+      if (current.resources.Gold < price || current.resources.Iron < price) return { error: "Not enough Gold or Iron." };
+      current.resources.Gold -= price;
+      current.resources.Iron -= price;
+      values[stat]++;
+      upgrades[unit] = values;
+      db.prepare("UPDATE game_runtime SET unit_upgrades=? WHERE user_id=?").run(JSON.stringify(upgrades), userId);
+      db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources), userId);
+      return { ...current, unitUpgrades: upgrades };
+    })();
+  }
+
+  claimFirstQuest(userId) {
+    return db.transaction(() => {
+      const current = this.syncGame(userId);
+      if (!current) return { error: "Player progress not found." };
+      if (current.questClaimed) return { error: "Reward already claimed." };
+      if (!["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"].every(name => Number(current.structures[name] || 0) >= 3))
+        return { error: "Quest is not complete." };
+      for (const key of ["Gold", "Iron", "Water", "Solar"]) current.resources[key] += 500;
+      db.prepare("UPDATE game_runtime SET quest_claimed=1 WHERE user_id=?").run(userId);
+      db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources), userId);
+      return { ...current, questClaimed: true };
     })();
   }
 
   getGameProgress(userId) {
-    try {
-      const progress = this.progressQueries.getProgress.get(userId);
-      if (!progress) return null;
-
-      return {
-        castle: JSON.parse(progress.castle_data),
-        resources: JSON.parse(progress.resources),
-        structures: JSON.parse(progress.structures),
-        lastSaved: progress.last_saved,
-      };
-    } catch (error) {
-      throw error;
-    }
+    const current = this.syncGame(userId);
+    if (!current) return null;
+    return { ...current, lastSaved: new Date(current.serverTime).toISOString() };
   }
 
   updateGameStats(userId, playTime, resourcesMined, structuresBuilt) {
