@@ -191,7 +191,7 @@ class DatabaseManager {
       if (!selected) throw new Error("Map is full");
       db.prepare("INSERT INTO base_positions(user_id, x, y) VALUES (?, ?, ?)").run(userId, selected.x, selected.y);
       const castle = { username, ...selected };
-      if (!progress) this.saveGameProgress(userId, castle, { Gold: 10000, Iron: 8000, Water: 6000, Solar: 4000 }, {});
+      if (!progress) this.progressQueries.saveProgress.run(userId, JSON.stringify(castle), JSON.stringify({ Gold: 10000, Iron: 10000, Water: 10000, Solar: 10000 }), JSON.stringify({}));
       return castle;
     })();
   }
@@ -249,6 +249,26 @@ class DatabaseManager {
       `).run(JSON.stringify(safeCastle), JSON.stringify(resources),
         JSON.stringify(structures), existing.id);
       return { success: true };
+    })();
+  }
+
+  upgradeBuilding(userId, name) {
+    const allowed = ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor", "Cargo Depot", "Defense Grid", "Upgrade Lab", "Bio-Lab", "Training Center", "Combat Simulator", "Vehicle Bay", "Drone Factory"];
+    if (!allowed.includes(name)) return { error: "Unknown building." };
+    return db.transaction(() => {
+      const row = this.progressQueries.getProgress.get(userId);
+      if (!row) return { error: "Player progress not found." };
+      const resources = JSON.parse(row.resources);
+      const structures = JSON.parse(row.structures);
+      const level = Number(structures[name] || 0);
+      if (!Number.isInteger(level) || level < 0 || level >= 20) return { error: "Maximum building level reached." };
+      const cost = { Gold: 100 * (level + 1), Iron: 80 * (level + 1), Water: 60 * (level + 1), Solar: 40 * (level + 1) };
+      if (Object.keys(cost).some(key => !Number.isFinite(resources[key]) || resources[key] < cost[key])) return { error: "Not enough resources." };
+      for (const key of Object.keys(cost)) resources[key] -= cost[key];
+      structures[name] = level + 1;
+      db.prepare("UPDATE game_progress SET resources = ?, structures = ?, last_saved = CURRENT_TIMESTAMP WHERE id = ?")
+        .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
+      return { resources, structures, level: level + 1, cost };
     })();
   }
 
