@@ -1,4 +1,4 @@
-const {unitPrice,upgradePrice} = require("../src/shared/unitEconomy");
+const {unitPrice,upgradePrice,unitRequirement} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -91,6 +91,9 @@ function initializeDatabase() {
     `);
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "quest2_claimed")) {
       db.exec("ALTER TABLE game_runtime ADD COLUMN quest2_claimed INTEGER NOT NULL DEFAULT 0");
+    }
+    if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "queued_building_job")) {
+      db.exec("ALTER TABLE game_runtime ADD COLUMN queued_building_job TEXT");
     }
     db.exec("CREATE TABLE IF NOT EXISTS tutorial_claims (user_id INTEGER NOT NULL REFERENCES users(id), mission_id INTEGER NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, mission_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alien_campaign (user_id INTEGER PRIMARY KEY REFERENCES users(id), highest_defeated INTEGER NOT NULL DEFAULT 0)");
@@ -288,6 +291,7 @@ class DatabaseManager {
       const army = JSON.parse(state.army);
       let buildingJob = state.building_job ? JSON.parse(state.building_job) : null;
       let trainingJob = state.training_job ? JSON.parse(state.training_job) : null;
+      let queuedBuildingJob = state.queued_building_job ? JSON.parse(state.queued_building_job) : null;
       let changed = false;
       // Resource production is calculated from server time, including while logged out.
       const elapsedTicks = Math.floor(Math.max(0, now - state.production_at) / 10000);
@@ -299,9 +303,13 @@ class DatabaseManager {
           changed = true;
         }
       }
-      if (buildingJob && buildingJob.endsAt <= now) {
+      while (buildingJob && buildingJob.endsAt <= now) {
         structures[buildingJob.name] = buildingJob.level;
-        buildingJob = null;
+        const finishedAt = buildingJob.endsAt;
+        buildingJob = queuedBuildingJob
+          ? {...queuedBuildingJob, endsAt: finishedAt + queuedBuildingJob.duration}
+          : null;
+        queuedBuildingJob = null;
         changed = true;
       }
       if (trainingJob && trainingJob.endsAt <= now) {
@@ -309,13 +317,13 @@ class DatabaseManager {
         trainingJob = null;
         changed = true;
       }
-      db.prepare("UPDATE game_runtime SET production_at=?, building_job=?, training_job=?, army=? WHERE user_id=?")
-        .run(state.production_at + elapsedTicks * 10000, buildingJob ? JSON.stringify(buildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), userId);
+      db.prepare("UPDATE game_runtime SET production_at=?, building_job=?, queued_building_job=?, training_job=?, army=? WHERE user_id=?")
+        .run(state.production_at + elapsedTicks * 10000, buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), userId);
       if (changed) db.prepare("UPDATE game_progress SET resources=?, structures=?, last_saved=CURRENT_TIMESTAMP WHERE id=?")
         .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
       return {
         castle: JSON.parse(row.castle_data), resources, structures, army,
-        buildingJob, trainingJob, unitUpgrades: JSON.parse(state.unit_upgrades),
+        buildingJob, queuedBuildingJob, trainingJob, unitUpgrades: JSON.parse(state.unit_upgrades),
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
         productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Number(structures[name] || 0) * 0.1])),
         serverTime: now
@@ -329,18 +337,22 @@ class DatabaseManager {
     return db.transaction(() => {
       const current = this.syncGame(userId);
       if (!current) return { error: "Player progress not found." };
-      if (current.buildingJob) return { error: "Construction already in progress." };
-      const level = Number(current.structures[name] || 0);
+      if (current.queuedBuildingJob) return { error: "Construction queue is full (2 slots)." };
+      const level = Number(current.structures[name] || 0) + (current.buildingJob?.name === name ? 1 : 0);
       if (level >= 20) return { error: "Maximum building level reached." };
       const cost = { Gold: 100 * (level + 1), Iron: 80 * (level + 1), Water: 60 * (level + 1), Solar: 40 * (level + 1) };
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       const duration = 15 * (level + 1) * 1000;
-      const job = { name, level: level + 1, endsAt: Date.now() + duration };
-      db.prepare("UPDATE game_runtime SET building_job=? WHERE user_id=?").run(JSON.stringify(job), userId);
+      const job = { name, level: level + 1, duration, endsAt: Date.now() + duration };
+      if (current.buildingJob) {
+        db.prepare("UPDATE game_runtime SET queued_building_job=? WHERE user_id=?").run(JSON.stringify({name,level:level+1,duration}),userId);
+      } else {
+        db.prepare("UPDATE game_runtime SET building_job=? WHERE user_id=?").run(JSON.stringify(job),userId);
+      }
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
-      return { ...current, resources: current.resources, buildingJob: job };
+      return { ...current, resources: current.resources, buildingJob: current.buildingJob || job, queuedBuildingJob: current.buildingJob ? {name,level:level+1,duration} : null };
     })();
   }
 
@@ -351,6 +363,8 @@ class DatabaseManager {
       const current = this.syncGame(userId);
       if (!current) return { error: "Player progress not found." };
       if (current.trainingJob) return { error: "Training already in progress." };
+      const requirement = unitRequirement(unit);
+      if (Number(current.structures[requirement.building] || 0) < requirement.level) return {error: `Requires ${requirement.building} level ${requirement.level}.`};
       const cost = Object.fromEntries(Object.entries(unitPrice(unit)).map(([resource,value])=>[resource,value*quantity]));
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
