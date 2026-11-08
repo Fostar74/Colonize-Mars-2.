@@ -66,7 +66,8 @@ const Quests = () => {
           <span>500</span><img src={waterIcon} alt="Water" />
           <span>500</span><img src={solarIcon} alt="Solar" />
         </div>
-        {claimError && <p role="alert">{claimError}</p>}\n        {claimed ? <button disabled>Reward claimed</button> : completedMines === 4 ? <button disabled={claimBusy} onClick={claim}>Claim 500 of each resource</button> : <button onClick={handleMainQuest}>Show Me</button>}
+        {claimError && <p role="alert">{claimError}</p>}
+        {claimed ? <button disabled>Reward claimed</button> : completedMines === 4 ? <button disabled={claimBusy} onClick={claim}>Claim 500 of each resource</button> : <button onClick={handleMainQuest}>Show Me</button>}
       </div>
     </div>
   );
