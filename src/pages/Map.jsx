@@ -19,6 +19,7 @@ function Map() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [marchDraft, setMarchDraft] = useState(null);
+  const [originPicker, setOriginPicker] = useState(null);
   const [availableArmy, setAvailableArmy] = useState({});
   const [marchUnits, setMarchUnits] = useState({});
   const [marchLoading, setMarchLoading] = useState(false);
@@ -261,10 +262,16 @@ function Map() {
     const x=Math.floor((px-offset.x)/tileSize);
     const y=Math.floor((py-offset.y)/tileSize);
     if(x<0||x>=100||y<0||y>=100){setSelectedTarget(null);setSelectedAlien(null);return;}
-    const castle=castles.find(c=>Number(c.x)===x+1&&Number(c.y)===y+1);
-    const alien=alienBases.find(b=>b.x===x+1&&b.y===y+1);
+    // At low zoom icons are tiny: use nearest marker within a visible hit radius.
+    const hitRadius=Math.max(13,tileSize*.8);
+    const nearest=(items)=>items.map(item=>({
+      item,dist:Math.hypot((Number(item.x)-.5)*tileSize+offset.x-px,(Number(item.y)-.5)*tileSize+offset.y-py)
+    })).filter(hit=>hit.dist<=hitRadius).sort((a,b)=>a.dist-b.dist)[0]?.item;
+    const castle=nearest(castles);
+    const alien=castle?null:nearest(alienBases);
     setSelectedAlien(castle?null:alien||null);
     setMarchDraft(null);
+    setOriginPicker(null);
     setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
     setMarchNotice("");
   };
@@ -273,7 +280,7 @@ function Map() {
   // Clan diplomacy is not yet backed by a server-side alliance system.
   // Never offer support to an unverified player.
   const canSupport=false;
-  const openMarch = async (type, target) => {
+  const openMarch = async (type, target, origin) => {
     setMarchNotice("");
     setMarchLoading(true);
     try {
@@ -283,8 +290,13 @@ function Map() {
       const data=await response.json();
       setAvailableArmy(data.gameProgress?.army || {});
       setMarchUnits({});
-      setMarchDraft({type,target});
+      setMarchDraft({type,target,origin});
+      setOriginPicker(null);
     } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
+  };
+  const chooseAction = (type) => {
+    setMarchNotice("");
+    setOriginPicker({type,target:selectedTarget});
   };
   const prepareMarch = () => {
     const selected=Object.entries(marchUnits).filter(([,n])=>n>0);
@@ -371,41 +383,60 @@ function Map() {
       >
         <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel}</div>
         <div style={{margin:"8px 0"}}>Zoom <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(50.5,50.5);}}>Full map 100×100</button> <button onClick={()=>setZoom(1)}>100%</button></div>
-        {selectedTarget && <div style={{padding:8,border:"1px solid #777",marginBottom:8}}>
-          <strong>{selectedTarget.type==="alien"?"Alien base level "+selectedTarget.level:selectedTarget.type==="castle"?"Castle: "+selectedTarget.username:"Empty field"} ({selectedTarget.x}:{selectedTarget.y})</strong>
-          <div style={{marginTop:6}}>
-            {selectedTarget.type==="alien" && <button disabled={selectedTarget.level!==campaign.nextLevel} onClick={()=>openMarch("Attack",selectedTarget)}>Attack</button>}
-            {selectedTarget.type==="castle" && !targetIsOwn && <button onClick={()=>openMarch("Attack",selectedTarget)}>Attack</button>}
-            {selectedTarget.type==="castle" && !targetIsOwn && canSupport && <button onClick={()=>openMarch("Support",selectedTarget)}>Support</button>}
-            {selectedTarget.type==="castle" && !targetIsOwn && !canSupport && <span style={{opacity:.75,marginLeft:8}}>Support requires a verified allied or peaceful clan</span>}
-            {selectedTarget.type==="field" && <button onClick={()=>openMarch("Patrol",selectedTarget)}>Patrol</button>}
-            {targetIsOwn && <span>Your castle</span>}
-          </div>
-        </div>}
-        {marchLoading && <div>Loading your army...</div>}
-        {marchDraft && <div style={{marginTop:10,padding:10,border:"1px solid #66aacc",background:"#172735",maxHeight:"38vh",overflowY:"auto"}}>
-          <strong>Marches — {marchDraft.type} to ({marchDraft.target.x}:{marchDraft.target.y})</strong>
-          <div>Select troops from your available army:</div>
-          {Object.values(unitEconomy.categories).flat().filter(unit=>Number(availableArmy[unit]||0)>0).map(unit=><label key={unit} style={{display:"flex",justifyContent:"space-between",gap:8,margin:"5px 0"}}>
-            <span>{unit} (available: {availableArmy[unit]})</span>
-            <input type="number" min="0" max={availableArmy[unit]} style={{width:70}} value={marchUnits[unit]||0}
-              onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
-          </label>)}
-          {!Object.values(availableArmy).some(n=>Number(n)>0) && <div>No trained units available.</div>}
-          <div style={{marginTop:8}}><button onClick={prepareMarch}>Prepare march</button> <button onClick={()=>setMarchDraft(null)}>Cancel</button></div>
-          <small>Dispatch and troop travel are not active yet. Preparing does not send an army.</small>
-        </div>}
-        {marchNotice && <div role="status">{marchNotice}</div>}
         {mapError && <div role="alert">{mapError}</div>}
         <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
         <input type="text" id="usernameInput" placeholder="Search Username" />
         <button onClick={searchByUsername}>Search</button>
-        <br />
-        <input type="number" id="xCoord" placeholder="X (1–100)" />
-        <input type="number" id="yCoord" placeholder="Y (1–200)" />
-        <button onClick={goToCoordinates}>Go to Coordinates</button>
+        <div style={{marginTop:6}}>
+          <input type="number" id="xCoord" placeholder="X (1–100)" style={{width:90}} />
+          <input type="number" id="yCoord" placeholder="Y (1–100)" style={{width:90}} />
+          <button onClick={goToCoordinates}>Go to Coordinates</button>
+        </div>
       </div>
-
+      {(selectedTarget || originPicker || marchDraft) && <div style={{position:"absolute",inset:0,zIndex:25,background:"rgba(3,8,19,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+        <div style={{background:"linear-gradient(135deg,#182c40,#0c1424)",border:"1px solid #5d8ca7",boxShadow:"0 16px 60px #000",borderRadius:12,color:"#f0f7ff",width:"min(920px,96vw)",maxHeight:"86vh",overflowY:"auto",padding:22}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+            <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?"MARCH CONTROL":originPicker?"SELECT LAUNCH BASE":"TARGET COMMAND"}</h2>
+            <button onClick={()=>{setSelectedTarget(null);setOriginPicker(null);setMarchDraft(null);setMarchNotice("");}}>✕ Close</button>
+          </div>
+          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?"Alien Stronghold · Level "+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:"Sector Patrol"} · Coordinates {selectedTarget?.x}:{selectedTarget?.y}</p>
+          {!originPicker && !marchDraft && <div style={{display:"flex",gap:12,flexWrap:"wrap",margin:"20px 0"}}>
+            {selectedTarget?.type==="alien" && <button style={{padding:"12px 24px",background:"#9e4437",color:"white"}} onClick={()=>chooseAction("Attack")}>⚔ Attack</button>}
+            {selectedTarget?.type==="castle" && !targetIsOwn && <button style={{padding:"12px 24px",background:"#9e4437",color:"white"}} onClick={()=>chooseAction("Attack")}>⚔ Attack</button>}
+            {selectedTarget?.type==="castle" && !targetIsOwn && canSupport && <button onClick={()=>chooseAction("Support")}>🛡 Support</button>}
+            {selectedTarget?.type==="field" && <button style={{padding:"12px 24px"}} onClick={()=>chooseAction("Patrol")}>◉ Patrol</button>}
+            {targetIsOwn && <span>This is your base.</span>}
+          </div>}
+          {originPicker && !marchDraft && <div>
+            <h3>Choose the base to launch {originPicker.type.toLowerCase()} from</h3>
+            {castles.filter(c=>c.username===ownUsername).map((c,i)=><button key={i} style={{display:"block",width:"100%",textAlign:"left",padding:14,marginBottom:8,background:"#203f54",color:"white",border:"1px solid #6694a8",borderRadius:8}} onClick={()=>openMarch(originPicker.type,originPicker.target,c)}>🚀 {c.username} — ({c.x}:{c.y}) · Select base</button>)}
+            {!castles.some(c=>c.username===ownUsername) && <p>No launch base available.</p>}
+            <button onClick={()=>setOriginPicker(null)}>← Back to target</button>
+          </div>}
+          {marchLoading && <p>Loading your army...</p>}
+          {marchDraft && <div>
+            <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
+            <p>Select troops for this march:</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
+              {Object.values(unitEconomy.categories).flat().map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
+                <strong>{unit}</strong>
+                <span>Available: {Number(availableArmy[unit]||0)}</span>
+                <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
+                  onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
+                <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>MAX</button>
+              </label>)}
+            </div>
+            <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
+              <button onClick={()=>setMarchUnits(Object.fromEntries(Object.entries(availableArmy).map(([k,v])=>[k,Number(v)||0])))}>Select all</button>
+              <button onClick={()=>setMarchUnits({})}>Clear</button>
+              <button onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Prepare march</button>
+              <button onClick={()=>{setMarchDraft(null);setOriginPicker({type:marchDraft.type,target:marchDraft.target});}}>← Choose another base</button>
+            </div>
+            <p style={{fontSize:12,color:"#b5c7d9"}}>Actual troop dispatch is not enabled yet. Preparing does not move or consume troops.</p>
+          </div>}
+          {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{marchNotice}</p>}
+        </div>
+      </div>}
       <button
         onClick={() => (window.location.href = "/#/game")}
         style={{
