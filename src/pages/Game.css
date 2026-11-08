@@ -1,0 +1,261 @@
+.top-resource-bar {
+  background-color: #222;
+  color: white;
+  display: flex;
+  justify-content: space-around;
+  padding: 6px 0;
+  font-weight: bold;
+  position: relative;
+}
+
+.resource-item {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: all 0.3s ease;
+}
+
+.resource-item.producing {
+  background-color: rgba(0, 255, 0, 0.2);
+  animation: pulse 2s infinite;
+}
+
+.resource-item .resource-icon {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+}
+
+.resource-item .gold-icon {
+  background-color: #ffd700;
+}
+.resource-item .iron-icon {
+  background-color: #c0c0c0;
+}
+.resource-item .water-icon {
+  background-color: #00bfff;
+}
+.resource-item .solar-icon {
+  background-color: #ffa500;
+}
+
+@keyframes pulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.05);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+.production-timer {
+  background-color: rgba(255, 165, 0, 0.3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  border: 1px solid rgba(255, 165, 0, 0.5);
+  animation: timerPulse 1s infinite;
+}
+
+@keyframes timerPulse {
+  0% {
+    opacity: 0.7;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.7;
+  }
+}
+
+.production-notification {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  background: linear-gradient(135deg, #4caf50, #45a049);
+  color: white;
+  padding: 15px 20px;
+  border-radius: 8px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+  z-index: 1001;
+  animation: slideInRight 0.5s ease-out;
+}
+
+.notification-content {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.notification-content span:first-child {
+  font-weight: bold;
+  font-size: 16px;
+}
+
+.notification-content span:last-child {
+  font-size: 14px;
+  opacity: 0.9;
+}
+
+@keyframes slideInRight {
+  from {
+    transform: translateX(100%);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.saving-indicator {
+  background-color: rgba(0, 123, 255, 0.3);
+  padding: 4px 8px;
+  border-radius: 4px;
+  font-size: 12px;
+  border: 1px solid rgba(0, 123, 255, 0.5);
+  animation: savingPulse 1.5s infinite;
+}
+
+@keyframes savingPulse {
+  0% {
+    opacity: 0.6;
+  }
+  50% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 0.6;
+  }
+}
+
+.castle-top-bar {
+  background-color: rgba(0, 0, 0, 0.7);
+  padding: 10px;
+  color: white;
+}
+
+.castle-name-btn {
+  background: #444;
+  color: white;
+  border: none;
+  padding: 8px 14px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.bottom-bar {
+  position: fixed;
+  bottom: 0;
+  width: 100%;
+  background-color: rgba(0, 0, 0, 0.9);
+  display: flex;
+  justify-content: space-around;
+  padding: 10px 0;
+  z-index: 999;
+}
+
+.bottom-bar button {
+  background: transparent;
+  border: none;
+  color: white;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+#optionsMenu {
+  position: fixed;
+  bottom: 60px;
+  right: 10px;
+  background: rgba(0, 0, 0, 0.85);
+  color: white;
+  padding: 10px;
+  border: 1px solid #555;
+  z-index: 1000;
+}
+
+.popup {
+  position: fixed;
+  top: 10%;
+  left: 10%;
+  width: 80%;
+  height: 80%;
+  background-color: rgba(0, 0, 0, 0.95);
+  color: white;
+  border: 3px solid #888;
+  z-index: 1000;
+  display: flex;
+  flex-direction: column;
+}
+
+.popup-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #333;
+  padding: 10px;
+  font-size: 18px;
+}
+
+.popup-tabs {
+  display: flex;
+  justify-content: space-around;
+  background-color: #222;
+  padding: 8px 0;
+}
+
+.popup-tabs button {
+  background: #555;
+  color: white;
+  border: none;
+  padding: 8px 16px;
+  font-weight: bold;
+  cursor: pointer;
+}
+
+.popup-content {
+  flex-grow: 1;
+  background-color: #111;
+  overflow: auto;
+  position: relative;
+}
+
+.popup-section {
+  height: 100%;
+}
+
+.close-button {
+  background: red;
+  color: white;
+  border: none;
+  font-weight: bold;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.back-button {
+  background-color: #444;
+  color: white;
+  border: none;
+  margin: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.building-slot {
+  position: absolute;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background-color: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+  z-index: 500;
+}
