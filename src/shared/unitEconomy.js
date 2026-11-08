@@ -21,7 +21,21 @@ function unitPrice(unit) {
   const base=emphasis[units.indexOf(unit)%emphasis.length];
   return Object.fromEntries(Object.entries(base).map(([resource,value])=>[resource,Math.ceil(value*tiers[category])]));
 }
+const unlockBuildings = {
+  Ground:"Training Center", Ranged:"Training Center",
+  Mobile:"Vehicle Bay", "Heavy Systems":"Drone Factory", Elite:"Drone Factory"
+};
+const unlockLevels = {
+  Ground:[1,2,4,6], Ranged:[3,5,7], Mobile:[1,3,5,7],
+  "Heavy Systems":[2,4,6,8], Elite:[10,12,15]
+};
+function unitRequirement(unit) {
+  const entry=Object.entries(categories).find(([,units])=>units.includes(unit));
+  if (!entry) return null;
+  const [category,units]=entry;
+  return {building:unlockBuildings[category],level:unlockLevels[category][units.indexOf(unit)]};
+}
 function upgradePrice(level) {
   return {Gold:100*(level+1),Iron:100*(level+1)};
 }
-module.exports={categories,unitPrice,upgradePrice};
+module.exports={categories,unitPrice,upgradePrice,unitRequirement};
