@@ -1,0 +1,266 @@
+.cyber-panel-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-color: rgba(0, 0, 0, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 999;
+}
+
+.cyber-panel {
+  background-color: #1b1b1b;
+  border: 2px solid #444;
+  border-radius: 12px;
+  padding: 20px;
+  width: 50%;
+  height: 80%;
+  max-width: 95%;
+  box-shadow: 0 0 20px #00f0ff88;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.cyber-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #555;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.cyber-panel-header h2 {
+  color: #00f0ff;
+  font-size: 22px;
+  margin: 0;
+}
+
+.close-button {
+  background-color: transparent;
+  color: #ccc;
+  font-size: 18px;
+  border: none;
+  cursor: pointer;
+  transition: color 0.2s;
+}
+
+.close-button:hover {
+  color: red;
+}
+
+.cyber-panel-body {
+  width: 100%;
+  height: 85%;
+  display: flex;
+  flex-direction: row;
+  justify-content: center;
+  align-items: center;
+  gap: 20px;
+}
+
+.cyber-image-container {
+  height: 100%;
+  flex: 1;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.cyber-image {
+  max-width: 100%;
+  height: 100%;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.equipment-slots {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 12px;
+  justify-content: center;
+}
+
+.gear-slot {
+  padding: 10px 15px;
+  width: 110px;
+  background-color: #111;
+  color: #00f0ff;
+  border: 1px solid #00f0ff66;
+  border-radius: 6px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.2s, transform 0.1s;
+}
+
+.gear-slot:hover {
+  background-color: #00f0ff22;
+  transform: scale(1.03);
+}
+
+.equipped-label {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #aaa;
+  text-align: center;
+}
+
+/* Equipment Popup Panel */
+.equipment-popup {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 950px;
+  max-height: 90vh;
+  background: #222;
+  border: 2px solid #666;
+  border-radius: 10px;
+  padding: 20px;
+  overflow-y: auto;
+  z-index: 1000;
+  color: white;
+}
+
+.equipment-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #444;
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.rarity-tabs {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 15px;
+}
+
+.rarity-tabs button {
+  padding: 8px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+  background: #333;
+  color: white;
+}
+
+.rarity-tabs button.active {
+  background: #00f0ff;
+  color: black;
+}
+
+.item-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  gap: 15px;
+}
+
+.item-card {
+  background: #111;
+  border: 1px solid #555;
+  border-radius: 8px;
+  padding: 10px;
+  text-align: center;
+}
+
+.item-card h4 {
+  margin: 5px 0;
+  color: #00f0ff;
+}
+
+.item-card p {
+  font-size: 13px;
+  color: #ccc;
+}
+
+.item-card ul {
+  list-style: none;
+  padding: 0;
+  font-size: 12px;
+  color: #bbb;
+  margin-bottom: 10px;
+}
+
+.item-buttons button {
+  margin: 4px;
+  padding: 5px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  border: none;
+  border-radius: 4px;
+  color: white;
+}
+
+.item-buttons button:nth-child(1) {
+  background-color: #28a745;
+}
+
+.item-buttons button:nth-child(2) {
+  background-color: #dc3545;
+}
+
+.item-buttons button:nth-child(3) {
+  background-color: #007bff;
+}
+
+/* Modal Windows */
+.modal-window {
+  position: fixed;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  background: #1a1a1a;
+  color: white;
+  padding: 25px;
+  border-radius: 10px;
+  border: 2px solid #555;
+  width: 500px;
+  max-width: 90%;
+  z-index: 1100;
+  box-shadow: 0 0 15px #000;
+}
+
+.modal-window h3 {
+  margin-top: 0;
+  color: #00f0ff;
+}
+
+.modal-window ul {
+  padding-left: 18px;
+  margin: 10px 0;
+}
+
+.modal-window button {
+  margin-right: 10px;
+  margin-top: 10px;
+  padding: 8px 14px;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.modal-window .craft-columns {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.modal-window .craft-columns div {
+  flex: 1;
+  background: #222;
+  padding: 10px;
+  border-radius: 6px;
+  border: 1px solid #444;
+}
