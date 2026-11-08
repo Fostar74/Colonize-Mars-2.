@@ -353,6 +353,14 @@ class DatabaseManager {
   }
 
 
+  getPublicBases() {
+    return db.prepare(`
+      SELECT u.username, b.x, b.y
+      FROM base_positions b JOIN users u ON u.id = b.user_id
+      ORDER BY u.id
+    `).all();
+  }
+
   getAllUsers() {
     try {
       return db.prepare("SELECT * FROM users ORDER BY id").all();
