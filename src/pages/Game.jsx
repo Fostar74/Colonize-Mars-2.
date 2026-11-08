@@ -2,6 +2,7 @@ import React, { useEffect, useState } from "react";
 import StructurePanel from "./StructurePanel";
 import CyberKnightPanel from "./CyberKnightPanel";
 import Quests from "./Quests";
+import Inventory from "./Inventory";
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
 
@@ -12,6 +13,7 @@ function Game() {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [showCyberKnight, setShowCyberKnight] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
+  const [showInventory, setShowInventory] = useState(false);
   const onProgressChange = data => setResources(data.resources);
 
   useEffect(() => {
@@ -113,7 +115,7 @@ function Game() {
         <button onClick={() => (window.location.href = "/#/map")}>Map</button>
         <button>Alliance</button>
         <button>Messages</button>
-        <button>Inventory</button>
+        <button onClick={() => setShowInventory(true)}>Inventory</button>
         <button onClick={() => setOptionsVisible(!optionsVisible)}>Options</button>
       </div>
 
@@ -139,6 +141,13 @@ function Game() {
 
       {showCyberKnight && (
         <CyberKnightPanel onClose={() => setShowCyberKnight(false)} />
+      )}
+
+      {showInventory && (
+        <div className="popup">
+          <div className="popup-header"><span>INVENTORY</span><button className="close-button" onClick={() => setShowInventory(false)}>X</button></div>
+          <div className="popup-content"><Inventory onClose={() => setShowInventory(false)} /></div>
+        </div>
       )}
 
       {showQuests && (
