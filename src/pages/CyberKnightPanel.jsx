@@ -10,6 +10,7 @@ function CyberKnightPanel({ onClose }) {
   const [activeModal, setActiveModal] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [imageFailed, setImageFailed] = useState(false);
 
   const progressManager = new GameProgressManager();
 
@@ -111,7 +112,7 @@ function CyberKnightPanel({ onClose }) {
 
         <div className="cyber-panel-body">
           <div className="cyber-image-container">
-            <img src={knightImage} alt="Cyber Knight" className="cyber-image" />
+            {imageFailed ? <div role="img" aria-label="Cyber Knight" style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",minHeight:280,color:"#00f0ff",fontSize:22}}>CYBER KNIGHT</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
           </div>
 
           <div className="equipment-slots">
