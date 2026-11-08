@@ -35,6 +35,7 @@ function LoginRegister() {
 
           sessionStorage.setItem("username", data.username || username);
           sessionStorage.setItem("userId", data.userId);
+          sessionStorage.setItem("authToken", data.token);
 
           if (data.gameProgress) {
             sessionStorage.setItem("castle", JSON.stringify(data.gameProgress.castle));
