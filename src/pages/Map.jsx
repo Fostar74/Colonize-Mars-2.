@@ -467,9 +467,10 @@ function Map() {
           {marchLoading && <p>Loading your army...</p>}
           {marchDraft && <div>
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
-            <p>Select troops for this march:</p>
+            <p>Select troops from your base army:</p>
+            {!Object.values(unitEconomy.categories).flat().some(unit=>Number(availableArmy[unit]||0)>0) && <p>No trained troops available. Train units at your base before preparing a march.</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
-              {Object.values(unitEconomy.categories).flat().map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
+              {Object.values(unitEconomy.categories).flat().filter(unit=>Number(availableArmy[unit]||0)>0).map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
                 <strong>{unit}</strong>
                 <span>Available: {Number(availableArmy[unit]||0)}</span>
                 <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
