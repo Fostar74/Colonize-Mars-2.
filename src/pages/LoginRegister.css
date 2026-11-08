@@ -1,0 +1,51 @@
+.login-page {
+  background-image: url("../images/mars-background.jpg");
+  background-size: cover;
+  background-position: center;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  color: white;
+  text-shadow: 0 0 5px #000;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  width: 300px;
+  background-color: rgba(0, 0, 0, 0.6);
+  padding: 20px;
+  border-radius: 10px;
+  box-shadow: 0 0 10px black;
+}
+
+.login-form input,
+.login-form button {
+  padding: 10px;
+  margin-bottom: 10px;
+  border: none;
+  border-radius: 5px;
+}
+
+.login-form input {
+  background-color: #fff;
+  color: #000;
+}
+
+.login-form button {
+  background-color: #e63946;
+  color: #fff;
+  cursor: pointer;
+  transition: background-color 0.3s;
+}
+
+.login-form button:hover {
+  background-color: #d62828;
+}
+
+.login-message {
+  margin-top: 10px;
+  font-weight: bold;
+}
