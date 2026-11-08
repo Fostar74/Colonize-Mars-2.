@@ -397,7 +397,7 @@ function Map() {
           <div style={{marginTop:8}}><button onClick={prepareMarch}>Prepare march</button> <button onClick={()=>setMarchDraft(null)}>Cancel</button></div>
           <small>Dispatch and troop travel are not active yet. Preparing does not send an army.</small>
         </div>}
-        {marchNotice && <div role="status">{marchNotice}</div>
+        {marchNotice && <div role="status">{marchNotice}</div>}
         {mapError && <div role="alert">{mapError}</div>}
         <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
         <input type="text" id="usernameInput" placeholder="Search Username" />
