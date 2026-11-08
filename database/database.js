@@ -220,7 +220,7 @@ class DatabaseManager {
       db.prepare(`INSERT INTO game_progress
         (user_id, castle_data, resources, structures) VALUES (?, ?, ?, ?)`)
         .run(userId, JSON.stringify({ username, ...position }),
-          JSON.stringify({ Gold: 0, Iron: 0, Water: 0, Solar: 0 }), JSON.stringify({}));
+          JSON.stringify({ Gold: 10000, Iron: 10000, Water: 10000, Solar: 10000 }), JSON.stringify({}));
       return { success: true, userId, position };
     })();
   }
