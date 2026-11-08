@@ -165,17 +165,19 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
           const timeDisplay = formatTime(totalTime);
 
           return (
-            <div key={unit} className="unit-card">
+            <div key={unit} className="unit-card" style={{filter:unlocked?"none":"grayscale(1)",opacity:unlocked?1:0.62,border:unlocked?"1px solid #40a7b9":"1px solid #777",transition:"filter .25s, opacity .25s, border-color .25s"}}>
+              <div aria-hidden="true" style={{fontSize:36,filter:unlocked?"none":"grayscale(1)",marginBottom:4}}>{unitTab==="Ground"?"🪖":unitTab==="Ranged"?"🎯":unitTab==="Mobile"?"🚙":unitTab==="Heavy Systems"?"🤖":"⚔️"}</div>
               <h4>{unit}</h4>
+              {unlocked && <p style={{color:"#79dfad",fontWeight:"bold"}}>Unlocked · Ready to train</p>}
               {!unlocked && <p style={{color:"#ffbb77"}}>Locked: Requires {requirement.building} level {requirement.level}</p>}
               <div className="train-slider">
-                <button onClick={() => handlePresetClick(unit, 0)}>–</button>
+                <button disabled={!unlocked} onClick={() => handlePresetClick(unit, 0)}>–</button>
                 <button onClick={() => handlePresetClick(unit, 0.25)}>1/4</button>
                 <button onClick={() => handlePresetClick(unit, 0.5)}>1/2</button>
                 <button onClick={() => handlePresetClick(unit, 0.75)}>3/4</button>
                 <button onClick={() => handlePresetClick(unit, 1)}>+ MAX</button>
               </div>
-              <label>Quantity: <input type="number" min="0" max="10000" value={qty} onChange={e => setTrainAmounts(prev => ({...prev, [unit]:Math.max(0,Math.min(10000,Math.floor(Number(e.target.value)||0)))}))} style={{width:90,color:"#111"}} /></label>
+              <label>Quantity: <input type="number" disabled={!unlocked} min="0" max="10000" value={qty} onChange={e => setTrainAmounts(prev => ({...prev, [unit]:Math.max(0,Math.min(10000,Math.floor(Number(e.target.value)||0)))}))} style={{width:90,color:"#111"}} /></label>
               <p>Train Time: {timeDisplay}</p>
               {game.trainingJob?.unit === unit && <p>Training {game.trainingJob.quantity}: {formatTime(remaining(game.trainingJob))}</p>}
               <p>Owned: {Number(game.army?.[unit] || 0)}</p>
@@ -186,7 +188,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
                 <div className="resource-cost"><img src={solarIcon} alt="Solar" /><span>{price.Solar}</span></div>
               </div>
               <button style={{ marginTop: 10 }} disabled={!unlocked || !qty || qty > calculateMaxTrainable(unit) || !!busy || !!game.trainingJob} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
-                {game.trainingJob ? "Training queue busy" : "Train"}
+                {!unlocked ? "Locked" : game.trainingJob ? "Training queue busy" : "Train"}
               </button>
             </div>
           );
