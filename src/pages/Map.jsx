@@ -17,6 +17,27 @@ function Map() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState(null);
   const [castles, setCastles] = useState([]);
+  const [mapError, setMapError] = useState("");
+  useEffect(() => {
+    let cancelled = false;
+    const loadBases = async () => {
+      try {
+        const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
+        const response = await fetch(base + "/map/bases", { headers: { Authorization: "Bearer " + sessionStorage.getItem("authToken") } });
+        if (!response.ok) throw new Error(response.status === 401 ? "Session expired. Please log in again." : "Could not load player bases.");
+        const data = await response.json();
+        if (!cancelled) {
+          const own = JSON.parse(sessionStorage.getItem("castle") || "null");
+          const bases = Array.isArray(data.bases) ? data.bases : [];
+          setCastles(own && !bases.some(b => b.username === own.username) ? [...bases, own] : bases);
+          setMapError("");
+        }
+      } catch (error) { if (!cancelled) setMapError(error.message); }
+    };
+    loadBases();
+    const timer = setInterval(loadBases, 30000);
+    return () => { cancelled = true; clearInterval(timer); };
+  }, []);
   const [hqIcon, setHqIcon] = useState(null);
   const [hoveredTitle, setHoveredTitle] = useState("");
   const [mineIcons, setMineIcons] = useState({});
@@ -102,7 +123,7 @@ function Map() {
 
       if (!savedCastle || !savedCastle.x || !savedCastle.y) throw new Error();
 
-      setCastles([savedCastle]);
+      setCastles(previous => previous.length ? previous : [savedCastle]);
 
       if (hqIcon) {
         centerMapOn(savedCastle.x, savedCastle.y);
