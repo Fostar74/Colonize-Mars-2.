@@ -1,0 +1,16 @@
+# Temporary test deployment. Free instances have ephemeral filesystems:
+# accounts and progress may be lost after a restart or redeploy.
+# Move DATABASE_PATH to a persistent disk before relying on saved data.
+services:
+  - type: web
+    name: colonize-mars-2-test
+    runtime: node
+    plan: free
+    buildCommand: npm install && npm run build
+    startCommand: npm run start:server
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NODE_VERSION
+        value: 22.16.0
