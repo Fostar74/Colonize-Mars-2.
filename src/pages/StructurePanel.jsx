@@ -20,8 +20,32 @@ const unitCategories = {
   Elite: ["Martian Noble", "AI General", "Gene Warrior"]
 };
 
-function StructurePanel({ showNavigation = true }) {
+function StructurePanel({ showNavigation = true, onProgressChange }) {
   const [activeTab, setActiveTab] = useState("structures");
+  const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
+  const [resources, setResources] = useState(() => { try { return JSON.parse(sessionStorage.getItem("resources") || "{}"); } catch { return {}; } });
+  const [busy, setBusy] = useState("");
+  const [error, setError] = useState("");
+  const upgrade = async name => {
+    setBusy(name);
+    setError("");
+    try {
+      const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\\/$/, "");
+      const response = await fetch(base + "/upgrade-building", {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: "Bearer " + sessionStorage.getItem("authToken") },
+        body: JSON.stringify({ userId: sessionStorage.getItem("userId"), name })
+      });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Upgrade failed");
+      setStructures(data.structures);
+      setResources(data.resources);
+      sessionStorage.setItem("structures", JSON.stringify(data.structures));
+      sessionStorage.setItem("resources", JSON.stringify(data.resources));
+      if (onProgressChange) onProgressChange(data);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  };
   const [unitTab, setUnitTab] = useState("Ground");
   const [upgradeSlot, setUpgradeSlot] = useState(null);
   const [upgradeCategory, setUpgradeCategory] = useState("Ground");
@@ -58,6 +82,7 @@ function StructurePanel({ showNavigation = true }) {
   const renderStructures = () => (
     <>
       <h2 style={{ textAlign: "center" }}>Structures</h2>
+      {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
       {Object.entries(structureTypes).map(([section, buildings]) => (
         <div key={section}>
           <h3>{section}</h3>
@@ -65,7 +90,9 @@ function StructurePanel({ showNavigation = true }) {
             {buildings.map((name) => (
               <div key={name} className="building">
                 <h4>{name}</h4>
-                <p style={{ opacity: 0.6 }}>Upgrade system coming soon</p>
+                <p>Level: {Number(structures[name] || 0)}</p>
+                <p>Next level cost: {100 * (Number(structures[name] || 0) + 1)} Gold · {80 * (Number(structures[name] || 0) + 1)} Iron · {60 * (Number(structures[name] || 0) + 1)} Water · {40 * (Number(structures[name] || 0) + 1)} Solar</p>
+                <button className="upgrade-btn" disabled={!!busy || Number(structures[name] || 0) >= 20} onClick={() => upgrade(name)}>{busy === name ? "Building..." : "Build / Upgrade"}</button>
               </div>
             ))}
           </div>
