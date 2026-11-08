@@ -23,7 +23,7 @@ router.post("/register", async (req, res) => {
   if (typeof email !== "string" || typeof password !== "string" ||
       typeof username !== "string" || !email.trim() || !username.trim() ||
       password.length < 8 || username.length > 32 || email.length > 254) {
-    return res.status(400).json({ message: "All fields are required." });
+    return res.status(400).json({ message: "Enter a valid email and username, and use a password of at least 8 characters." });
   }
 
   try {
