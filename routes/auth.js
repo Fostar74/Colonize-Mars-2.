@@ -139,6 +139,14 @@ router.post("/upgrade-unit", requireSession, (req, res) => {
   } catch (error) { console.error("Upgrade unit:", error); res.status(500).json({ message: "Upgrade failed." }); }
 });
 
+router.post("/claim-second-quest", requireSession, (req, res) => {
+  try {
+    const result = db.claimSecondQuest(req.body.userId);
+    if (result.error) return res.status(400).json({ message: result.error });
+    res.json(result);
+  } catch (error) { console.error("Claim second quest:", error); res.status(500).json({ message: "Claim failed." }); }
+});
+
 router.post("/claim-first-quest", requireSession, (req, res) => {
   try {
     const result = db.claimFirstQuest(req.body.userId);
