@@ -24,6 +24,8 @@ function Map() {
   const [marchUnits, setMarchUnits] = useState({});
   const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
+  const [marchType, setMarchType] = useState("All");
+  const [marchHistoryOpen, setMarchHistoryOpen] = useState(false);
   const [castles, setCastles] = useState([]);
   const [mapError, setMapError] = useState("");
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
@@ -149,36 +151,54 @@ function Map() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Deterministic geographic terrain: plains, forests, lakes, hills and winding rivers.
+    // Mars surface: layered rust regolith, ridges, impact craters and dust deposits.
     ctx.save();
     ctx.beginPath();
     ctx.rect(Math.max(0,offset.x),Math.max(0,offset.y),mapSize*tileSize,mapSize*tileSize);
     ctx.clip();
-    ctx.fillStyle="#c5b78a";
+    ctx.fillStyle="#6d3429";
     ctx.fillRect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
     const terrain=(x,y)=>({x:offset.x+x*tileSize,y:offset.y+y*tileSize});
-    for(let i=0;i<190;i++){
-      const x=((i*37.7+13)%100),y=((i*61.3+7)%100);
+    // Stable terrain features anchored to world coordinates.
+    for(let i=0;i<450;i++){
+      const x=(i*37.731+13.3)%100,y=(i*61.317+7.1)%100;
       const p=terrain(x,y);
-      ctx.fillStyle=i%5===0?"#9c9473":i%3===0?"#7c9669":"#6b8559";
-      ctx.beginPath();
-      ctx.ellipse(p.x,p.y,(2+(i%7))*tileSize,(1.2+(i%5))*tileSize,i*.73,0,Math.PI*2);
-      ctx.fill();
+      const radius=(.3+(i%11)*.27)*tileSize;
+      ctx.beginPath();ctx.ellipse(p.x,p.y,radius*2.4,radius*.85,i*.71,0,Math.PI*2);
+      ctx.fillStyle=["#874638","#a15b3e","#4d2929","#bb7951","#784a3b"][i%5];ctx.globalAlpha=.23+(i%4)*.08;ctx.fill();
     }
-    for(let i=0;i<9;i++){
-      const p=terrain((i*29+17)%95+2,(i*43+11)%94+3);
-      ctx.fillStyle="#558e9e";ctx.beginPath();
-      ctx.ellipse(p.x,p.y,(1.5+i%4)*tileSize,(1+i%3)*tileSize,i*.45,0,Math.PI*2);ctx.fill();
-    }
-    for(let river=0;river<3;river++){
+    ctx.globalAlpha=1;
+    // Canyon and fault lines, no Earth-like rivers or grass.
+    for(let ridge=0;ridge<7;ridge++){
       ctx.beginPath();
       for(let step=0;step<=100;step++){
-        const x=step,y=18+river*30+8*Math.sin(step*.095+river*1.7)+3*Math.sin(step*.24+river);
-        const p=terrain(x,y);
-        if(step===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);
+        const x=step,y=(ridge*17+13+6*Math.sin(step*.095+ridge*2)+2*Math.sin(step*.27+ridge))%100;
+        const p=terrain(x,y);if(step===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);
       }
-      ctx.strokeStyle="#568f9d";ctx.lineWidth=Math.max(1,1.6*tileSize);ctx.stroke();
-      ctx.strokeStyle="#83b6bb";ctx.lineWidth=Math.max(1,.65*tileSize);ctx.stroke();
+      ctx.lineWidth=Math.max(1,tileSize*(.2+ridge%3*.11));ctx.strokeStyle="#39252b";ctx.globalAlpha=.4;ctx.stroke();
+      ctx.lineWidth=Math.max(1,tileSize*.09);ctx.strokeStyle="#cf8558";ctx.globalAlpha=.45;ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+    for(let i=0;i<210;i++){
+      const x=(i*41.83+9.7)%100,y=(i*73.19+5.4)%100,p=terrain(x,y);
+      const radius=(.19+i%7*.14)*tileSize;
+      if(radius<1)continue;
+      ctx.beginPath();ctx.ellipse(p.x,p.y,radius*1.4,radius,0,0,Math.PI*2);
+      ctx.fillStyle="#3b2729";ctx.globalAlpha=.4;ctx.fill();
+      ctx.beginPath();ctx.ellipse(p.x-radius*.15,p.y-radius*.15,radius*.85,radius*.68,0,0,Math.PI*2);
+      ctx.fillStyle="#472c2b";ctx.globalAlpha=.65;ctx.fill();
+      ctx.beginPath();ctx.arc(p.x,p.y,radius,Math.PI*1.06,Math.PI*1.85);
+      ctx.strokeStyle="#d79a6e";ctx.lineWidth=Math.max(.7,radius*.21);ctx.globalAlpha=.72;ctx.stroke();
+    }
+    ctx.globalAlpha=1;
+    // Subtle coordinate lattice, visible mainly when zoomed in.
+    if(tileSize>=16){
+      ctx.strokeStyle="rgba(238,177,126,.14)";ctx.lineWidth=.7;
+      for(let n=0;n<=100;n++){
+        const x=offset.x+n*tileSize,y=offset.y+n*tileSize;
+        if(x>=0&&x<=canvas.width){ctx.beginPath();ctx.moveTo(x,0);ctx.lineTo(x,canvas.height);ctx.stroke();}
+        if(y>=0&&y<=canvas.height){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(canvas.width,y);ctx.stroke();}
+      }
     }
     ctx.restore();
 
@@ -301,7 +321,7 @@ function Map() {
   const prepareMarch = () => {
     const selected=Object.entries(marchUnits).filter(([,n])=>n>0);
     if(!selected.length){setMarchNotice("Choose at least one unit.");return;}
-    setMarchNotice("Army selection ready. Actual dispatch is not yet enabled; no troops were moved.");
+    setMarchNotice("Troops selected. Sending and travel are not yet implemented; no army has left the base.");
   };
 
   const attackAlien = async () => {
@@ -362,7 +382,7 @@ function Map() {
         style={{
           display: "block",
           cursor: "crosshair",
-          backgroundColor: "#c5b78a",
+          backgroundColor: "#6d3429",
         }}
         onClick={handleMapClick}
         onMouseMove={handleMouseMove}
@@ -405,6 +425,8 @@ function Map() {
             {selectedTarget?.type==="castle" && !targetIsOwn && <button style={{padding:"12px 24px",background:"#9e4437",color:"white"}} onClick={()=>chooseAction("Attack")}>⚔ Attack</button>}
             {selectedTarget?.type==="castle" && !targetIsOwn && canSupport && <button onClick={()=>chooseAction("Support")}>🛡 Support</button>}
             {selectedTarget?.type==="field" && <button style={{padding:"12px 24px"}} onClick={()=>chooseAction("Patrol")}>◉ Patrol</button>}
+            {selectedTarget?.type==="castle" && !targetIsOwn && <button onClick={()=>setMarchNotice("Espionage will be available when reconnaissance is implemented.")}>◈ Espionage</button>}
+            <button onClick={()=>setMarchHistoryOpen(true)}>☷ Marches</button>
             {targetIsOwn && <span>This is your base.</span>}
           </div>}
           {originPicker && !marchDraft && <div>
@@ -429,12 +451,22 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits(Object.fromEntries(Object.entries(availableArmy).map(([k,v])=>[k,Number(v)||0])))}>Select all</button>
               <button onClick={()=>setMarchUnits({})}>Clear</button>
-              <button onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Prepare march</button>
+              <button onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Review army</button>
               <button onClick={()=>{setMarchDraft(null);setOriginPicker({type:marchDraft.type,target:marchDraft.target});}}>← Choose another base</button>
             </div>
             <p style={{fontSize:12,color:"#b5c7d9"}}>Actual troop dispatch is not enabled yet. Preparing does not move or consume troops.</p>
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{marchNotice}</p>}
+        </div>
+      </div>}
+      <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>🚀 MARCHES</button>
+      {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
+        <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
+          <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>🚀 MARCHES</h2><button onClick={()=>setMarchHistoryOpen(false)}>✕ Close</button></div>
+          <p>Mission types</p>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{["All","Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(t=><button key={t} onClick={()=>setMarchType(t)} style={{background:marchType===t?"#377d9f":"#24394b",color:"white",padding:"9px 12px",border:"1px solid #56758b",borderRadius:6}}>{t}</button>)}</div>
+          <h3>Active movements · {marchType}</h3>
+          <p>No active movements. Dispatch, travel times, returning armies and reports require the server-side march system.</p>
         </div>
       </div>}
       <button
