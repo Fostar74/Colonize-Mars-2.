@@ -186,9 +186,9 @@ class DatabaseManager {
   chooseSpawn(occupied) {
     for (let i = 0; i < 40000; i++) {
       const angle = i * 2.399963229728653;
-      const radius = 85 + (i % 12);
-      const x = Math.max(1, Math.min(200, Math.round(100.5 + radius * Math.cos(angle))));
-      const y = Math.max(1, Math.min(200, Math.round(100.5 + radius * Math.sin(angle))));
+      const radius = 38 + (i % 9);
+      const x = Math.max(1, Math.min(100, Math.round(50.5 + radius * Math.cos(angle))));
+      const y = Math.max(1, Math.min(100, Math.round(50.5 + radius * Math.sin(angle))));
       if (!occupied.has(x + ":" + y)) return { x, y };
     }
     throw new Error("No available spawn position");
@@ -198,7 +198,13 @@ class DatabaseManager {
   ensureBase(userId, username) {
     return db.transaction(() => {
       const existing = db.prepare("SELECT x, y FROM base_positions WHERE user_id = ?").get(userId);
-      if (existing) return { username, ...existing };
+      if (existing && existing.x <= 100 && existing.y <= 100) return { username, ...existing };
+      if (existing) {
+        const occupied = new Set(db.prepare("SELECT x, y FROM base_positions WHERE user_id != ?").all(userId).map(p => p.x + ":" + p.y));
+        const moved = this.chooseSpawn(occupied);
+        db.prepare("UPDATE base_positions SET x = ?, y = ? WHERE user_id = ?").run(moved.x,moved.y,userId);
+        return {username,...moved};
+      }
       const progress = this.getGameProgress(userId);
       const old = progress && progress.castle;
       const occupied = new Set(db.prepare("SELECT x, y FROM base_positions").all().map(p => p.x + ":" + p.y));
@@ -211,7 +217,7 @@ class DatabaseManager {
       }
       const preferred = old && Number.isInteger(old.x) && Number.isInteger(old.y) ? old : null;
       let selected = null;
-      if (preferred && preferred.x >= 1 && preferred.x <= 200 && preferred.y >= 1 && preferred.y <= 200 &&
+      if (preferred && preferred.x >= 1 && preferred.x <= 100 && preferred.y >= 1 && preferred.y <= 100 &&
           !db.prepare("SELECT 1 FROM base_positions WHERE x = ? AND y = ?").get(preferred.x, preferred.y)) {
         selected = { x: preferred.x, y: preferred.y };
       } else {
