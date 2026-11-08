@@ -14,7 +14,7 @@ function Map() {
   const canvasRef = useRef(null);
   const [zoom, setZoom] = useState(1);
   const tileSize = 60 * zoom;
-  const mapSize = 200;
+  const mapSize = 100;
 
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [selectedTarget, setSelectedTarget] = useState(null);
@@ -27,7 +27,7 @@ function Map() {
   const [mapError, setMapError] = useState("");
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
   const [selectedAlien, setSelectedAlien] = useState(null);
-  const [viewCenter, setViewCenter] = useState({x:100,y:100});
+  const [viewCenter, setViewCenter] = useState({x:50,y:50});
   useEffect(() => {
     let cancelled = false;
     const loadBases = async () => {
@@ -55,46 +55,22 @@ function Map() {
   const [mineIcons, setMineIcons] = useState({});
   const [alienIcon, setAlienIcon] = useState(null);
 
+  // World coordinates are 1–100; each tile has a stable geographic location.
   const mineData = [
-    ...Array.from({ length: 15 }, (_, i) => ({
-      x: i * 3 + 5,
-      y: 10,
-      type: "gold",
-    })),
-    ...Array.from({ length: 15 }, (_, i) => ({
-      x: i * 3 + 5,
-      y: 30,
-      type: "iron",
-    })),
-    ...Array.from({ length: 15 }, (_, i) => ({
-      x: i * 3 + 5,
-      y: 50,
-      type: "solar",
-    })),
-    ...Array.from({ length: 15 }, (_, i) => ({
-      x: i * 3 + 5,
-      y: 70,
-      type: "water",
-    })),
+    ...["gold","iron","solar","water"].flatMap((type,row)=>
+      Array.from({length:9},(_,i)=>({x:5+i*10,y:10+row*22,type})))
   ];
-
-  // Alien strongholds occupy multiple rings: level 20 in the center, level 1 at the edge.
-  const alienBases = [
-    { x: 100, y: 100, level: 20 },
-    ...Array.from({ length: 19 }, (_, index) => {
-      const level = 19 - index;
-      const radius = (20 - level) * 4.6;
-      const count = Math.max(5, Math.round(2 * Math.PI * radius / 12));
-      return Array.from({ length: count }, (_, j) => {
-        const angle = (j + (level % 2) * 0.5) * 2 * Math.PI / count;
-        return {
-          x: Math.max(1, Math.min(200, Math.round(100 + radius * Math.cos(angle)))),
-          y: Math.max(1, Math.min(200, Math.round(100 + radius * Math.sin(angle)))),
-          level
-        };
-      });
-    }).flat()
-  ];
+  // Exactly 69 alien bases, with stronger levels closer to the center.
+  const alienBases = Array.from({length:20},(_,index)=>{
+    const level=index+1;
+    const count=level===20?1:level>=16?2:level>=11?3:level>=6?4:5;
+    const radius=level===20?0:3+(20-level)*2.25;
+    return Array.from({length:count},(_,j)=>{
+      const angle=2*Math.PI*(j/count+(level*0.61803398875)%1);
+      return {x:Math.max(1,Math.min(100,Math.round(50+radius*Math.cos(angle)))),
+              y:Math.max(1,Math.min(100,Math.round(50+radius*Math.sin(angle)))),level};
+    });
+  }).flat();
 
   useEffect(() => {
     const gold = new Image();
@@ -172,20 +148,42 @@ function Map() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    for (let x = 0; x < mapSize; x++) {
-      for (let y = 0; y < mapSize; y++) {
-        const px = x * tileSize + offset.x;
-        const py = y * tileSize + offset.y;
-
-        if (px > canvas.width || py > canvas.height || px + tileSize < 0 || py + tileSize < 0) continue;
-        ctx.strokeStyle = "#0077cc";
-        ctx.strokeRect(px, py, tileSize, tileSize);
-      }
+    // Deterministic geographic terrain: plains, forests, lakes, hills and winding rivers.
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(Math.max(0,offset.x),Math.max(0,offset.y),mapSize*tileSize,mapSize*tileSize);
+    ctx.clip();
+    ctx.fillStyle="#c5b78a";
+    ctx.fillRect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
+    const terrain=(x,y)=>({x:offset.x+x*tileSize,y:offset.y+y*tileSize});
+    for(let i=0;i<190;i++){
+      const x=((i*37.7+13)%100),y=((i*61.3+7)%100);
+      const p=terrain(x,y);
+      ctx.fillStyle=i%5===0?"#9c9473":i%3===0?"#7c9669":"#6b8559";
+      ctx.beginPath();
+      ctx.ellipse(p.x,p.y,(2+(i%7))*tileSize,(1.2+(i%5))*tileSize,i*.73,0,Math.PI*2);
+      ctx.fill();
     }
+    for(let i=0;i<9;i++){
+      const p=terrain((i*29+17)%95+2,(i*43+11)%94+3);
+      ctx.fillStyle="#558e9e";ctx.beginPath();
+      ctx.ellipse(p.x,p.y,(1.5+i%4)*tileSize,(1+i%3)*tileSize,i*.45,0,Math.PI*2);ctx.fill();
+    }
+    for(let river=0;river<3;river++){
+      ctx.beginPath();
+      for(let step=0;step<=100;step++){
+        const x=step,y=18+river*30+8*Math.sin(step*.095+river*1.7)+3*Math.sin(step*.24+river);
+        const p=terrain(x,y);
+        if(step===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);
+      }
+      ctx.strokeStyle="#568f9d";ctx.lineWidth=Math.max(1,1.6*tileSize);ctx.stroke();
+      ctx.strokeStyle="#83b6bb";ctx.lineWidth=Math.max(1,.65*tileSize);ctx.stroke();
+    }
+    ctx.restore();
 
     mineData.forEach((mine) => {
-      const px = mine.x * tileSize + offset.x;
-      const py = mine.y * tileSize + offset.y;
+      const px = (mine.x-1) * tileSize + offset.x;
+      const py = (mine.y-1) * tileSize + offset.y;
       const icon = mineIcons[mine.type];
 
       if (
@@ -200,8 +198,8 @@ function Map() {
     });
 
     alienBases.forEach((base) => {
-      const px = base.x * tileSize + offset.x;
-      const py = base.y * tileSize + offset.y;
+      const px = (base.x-1) * tileSize + offset.x;
+      const py = (base.y-1) * tileSize + offset.y;
 
       if (
         px + tileSize >= 0 &&
@@ -217,8 +215,8 @@ function Map() {
     });
 
     castles.forEach((c) => {
-      const px = c.x * tileSize + offset.x;
-      const py = c.y * tileSize + offset.y;
+      const px = (c.x-1) * tileSize + offset.x;
+      const py = (c.y-1) * tileSize + offset.y;
 
       if (
         px + tileSize >= 0 &&
@@ -250,7 +248,7 @@ function Map() {
     const mouseY=(e.clientY-rect.top)*canvas.height/rect.height;
     const x=Math.floor((mouseX-offset.x)/tileSize)+1;
     const y=Math.floor((mouseY-offset.y)/tileSize)+1;
-    setCursorCoord(x>=1&&x<=200&&y>=1&&y<=200?{x,y}:null);
+    setCursorCoord(x>=1&&x<=100&&y>=1&&y<=100?{x,y}:null);
     const hovered=castles.find(c=>c.x===x&&c.y===y);
     setHoveredTitle(hovered?`${hovered.username} – Headquarter (${x}:${y})`:"");
   };
@@ -262,12 +260,12 @@ function Map() {
     const py=(e.clientY-rect.top)*canvas.height/rect.height;
     const x=Math.floor((px-offset.x)/tileSize);
     const y=Math.floor((py-offset.y)/tileSize);
-    if(x<0||x>=200||y<0||y>=200){setSelectedTarget(null);setSelectedAlien(null);return;}
-    const castle=castles.find(c=>Number(c.x)===x&&Number(c.y)===y);
-    const alien=alienBases.find(b=>b.x===x&&b.y===y);
+    if(x<0||x>=100||y<0||y>=100){setSelectedTarget(null);setSelectedAlien(null);return;}
+    const castle=castles.find(c=>Number(c.x)===x+1&&Number(c.y)===y+1);
+    const alien=alienBases.find(b=>b.x===x+1&&b.y===y+1);
     setSelectedAlien(castle?null:alien||null);
     setMarchDraft(null);
-    setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x,y});
+    setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
     setMarchNotice("");
   };
   const ownUsername=sessionStorage.getItem("username");
@@ -315,7 +313,7 @@ function Map() {
     const x = parseInt(document.getElementById("xCoord").value);
     const y = parseInt(document.getElementById("yCoord").value);
 
-    if (!isNaN(x) && !isNaN(y) && x >= 1 && x <= 200 && y >= 1 && y <= 200) {
+    if (!isNaN(x) && !isNaN(y) && x >= 1 && x <= 100 && y >= 1 && y <= 100) {
       centerMapOn(x, y);
     } else {
       alert("Invalid coordinates");
@@ -352,7 +350,7 @@ function Map() {
         style={{
           display: "block",
           cursor: "crosshair",
-          backgroundColor: "#0e3f1f",
+          backgroundColor: "#c5b78a",
         }}
         onClick={handleMapClick}
         onMouseMove={handleMouseMove}
@@ -372,7 +370,7 @@ function Map() {
         }}
       >
         <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel}</div>
-        <div style={{margin:"8px 0"}}>Zoom <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(100.5,100.5);}}>Full map 200×200</button> <button onClick={()=>setZoom(1)}>100%</button></div>
+        <div style={{margin:"8px 0"}}>Zoom <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(50.5,50.5);}}>Full map 100×100</button> <button onClick={()=>setZoom(1)}>100%</button></div>
         {selectedTarget && <div style={{padding:8,border:"1px solid #777",marginBottom:8}}>
           <strong>{selectedTarget.type==="alien"?"Alien base level "+selectedTarget.level:selectedTarget.type==="castle"?"Castle: "+selectedTarget.username:"Empty field"} ({selectedTarget.x}:{selectedTarget.y})</strong>
           <div style={{marginTop:6}}>
@@ -403,7 +401,7 @@ function Map() {
         <input type="text" id="usernameInput" placeholder="Search Username" />
         <button onClick={searchByUsername}>Search</button>
         <br />
-        <input type="number" id="xCoord" placeholder="X (1–200)" />
+        <input type="number" id="xCoord" placeholder="X (1–100)" />
         <input type="number" id="yCoord" placeholder="Y (1–200)" />
         <button onClick={goToCoordinates}>Go to Coordinates</button>
       </div>
