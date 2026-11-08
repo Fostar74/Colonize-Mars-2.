@@ -40,7 +40,7 @@ function Game() {
     if (!userId) return undefined;
     let active = true;
     let inFlight = false;
-    const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\\/$/, "");
+    const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(new RegExp("/$"), "");
     const refresh = async () => {
       if (!active || inFlight || document.hidden) return;
       inFlight = true;
