@@ -7,7 +7,6 @@ import marsBackground from "../images/mars-background.jpg";
 
 function Game() {
   const [showPopup, setShowPopup] = useState(false);
-  const [activeTab, setActiveTab] = useState("structures");
   const [castleName, setCastleName] = useState("Headquarter");
   const [resources, setResources] = useState(null);
   const [optionsVisible, setOptionsVisible] = useState(false);
@@ -16,7 +15,7 @@ function Game() {
   const onProgressChange = data => setResources(data.resources);
 
   useEffect(() => {
-    const openBase = () => { setShowQuests(false); setActiveTab("structures"); setShowPopup(true); };
+    const openBase = () => { setShowQuests(false); setShowPopup(true); };
     window.addEventListener("open-base-panel", openBase);
     return () => window.removeEventListener("open-base-panel", openBase);
   }, []);
@@ -37,10 +36,6 @@ function Game() {
   const logout = () => {
     sessionStorage.clear();
     window.location.href = "/";
-  };
-
-  const showTab = (tabId) => {
-    setActiveTab(tabId);
   };
 
   return (
