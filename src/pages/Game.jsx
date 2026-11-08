@@ -92,53 +92,8 @@ function Game() {
               X
             </button>
           </div>
-          <div className="popup-tabs">
-            <button onClick={() => showTab("structures")}>Structures</button>
-            <button onClick={() => showTab("units")}>Units</button>
-            <button onClick={() => showTab("upgrades")}>Upgrades</button>
-          </div>
           <div className="popup-content">
-            {activeTab === "structures" && (
-              <div className="popup-section active">
-                <button className="back-button" onClick={() => setShowPopup(false)}>
-                  ← Back
-                </button>
-                <StructurePanel showNavigation={false} onProgressChange={onProgressChange} />
-              </div>
-            )}
-            {activeTab === "units" && (
-              <div className="popup-section active">
-                <button className="back-button" onClick={() => showTab("structures")}>
-                  ← Back
-                </button>
-                <div className="units-tab" style={{ padding: "20px" }}>
-                  <h3>Army Units</h3>
-                  <p>Manage your troops and their training schedule.</p>
-                  <ul>
-                    <li>Cyber Guards — Level 1 Infantry Unit</li>
-                    <li>Rail Snipers — Long-range tactical shooters</li>
-                    <li>Hover Raiders — Fast moving front-line units</li>
-                    <li>Orbital Mechs — Heavy assault siege walkers</li>
-                  </ul>
-                </div>
-              </div>
-            )}
-            {activeTab === "upgrades" && (
-              <div className="popup-section active">
-                <button className="back-button" onClick={() => showTab("structures")}>
-                  ← Back
-                </button>
-                <div className="upgrades-tab" style={{ padding: "20px" }}>
-                  <h3>Upgrade Center</h3>
-                  <p>Enhance your units, unlock tech bonuses, and optimize efficiency.</p>
-                  <ul>
-                    <li>Unlock Tier II Weapons — Boost unit damage by 15%</li>
-                    <li>Upgrade Defensive Matrix — Improve wall durability</li>
-                    <li>Enhance March Capacity — +20% troop size</li>
-                  </ul>
-                </div>
-              </div>
-            )}
+            <StructurePanel onProgressChange={onProgressChange} />
           </div>
         </div>
       )}
