@@ -1,6 +1,8 @@
 // Final StructurePanel.jsx with internal tab buttons restored
 import React, { useState, useEffect } from "react";
 import "./StructurePanel.css";
+import unitEconomy from "../shared/unitEconomy";
+const {unitPrice,upgradePrice} = unitEconomy;
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
@@ -83,17 +85,6 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
   const [upgradeCategory, setUpgradeCategory] = useState("Ground");
   const [trainAmounts, setTrainAmounts] = useState({});
 
-  const unitCost = {
-    Gold: 100,
-    Iron: 80,
-    Water: 60,
-    Solar: 40
-  };
-  const unitPrice = unit => {
-    const category = Object.entries(unitCategories).find(([,units]) => units.includes(unit))?.[0] || "Ground";
-    const tier = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3, Elite:5 }[category];
-    return Object.fromEntries(Object.entries(unitCost).map(([resource, price]) => [resource, Math.ceil(price * tier)]));
-  };
   const baseTrainTime = 30;
 
   const formatTime = (seconds) => {
@@ -103,8 +94,8 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
     return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
   };
 
-  const calculateMaxTrainable = () => {
-    const limits = Object.entries(unitCost).map(([key, price]) => Math.floor((Number(resources[key]) || 0) / price));
+  const calculateMaxTrainable = (unit) => {
+    const limits = Object.entries(unitPrice(unit)).map(([key, price]) => Math.floor((Number(resources[key]) || 0) / price));
     return Math.max(0, Math.min(...limits));
   };
 
@@ -201,36 +192,41 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
 
   const renderUpgrades = () => (
     <>
-      <h2 style={{ textAlign: "center" }}>Upgrade Center</h2>
+      <h2 style={{textAlign:"center"}}>Upgrade Center</h2>
       {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
       <div className="upgrade-slots">
-        {[0, 1].map((slot) => (
-          <button key={slot} className="upgrade-slot" onClick={() => setUpgradeSlot(slot)}>
-            {upgradeSlot === slot ? "Slot Opened" : `Slot ${slot + 1}`}
+        {[0,1].map(slot=>(
+          <button key={slot} className="upgrade-slot" onClick={()=>setUpgradeSlot(slot)}>
+            {upgradeSlot===slot ? "Selected Slot "+(slot+1) : "Slot "+(slot+1)}
           </button>
         ))}
       </div>
-
-      {upgradeSlot !== null && (
-        <div className="upgrade-window">
-          <h4>Choose Unit Category</h4>
-          <div className="subtab-buttons">
-            {Object.keys(unitCategories).map((cat) => (
-              <button key={cat} onClick={() => setUpgradeCategory(cat)}>{cat}</button>
-            ))}
-          </div>
-          <div className="unit-grid">
-            {unitCategories[upgradeCategory].map((unit) => (
-              <div key={unit} className="unit-card">
-                <h4>{unit}</h4>
-                <p>Attack Level: 3</p>
-                <p>Defense Level: 2</p>
-                <button>Upgrade</button>
-              </div>
-            ))}
-          </div>
+      {upgradeSlot!==null && <div className="upgrade-window">
+        <h4>Choose Unit Category</h4>
+        <div className="subtab-buttons">
+          {Object.keys(unitCategories).map(cat=><button key={cat} onClick={()=>setUpgradeCategory(cat)}>{cat}</button>)}
         </div>
-      )}
+        <div className="unit-grid">
+          {unitCategories[upgradeCategory].map(unit=>(
+            <div key={unit} className="unit-card">
+              <h4>{unit}</h4>
+              {["attack","defense"].map(stat=>{
+                const level=Number(game.unitUpgrades?.[unit]?.[stat] ?? 1);
+                const cost=upgradePrice(level);
+                const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
+                return <div key={stat} style={{marginBottom:12}}>
+                  <p>{stat==="attack"?"Attack":"Health / Defense"} Level: {level}</p>
+                  <p>Next level {Math.min(20,level+1)}: {cost.Gold} Gold + {cost.Iron} Iron</p>
+                  <button disabled={!!busy || level>=20 || !affordable}
+                    onClick={()=>act("/upgrade-unit",{unit,stat},unit+" "+stat)}>
+                    {level>=20?"MAX LEVEL":stat==="attack"?"Upgrade Attack":"Upgrade Health / Defense"}
+                  </button>
+                </div>;
+              })}
+            </div>
+          ))}
+        </div>
+      </div>}
     </>
   );
 
