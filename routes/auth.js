@@ -122,6 +122,31 @@ router.post("/upgrade-building", requireSession, (req, res) => {
   }
 });
 
+
+router.post("/train-units", requireSession, (req, res) => {
+  try {
+    const result = db.trainUnits(req.body.userId, req.body.unit, req.body.quantity);
+    if (result.error) return res.status(400).json({ message: result.error });
+    res.json(result);
+  } catch (error) { console.error("Train units:", error); res.status(500).json({ message: "Training failed." }); }
+});
+
+router.post("/upgrade-unit", requireSession, (req, res) => {
+  try {
+    const result = db.upgradeUnit(req.body.userId, req.body.unit, req.body.stat);
+    if (result.error) return res.status(400).json({ message: result.error });
+    res.json(result);
+  } catch (error) { console.error("Upgrade unit:", error); res.status(500).json({ message: "Upgrade failed." }); }
+});
+
+router.post("/claim-first-quest", requireSession, (req, res) => {
+  try {
+    const result = db.claimFirstQuest(req.body.userId);
+    if (result.error) return res.status(400).json({ message: result.error });
+    res.json(result);
+  } catch (error) { console.error("Claim quest:", error); res.status(500).json({ message: "Claim failed." }); }
+});
+
 router.post("/save-progress", requireSession, async (req, res) => {
   const { userId, castleData, resources, structures } = req.body;
 
