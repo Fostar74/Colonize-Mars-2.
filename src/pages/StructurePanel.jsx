@@ -165,7 +165,8 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
       <div className="unit-grid">
         {unitCategories[unitTab].map((unit) => {
           const qty = Number(trainAmounts[unit]) || 0;
-          const totalTime = baseTrainTime * qty;\n          const price = unitPrice(unit);
+          const totalTime = baseTrainTime * qty;
+          const price = unitPrice(unit);
           const timeDisplay = formatTime(totalTime);
 
           return (
@@ -178,7 +179,8 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
                 <button onClick={() => handlePresetClick(unit, 0.75)}>3/4</button>
                 <button onClick={() => handlePresetClick(unit, 1)}>+ MAX</button>
               </div>
-              <label>Quantity: <input type="number" min="0" max="10000" value={qty} onChange={e => setTrainAmounts(prev => ({...prev, [unit]:Math.max(0,Math.min(10000,Math.floor(Number(e.target.value)||0)))}))} style={{width:90,color:"#111"}} /></label>\n              <p>Train Time: {timeDisplay}</p>
+              <label>Quantity: <input type="number" min="0" max="10000" value={qty} onChange={e => setTrainAmounts(prev => ({...prev, [unit]:Math.max(0,Math.min(10000,Math.floor(Number(e.target.value)||0)))}))} style={{width:90,color:"#111"}} /></label>
+              <p>Train Time: {timeDisplay}</p>
               {game.trainingJob?.unit === unit && <p>Training {game.trainingJob.quantity}: {formatTime(remaining(game.trainingJob))}</p>}
               <p>Owned: {Number(game.army?.[unit] || 0)}</p>
               <div className="resource-row">
