@@ -139,6 +139,21 @@ router.post("/upgrade-unit", requireSession, (req, res) => {
   } catch (error) { console.error("Upgrade unit:", error); res.status(500).json({ message: "Upgrade failed." }); }
 });
 
+router.get("/tutorial/:userId", requireSession, (req,res) => {
+  try {
+    const data = db.getTutorial(Number(req.params.userId));
+    if (!data) return res.status(404).json({message:"Player not found."});
+    res.json(data);
+  } catch(error) { console.error("Tutorial:",error); res.status(500).json({message:"Tutorial unavailable."}); }
+});
+router.post("/tutorial/claim", requireSession, (req,res) => {
+  try {
+    const result = db.claimTutorialMission(Number(req.body.userId),Number(req.body.missionId));
+    if (result.error) return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch(error) { console.error("Tutorial claim:",error); res.status(500).json({message:"Reward unavailable."}); }
+});
+
 router.post("/claim-second-quest", requireSession, (req, res) => {
   try {
     const result = db.claimSecondQuest(req.body.userId);
