@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import "./Quests.css";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
@@ -7,7 +7,44 @@ import solarIcon from "../images/solar.png";
 
 const Quests = () => {
   const [activeTab, setActiveTab] = useState("main");
-  const [structures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
+  const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
+  const [claimed, setClaimed] = useState(false);
+  const [claimError, setClaimError] = useState("");
+  const [claimBusy, setClaimBusy] = useState(false);
+  const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
+  const userId = sessionStorage.getItem("userId");
+  const headers = () => ({ "Content-Type": "application/json", Authorization: "Bearer " + sessionStorage.getItem("authToken") });
+  const refresh = async () => {
+    if (!userId) return;
+    try {
+      const response = await fetch(base + "/get-progress/" + encodeURIComponent(userId), { headers: headers() });
+      if (!response.ok) return;
+      const data = await response.json();
+      if (data.gameProgress) {
+        setStructures(data.gameProgress.structures || {});
+        setClaimed(!!data.gameProgress.questClaimed);
+      }
+    } catch (_) {}
+  };
+  useEffect(() => {
+    refresh();
+    const timer = setInterval(refresh, 5000);
+    window.addEventListener("game-progress-updated", refresh);
+    return () => { clearInterval(timer); window.removeEventListener("game-progress-updated", refresh); };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [userId]);
+  const claim = async () => {
+    setClaimBusy(true); setClaimError("");
+    try {
+      const response = await fetch(base + "/claim-first-quest", { method:"POST", headers:headers(), body:JSON.stringify({userId}) });
+      const data = await response.json();
+      if (!response.ok) throw new Error(data.message || "Cannot claim reward");
+      setClaimed(true);
+      sessionStorage.setItem("resources", JSON.stringify(data.resources));
+      window.dispatchEvent(new Event("game-progress-updated"));
+    } catch (e) { setClaimError(e.message); }
+    finally { setClaimBusy(false); }
+  };
   const productionBuildings = ["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"];
   const completedMines = productionBuildings.filter(name => Number(structures[name]?.level ?? structures[name] ?? 0) >= 3).length;
   const [cyberKnightLevel, setCyberKnightLevel] = useState(1);
@@ -22,14 +59,14 @@ const Quests = () => {
       <h3>Main Quest</h3>
       <div className="quest-box">
         <div className="quest-title">Upgrade all production buildings to level 3</div>
-        <div className="quest-progress">{`${completedMines} / 4`}</div>
+        <div className="quest-progress">{claimed ? "Completed — reward claimed" : completedMines === 4 ? "Completed — collect your reward" : `${completedMines} / 4`}</div>
         <div className="quest-rewards">
           <span>500</span><img src={goldIcon} alt="Gold" />
           <span>500</span><img src={ironIcon} alt="Iron" />
           <span>500</span><img src={waterIcon} alt="Water" />
           <span>500</span><img src={solarIcon} alt="Solar" />
         </div>
-        <button onClick={handleMainQuest}>Show Me</button>
+        {claimError && <p role="alert">{claimError}</p>}\n        {claimed ? <button disabled>Reward claimed</button> : completedMines === 4 ? <button disabled={claimBusy} onClick={claim}>Claim 500 of each resource</button> : <button onClick={handleMainQuest}>Show Me</button>}
       </div>
     </div>
   );
