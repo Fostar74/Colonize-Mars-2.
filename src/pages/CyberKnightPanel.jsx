@@ -144,9 +144,7 @@ function CyberKnightPanel({ onClose }) {
           </div>
 
           <div className="item-grid">
-            {mockItems
-              .filter((item) => item.rarity === rarityTab)
-              .map((item, index) => (
+            {itemsForSlot.map((item, index) => (
                 <div key={index} className="item-card">
                   <h4>{item.name}</h4>
                   <p>Item Level: {item.level}</p>
