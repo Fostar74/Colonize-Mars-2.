@@ -22,6 +22,7 @@ class GameProgressManager {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionStorage.getItem("authToken") || ""}`,
         },
         body: JSON.stringify({
           userId: this.userId,
@@ -51,7 +52,7 @@ class GameProgressManager {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/get-progress/${this.userId}`);
+      const response = await fetch(`${API_BASE}/get-progress/${this.userId}`, { headers: { Authorization: `Bearer ${sessionStorage.getItem("authToken") || ""}` } });
 
       if (response.ok) {
         const data = await response.json();
@@ -77,6 +78,7 @@ class GameProgressManager {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionStorage.getItem("authToken") || ""}`,
         },
         body: JSON.stringify({
           userId: this.userId,
@@ -110,6 +112,7 @@ class GameProgressManager {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionStorage.getItem("authToken") || ""}`,
         },
         body: JSON.stringify({
           userId: this.userId,
@@ -139,7 +142,7 @@ class GameProgressManager {
     }
 
     try {
-      const response = await fetch(`${API_BASE}/get-equipment/${this.userId}`);
+      const response = await fetch(`${API_BASE}/get-equipment/${this.userId}`, { headers: { Authorization: `Bearer ${sessionStorage.getItem("authToken") || ""}` } });
 
       if (response.ok) {
         const data = await response.json();
@@ -165,6 +168,7 @@ class GameProgressManager {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
+          Authorization: `Bearer ${sessionStorage.getItem("authToken") || ""}`,
         },
         body: JSON.stringify({
           userId: this.userId,
