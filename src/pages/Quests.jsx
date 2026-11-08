@@ -7,6 +7,9 @@ import solarIcon from "../images/solar.png";
 
 const Quests = () => {
   const [activeTab, setActiveTab] = useState("main");
+  const [loginRewards, setLoginRewards] = useState(null);
+  const [loginBusy, setLoginBusy] = useState(false);
+  const [loginMessage, setLoginMessage] = useState("");
   const [tutorial, setTutorial] = useState([]);
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
   const [claimed, setClaimed] = useState(false);
@@ -23,6 +26,8 @@ const Quests = () => {
       const response = await fetch(base + "/get-progress/" + encodeURIComponent(userId), { headers: headers() });
       if (!response.ok) return;
       const data = await response.json();
+      const loginResponse = await fetch(base + "/daily-login/" + encodeURIComponent(userId), {headers:headers()});
+      if(loginResponse.ok) setLoginRewards(await loginResponse.json());
       const tutorialResponse = await fetch(base + "/tutorial/" + encodeURIComponent(userId), {headers:headers()});
       if (tutorialResponse.ok) { const t=await tutorialResponse.json(); setTutorial(t.missions || []); }
       if (data.gameProgress) {
@@ -150,16 +155,36 @@ const Quests = () => {
     </div>
   );
 
+  const claimLoginReward = async () => {
+    setLoginBusy(true); setLoginMessage("");
+    try {
+      const response=await fetch(base+"/daily-login/claim",{method:"POST",headers:headers(),body:JSON.stringify({userId})});
+      const data=await response.json();
+      if(!response.ok) throw new Error(data.message||"Could not claim reward");
+      setLoginMessage("Day "+data.day+" reward collected!");
+      window.dispatchEvent(new Event("game-progress-updated"));
+      await refresh();
+    } catch(error) {setLoginMessage(error.message);}
+    finally {setLoginBusy(false);}
+  };
   const renderLoginRewards = () => (
     <div className="quest-section">
-      <h3>Login Rewards</h3>
-      <div className="login-calendar">
-        {[...Array(30)].map((_, i) => (
-          <div key={i} className="login-day">
-            Day {i + 1}
-          </div>
-        ))}
-      </div>
+      <h3>30-Day Login Rewards</h3>
+      <p>Collect one reward per UTC calendar day. Each player has their own Cyber Knight and equipment inventory.</p>
+      {loginMessage && <p role="status">{loginMessage}</p>}
+      {!loginRewards ? <p>Loading daily rewards...</p> : <>
+        <p>{loginRewards.claimedToday?"Today's reward collected. Come back tomorrow!":loginRewards.nextDay<=30?"Day "+loginRewards.nextDay+" is ready to claim.":"All 30 rewards collected!"}</p>
+        <div className="login-calendar">
+          {loginRewards.days.map(d=>(
+            <div key={d.day} className="login-day" style={{opacity:d.claimed?0.6:1,padding:10}}>
+              <strong>Day {d.day}</strong>
+              <div>{d.reward.type==="resources"?d.reward.amount+" each: Gold, Iron, Water, Solar":d.reward.type==="army"?d.reward.amount+" "+d.reward.label:d.reward.label+" (Rare)"}</div>
+              <div>{d.claimed?"✓ Collected":d.day===loginRewards.nextDay&&!loginRewards.claimedToday?"Available":"Locked"}</div>
+              {d.day===loginRewards.nextDay&&!loginRewards.claimedToday&&<button disabled={loginBusy} onClick={claimLoginReward}>{loginBusy?"Claiming...":"Claim reward"}</button>}
+            </div>
+          ))}
+        </div>
+      </>}
     </div>
   );
 
