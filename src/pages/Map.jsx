@@ -17,7 +17,9 @@ function Map() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState(null);
   const [castles, setCastles] = useState([]);
-  const [mapError, setMapError] = useState("");\n  const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});\n  const [selectedAlien, setSelectedAlien] = useState(null);
+  const [mapError, setMapError] = useState("");
+  const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
+  const [selectedAlien, setSelectedAlien] = useState(null);
   useEffect(() => {
     let cancelled = false;
     const loadBases = async () => {
@@ -34,7 +36,8 @@ function Map() {
         }
       } catch (error) { if (!cancelled) setMapError(error.message); }
     };
-    loadBases();\n    fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)setCampaign(d)}).catch(()=>{});
+    loadBases();
+    fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)setCampaign(d)}).catch(()=>{});
     const timer = setInterval(loadBases, 30000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
@@ -166,7 +169,8 @@ function Map() {
         const px = x * tileSize + offset.x;
         const py = y * tileSize + offset.y;
 
-        if (px > canvas.width || py > canvas.height || px + tileSize < 0 || py + tileSize < 0) continue;\n        ctx.strokeStyle = "#0077cc";
+        if (px > canvas.width || py > canvas.height || px + tileSize < 0 || py + tileSize < 0) continue;
+        ctx.strokeStyle = "#0077cc";
         ctx.strokeRect(px, py, tileSize, tileSize);
       }
     }
@@ -350,7 +354,8 @@ function Map() {
           cursor: "grab",
           backgroundColor: "#0e3f1f",
         }}
-        onClick={handleMapClick}\n        onMouseDown={handleMouseDown}
+        onClick={handleMapClick}
+        onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         title={hoveredTitle}
