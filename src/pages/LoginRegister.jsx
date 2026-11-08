@@ -15,7 +15,13 @@ function LoginRegister() {
     e.preventDefault();
     const endpoint = isRegister ? "/register" : "/login";
 
-    const payload = isRegister ? { email, username, password } : { username, password };
+    const cleanUsername = username.trim();
+    const cleanEmail = email.trim().toLowerCase();
+    if (isRegister && (!cleanEmail || !cleanUsername || password.length < 8)) {
+      setMessage("Please enter your email and username and a password with at least 8 characters.");
+      return;
+    }
+    const payload = isRegister ? { email: cleanEmail, username: cleanUsername, password } : { username: cleanUsername, password };
 
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -30,6 +36,7 @@ function LoginRegister() {
         if (isRegister) {
           setMessage("✅ Registration successful. Please log in to continue.");
           setIsRegister(false);
+          setPassword("");
         } else {
           setMessage("✅ Login successful! Redirecting...");
 
@@ -145,7 +152,9 @@ function LoginRegister() {
 
         <input
           type="password"
-          placeholder="Password"
+          minLength={isRegister ? 8 : undefined}
+          autoComplete={isRegister ? "new-password" : "current-password"}
+          placeholder={isRegister ? "Password (at least 8 characters)" : "Password"}
           value={password}
           required
           onChange={(e) => setPassword(e.target.value)}
@@ -174,6 +183,7 @@ function LoginRegister() {
           type="button"
           onClick={() => {
             setIsRegister(!isRegister);
+            setPassword("");
             setMessage("");
           }}
           style={{
