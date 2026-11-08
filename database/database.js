@@ -1,4 +1,4 @@
-const {unitPrice,upgradePrice,unitRequirement} = require("../src/shared/unitEconomy");
+const {unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -340,7 +340,7 @@ class DatabaseManager {
       if (current.queuedBuildingJob) return { error: "Construction queue is full (2 slots)." };
       const level = Number(current.structures[name] || 0) + (current.buildingJob?.name === name ? 1 : 0);
       if (level >= 20) return { error: "Maximum building level reached." };
-      const cost = { Gold: 100 * (level + 1), Iron: 80 * (level + 1), Water: 60 * (level + 1), Solar: 40 * (level + 1) };
+      const cost = buildingPrice(name, level + 1);
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       const duration = 15 * (level + 1) * 1000;
