@@ -6,9 +6,12 @@ import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
 const Quests = () => {
-  const [activeTab, setActiveTab] = useState("main");\n  const [tutorial, setTutorial] = useState([]);
+  const [activeTab, setActiveTab] = useState("main");
+  const [tutorial, setTutorial] = useState([]);
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
-  const [claimed, setClaimed] = useState(false);\n  const [secondClaimed, setSecondClaimed] = useState(false);\n  const [armyCount, setArmyCount] = useState(0);
+  const [claimed, setClaimed] = useState(false);
+  const [secondClaimed, setSecondClaimed] = useState(false);
+  const [armyCount, setArmyCount] = useState(0);
   const [claimError, setClaimError] = useState("");
   const [claimBusy, setClaimBusy] = useState(false);
   const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
@@ -20,9 +23,13 @@ const Quests = () => {
       const response = await fetch(base + "/get-progress/" + encodeURIComponent(userId), { headers: headers() });
       if (!response.ok) return;
       const data = await response.json();
-      const tutorialResponse = await fetch(base + "/tutorial/" + encodeURIComponent(userId), {headers:headers()});\n      if (tutorialResponse.ok) { const t=await tutorialResponse.json(); setTutorial(t.missions || []); }\n      if (data.gameProgress) {
+      const tutorialResponse = await fetch(base + "/tutorial/" + encodeURIComponent(userId), {headers:headers()});
+      if (tutorialResponse.ok) { const t=await tutorialResponse.json(); setTutorial(t.missions || []); }
+      if (data.gameProgress) {
         setStructures(data.gameProgress.structures || {});
-        setClaimed(!!data.gameProgress.questClaimed);\n        setSecondClaimed(!!data.gameProgress.quest2Claimed);\n        setArmyCount(Object.values(data.gameProgress.army || {}).reduce((a,b)=>a+Number(b||0),0));
+        setClaimed(!!data.gameProgress.questClaimed);
+        setSecondClaimed(!!data.gameProgress.quest2Claimed);
+        setArmyCount(Object.values(data.gameProgress.army || {}).reduce((a,b)=>a+Number(b||0),0));
       }
     } catch (_) {}
   };
