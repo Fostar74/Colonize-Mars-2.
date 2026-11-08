@@ -1,27 +1,33 @@
 import React, { useState } from "react";
 import "./Quests.css";
+import goldIcon from "../images/gold.png";
+import ironIcon from "../images/iron.png";
+import waterIcon from "../images/water.png";
+import solarIcon from "../images/solar.png";
 
 const Quests = () => {
   const [activeTab, setActiveTab] = useState("main");
-  const [mainQuestCompleted, setMainQuestCompleted] = useState(false);
+  const [structures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
+  const productionBuildings = ["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"];
+  const completedMines = productionBuildings.filter(name => Number(structures[name]?.level ?? structures[name] ?? 0) >= 3).length;
   const [cyberKnightLevel, setCyberKnightLevel] = useState(1);
   const [gatheredMine, setGatheredMine] = useState(false);
 
-  const handleMainQuest = () => setMainQuestCompleted(true);
-  const handleLevelUpKnight = () => setCyberKnightLevel(2);
-  const handleGatherMine = () => setGatheredMine(true);
+  const handleMainQuest = () => { window.dispatchEvent(new CustomEvent("open-base-panel")); };
+  const handleLevelUpKnight = () => { setCyberKnightLevel(1); alert("Cyber Knight leveling is not available yet."); };
+  const handleGatherMine = () => { setGatheredMine(false); alert("Mine gathering is not available yet."); };
 
   const renderMainQuests = () => (
     <div className="quest-section">
       <h3>Main Quest</h3>
       <div className="quest-box">
         <div className="quest-title">Upgrade all production buildings to level 3</div>
-        <div className="quest-progress">{mainQuestCompleted ? "4 / 4" : "0 / 4"}</div>
+        <div className="quest-progress">{`${completedMines} / 4`}</div>
         <div className="quest-rewards">
-          <span>500</span><img src="/images/gold.png" alt="Gold" />
-          <span>500</span><img src="/images/iron.png" alt="Iron" />
-          <span>500</span><img src="/images/water.png" alt="Water" />
-          <span>500</span><img src="/images/solar.png" alt="Solar" />
+          <span>500</span><img src={goldIcon} alt="Gold" />
+          <span>500</span><img src={ironIcon} alt="Iron" />
+          <span>500</span><img src={waterIcon} alt="Water" />
+          <span>500</span><img src={solarIcon} alt="Solar" />
         </div>
         <button onClick={handleMainQuest}>Show Me</button>
       </div>
@@ -36,10 +42,10 @@ const Quests = () => {
         <div className="quest-title">Level up your Cyber Knight to level 2</div>
         <div className="quest-progress">{cyberKnightLevel >= 2 ? "2 / 2" : "1 / 2"}</div>
         <div className="quest-rewards">
-          <img src="/images/helmet-icon.png" alt="Helmet" /> x1
-          <img src="/images/gloves-icon.png" alt="Gloves" /> x25
-          <img src="/images/armor-icon.png" alt="Armor" /> x25
-          <img src="/images/boots-icon.png" alt="Boots" /> x25
+          Helmet x1
+          Gloves x25
+          Armor x25
+          Boots x25
         </div>
         <button onClick={handleLevelUpKnight}>Show Me</button>
       </div>
@@ -48,8 +54,8 @@ const Quests = () => {
         <div className="quest-title">Gather from 1 independent map mine</div>
         <div className="quest-progress">{gatheredMine ? "1 / 1" : "0 / 1"}</div>
         <div className="quest-rewards">
-          <img src="/images/boost-icon.png" alt="Boost" /> x1 (2h)
-          <img src="/images/forge-token-icon.png" alt="Forge Token" /> x50
+          Boost x1 (2h)
+          Forge Token x50
         </div>
         <button onClick={handleGatherMine}>Show Me</button>
       </div>
