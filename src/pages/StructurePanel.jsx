@@ -2,11 +2,11 @@
 import React, { useState, useEffect } from "react";
 import "./StructurePanel.css";
 import unitEconomy from "../shared/unitEconomy";
-const {unitPrice,upgradePrice} = unitEconomy;
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
+const {unitPrice,upgradePrice} = unitEconomy;
 
 const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
