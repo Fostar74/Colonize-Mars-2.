@@ -30,7 +30,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
     setBusy(name);
     setError("");
     try {
-      const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\\/$/, "");
+      const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
       const response = await fetch(base + "/upgrade-building", {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: "Bearer " + sessionStorage.getItem("authToken") },
