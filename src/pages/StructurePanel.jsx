@@ -20,7 +20,7 @@ const unitCategories = {
   Elite: ["Martian Noble", "AI General", "Gene Warrior"]
 };
 
-function StructurePanel() {
+function StructurePanel({ showNavigation = true }) {
   const [activeTab, setActiveTab] = useState("structures");
   const [unitTab, setUnitTab] = useState("Ground");
   const [upgradeSlot, setUpgradeSlot] = useState(null);
@@ -149,11 +149,11 @@ function StructurePanel() {
 
   return (
     <div style={{ color: "white", padding: "10px" }}>
-      <div className="subtab-buttons">
+      {showNavigation && <div className="subtab-buttons">
         <button onClick={() => setActiveTab("structures")}>Structures</button>
         <button onClick={() => setActiveTab("units")}>Units</button>
         <button onClick={() => setActiveTab("upgrades")}>Upgrades</button>
-      </div>
+      </div>}
       <div className="building-tab">
         {activeTab === "structures" && renderStructures()}
         {activeTab === "units" && renderUnits()}
