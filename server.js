@@ -18,6 +18,13 @@ app.get("/", (req, res) => {
   res.send("Colonize-Mars Backend is running.");
 });
 
+// Serve the production React build from the same origin as the API.
+const buildDir = path.join(__dirname, "build");
+app.use(express.static(buildDir));
+app.get("/{*path}", (req, res) => {
+  res.sendFile(path.join(buildDir, "index.html"));
+});
+
 // Start server
 app.listen(PORT, () => {
   console.log(`Server is listening on port ${PORT}`);
