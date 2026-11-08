@@ -15,6 +15,12 @@ function Game() {
   const [showQuests, setShowQuests] = useState(false);
 
   useEffect(() => {
+    const openBase = () => { setShowQuests(false); setActiveTab("structures"); setShowPopup(true); };
+    window.addEventListener("open-base-panel", openBase);
+    return () => window.removeEventListener("open-base-panel", openBase);
+  }, []);
+
+  useEffect(() => {
     if (!sessionStorage.getItem("authToken")) { window.location.href = "/#/"; return; }
     const savedResources = sessionStorage.getItem("resources");
     if (savedResources) {
