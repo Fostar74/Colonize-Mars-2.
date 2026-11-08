@@ -1,5 +1,5 @@
 // Final StructurePanel.jsx with internal tab buttons restored
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import "./StructurePanel.css";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
@@ -67,7 +67,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
   };
 
   const calculateMaxTrainable = () => {
-    const limits = Object.entries(unitCost).map(([res, cost]) => 999);
+    const limits = Object.entries(unitCost).map(() => 999);
     return Math.max(0, Math.min(...limits));
   };
 
