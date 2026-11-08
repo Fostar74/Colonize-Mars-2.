@@ -84,7 +84,8 @@ function initializeDatabase() {
         training_job TEXT,
         army TEXT NOT NULL DEFAULT '{}',
         unit_upgrades TEXT NOT NULL DEFAULT '{}',
-        quest_claimed INTEGER NOT NULL DEFAULT 0,\n        quest2_claimed INTEGER NOT NULL DEFAULT 0
+        quest_claimed INTEGER NOT NULL DEFAULT 0,
+        quest2_claimed INTEGER NOT NULL DEFAULT 0
       )
     `);
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "quest2_claimed")) {
