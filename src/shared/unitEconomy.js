@@ -38,4 +38,26 @@ function unitRequirement(unit) {
 function upgradePrice(level) {
   return {Gold:100*(level+1),Iron:100*(level+1)};
 }
-module.exports={categories,unitPrice,upgradePrice,unitRequirement};
+
+// Building resource specialization; nextLevel starts at 1.
+const buildingBaseCosts = {
+  "Gold Synthesizer": {Gold:60,Iron:80,Water:40,Solar:110},
+  "Iron Driller": {Gold:90,Iron:50,Water:60,Solar:90},
+  "Solar Array": {Gold:80,Iron:100,Water:50,Solar:50},
+  "Water Extractor": {Gold:80,Iron:90,Water:120,Solar:30},
+  "Cargo Depot": {Gold:130,Iron:110,Water:50,Solar:60},
+  "Defense Grid": {Gold:100,Iron:160,Water:50,Solar:90},
+  "Upgrade Lab": {Gold:160,Iron:130,Water:100,Solar:110},
+  "Bio-Lab": {Gold:120,Iron:90,Water:170,Solar:120},
+  "Training Center": {Gold:110,Iron:150,Water:70,Solar:70},
+  "Combat Simulator": {Gold:150,Iron:120,Water:90,Solar:140},
+  "Vehicle Bay": {Gold:130,Iron:190,Water:70,Solar:110},
+  "Drone Factory": {Gold:170,Iron:210,Water:100,Solar:170}
+};
+function buildingPrice(name,nextLevel) {
+  const base=buildingBaseCosts[name];
+  if (!base || !Number.isInteger(nextLevel) || nextLevel<1 || nextLevel>20) return null;
+  return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,amount*nextLevel]));
+}
+
+module.exports={categories,unitPrice,upgradePrice,unitRequirement,buildingPrice};
