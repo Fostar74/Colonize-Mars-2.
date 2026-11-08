@@ -21,7 +21,6 @@ function Map() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [marchDraft, setMarchDraft] = useState(null);
-  const [originPicker, setOriginPicker] = useState(null);
   const [availableArmy, setAvailableArmy] = useState({});
   const [marchUnits, setMarchUnits] = useState({});
   const [marchLoading, setMarchLoading] = useState(false);
@@ -305,7 +304,6 @@ function Map() {
     const alien=castle?null:nearest(alienBases);
     setSelectedAlien(castle?null:alien||null);
     setMarchDraft(null);
-    setOriginPicker(null);
     setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
     setMarchNotice("");
   };
@@ -325,14 +323,19 @@ function Map() {
       setAvailableArmy(data.gameProgress?.army || {});
       setMarchUnits({});
       setMarchDraft({type,target,origin});
-      setOriginPicker(null);
-    } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
+      } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
   };
   const chooseAction = (type) => {
-    if(!selectedTarget)return;
-    setMarchNotice("");setMarchDraft(null);
-    setOriginPicker({type,target:selectedTarget});
+    if (!selectedTarget) return;
+    setMarchNotice("");
+    setMarchDraft(null);
     setMarchHistoryOpen(false);
+    const home = castles.find(c => c.username === ownUsername);
+    if (!home) {
+      setMarchNotice("Your base could not be found. Refresh the map and try again.");
+      return;
+    }
+    openMarch(type, selectedTarget, home);
   };
   const prepareMarch = () => {
     const selected=Object.entries(marchUnits).filter(([,n])=>n>0);
@@ -434,14 +437,14 @@ function Map() {
           <button onClick={goToCoordinates}>Go to Coordinates</button>
         </div>
       </div>
-      {(selectedTarget || originPicker || marchDraft) && <div style={{position:"absolute",inset:0,zIndex:25,background:"rgba(3,8,19,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
+      {(selectedTarget || marchDraft) && <div style={{position:"absolute",inset:0,zIndex:25,background:"rgba(3,8,19,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
         <div style={{background:"linear-gradient(135deg,#182c40,#0c1424)",border:"1px solid #5d8ca7",boxShadow:"0 16px 60px #000",borderRadius:12,color:"#f0f7ff",width:"min(920px,96vw)",maxHeight:"86vh",overflowY:"auto",padding:22}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-            <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?"MARCH CONTROL":originPicker?"SELECT LAUNCH BASE":"TARGET COMMAND"}</h2>
-            <button onClick={()=>{setSelectedTarget(null);setOriginPicker(null);setMarchDraft(null);setMarchNotice("");}}>✕ Close</button>
+            <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?"MARCH CONTROL":"TARGET COMMAND"}</h2>
+            <button onClick={()=>{setSelectedTarget(null);setMarchDraft(null);setMarchNotice("");}}>✕ Close</button>
           </div>
           <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?"Alien Stronghold · Level "+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:"Open Sector"} · Coordinates {selectedTarget?.x}:{selectedTarget?.y}</p>
-          {!originPicker && !marchDraft && <div>
+          {!marchDraft && <div>
             <p>Choose mission type:</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
               {["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(type=>{
@@ -459,13 +462,7 @@ function Map() {
               })}
             </div>
             {targetIsOwn && <p>This is your own base. Choose another destination.</p>}
-            <p style={{fontSize:12,color:"#b2c8d8"}}>Unavailable mission types require their own gameplay systems. Select an available type to continue to base and troop selection.</p>
-          </div>}
-          {originPicker && !marchDraft && <div>
-            <h3>Choose the base to launch {originPicker.type.toLowerCase()} from</h3>
-            {castles.filter(c=>c.username===ownUsername).map((c,i)=><button key={i} style={{display:"block",width:"100%",textAlign:"left",padding:14,marginBottom:8,background:"#203f54",color:"white",border:"1px solid #6694a8",borderRadius:8}} onClick={()=>openMarch(originPicker.type,originPicker.target,c)}>🚀 {c.username} — ({c.x}:{c.y}) · Select base</button>)}
-            {!castles.some(c=>c.username===ownUsername) && <p>No launch base available.</p>}
-            <button onClick={()=>setOriginPicker(null)}>← Back to target</button>
+            <p style={{fontSize:12,color:"#b2c8d8"}}>Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.</p>
           </div>}
           {marchLoading && <p>Loading your army...</p>}
           {marchDraft && <div>
@@ -484,7 +481,7 @@ function Map() {
               <button onClick={()=>setMarchUnits(Object.fromEntries(Object.entries(availableArmy).map(([k,v])=>[k,Number(v)||0])))}>Select all</button>
               <button onClick={()=>setMarchUnits({})}>Clear</button>
               <button onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Review army</button>
-              <button onClick={()=>{setMarchDraft(null);setOriginPicker({type:marchDraft.type,target:marchDraft.target});}}>← Choose another base</button>
+              <button onClick={()=>setMarchDraft(null)}>← Back to mission types</button>
             </div>
             <p style={{fontSize:12,color:"#b5c7d9"}}>Actual troop dispatch is not enabled yet. Preparing does not move or consume troops.</p>
           </div>}
