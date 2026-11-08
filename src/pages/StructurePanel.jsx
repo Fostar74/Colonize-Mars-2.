@@ -89,6 +89,11 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
     Water: 60,
     Solar: 40
   };
+  const unitPrice = unit => {
+    const category = Object.entries(unitCategories).find(([,units]) => units.includes(unit))?.[0] || "Ground";
+    const tier = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3, Elite:5 }[category];
+    return Object.fromEntries(Object.entries(unitCost).map(([resource, price]) => [resource, Math.ceil(price * tier)]));
+  };
   const baseTrainTime = 30;
 
   const formatTime = (seconds) => {
@@ -104,7 +109,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
   };
 
   const handlePresetClick = (unit, fraction) => {
-    const max = calculateMaxTrainable();
+    const max = calculateMaxTrainable(unit);
     setTrainAmounts((prev) => ({
       ...prev,
       [unit]: Math.floor(max * fraction)
@@ -160,7 +165,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
       <div className="unit-grid">
         {unitCategories[unitTab].map((unit) => {
           const qty = Number(trainAmounts[unit]) || 0;
-          const totalTime = baseTrainTime * qty;
+          const totalTime = baseTrainTime * qty;\n          const price = unitPrice(unit);
           const timeDisplay = formatTime(totalTime);
 
           return (
@@ -173,16 +178,16 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
                 <button onClick={() => handlePresetClick(unit, 0.75)}>3/4</button>
                 <button onClick={() => handlePresetClick(unit, 1)}>+ MAX</button>
               </div>
-              <p>Selected: {qty} · Train Time: {timeDisplay}</p>
+              <label>Quantity: <input type="number" min="0" max="10000" value={qty} onChange={e => setTrainAmounts(prev => ({...prev, [unit]:Math.max(0,Math.min(10000,Math.floor(Number(e.target.value)||0)))}))} style={{width:90,color:"#111"}} /></label>\n              <p>Train Time: {timeDisplay}</p>
               {game.trainingJob?.unit === unit && <p>Training {game.trainingJob.quantity}: {formatTime(remaining(game.trainingJob))}</p>}
               <p>Owned: {Number(game.army?.[unit] || 0)}</p>
               <div className="resource-row">
-                <div className="resource-cost"><img src={goldIcon} alt="Gold" /><span>{unitCost.Gold}</span></div>
-                <div className="resource-cost"><img src={ironIcon} alt="Iron" /><span>{unitCost.Iron}</span></div>
-                <div className="resource-cost"><img src={waterIcon} alt="Water" /><span>{unitCost.Water}</span></div>
-                <div className="resource-cost"><img src={solarIcon} alt="Solar" /><span>{unitCost.Solar}</span></div>
+                <div className="resource-cost"><img src={goldIcon} alt="Gold" /><span>{price.Gold}</span></div>
+                <div className="resource-cost"><img src={ironIcon} alt="Iron" /><span>{price.Iron}</span></div>
+                <div className="resource-cost"><img src={waterIcon} alt="Water" /><span>{price.Water}</span></div>
+                <div className="resource-cost"><img src={solarIcon} alt="Solar" /><span>{price.Solar}</span></div>
               </div>
-              <button style={{ marginTop: 10 }} disabled={!qty || !!busy || !!game.trainingJob} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
+              <button style={{ marginTop: 10 }} disabled={!qty || qty > calculateMaxTrainable(unit) || !!busy || !!game.trainingJob} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
                 {game.trainingJob ? "Training queue busy" : "Train"}
               </button>
             </div>
