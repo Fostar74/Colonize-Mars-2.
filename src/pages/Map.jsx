@@ -12,6 +12,8 @@ import unitEconomy from "../shared/unitEconomy";
 
 function Map() {
   const canvasRef = useRef(null);
+  const dragRef = useRef(null);
+  const suppressClickRef = useRef(false);
   const [zoom, setZoom] = useState(1);
   const tileSize = 60 * zoom;
   const mapSize = 100;
@@ -31,6 +33,11 @@ function Map() {
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
   const [selectedAlien, setSelectedAlien] = useState(null);
   const [viewCenter, setViewCenter] = useState({x:50,y:50});
+  const [viewport, setViewport] = useState({width:1200,height:800});
+  useEffect(()=>{
+    const resize=()=>setViewport({width:Math.max(320,window.innerWidth),height:Math.max(320,window.innerHeight)});
+    resize();window.addEventListener("resize",resize);return()=>window.removeEventListener("resize",resize);
+  },[]);
   useEffect(() => {
     let cancelled = false;
     const loadBases = async () => {
@@ -257,10 +264,16 @@ function Map() {
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
   const centerMapOn = (x, y) => setViewCenter({x,y});
   useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    setOffset({x:canvas.width/2-(viewCenter.x-.5)*tileSize,y:canvas.height/2-(viewCenter.y-.5)*tileSize});
-  }, [viewCenter, zoom, tileSize]);
+    setOffset({x:viewport.width/2-(viewCenter.x-.5)*tileSize,y:viewport.height/2-(viewCenter.y-.5)*tileSize});
+  }, [viewCenter, zoom, tileSize, viewport.width, viewport.height]);
+  const startDrag=e=>{dragRef.current={x:e.clientX,y:e.clientY,moved:false};e.currentTarget.setPointerCapture(e.pointerId);};
+  const moveDrag=e=>{
+    const d=dragRef.current;if(!d)return;
+    const dx=e.clientX-d.x,dy=e.clientY-d.y;
+    if(Math.abs(dx)+Math.abs(dy)>2){d.moved=true;setOffset(o=>({x:o.x+dx,y:o.y+dy}));}
+    d.x=e.clientX;d.y=e.clientY;
+  };
+  const endDrag=()=>{if(dragRef.current?.moved)suppressClickRef.current=true;dragRef.current=null;};
 
   const handleMouseMove = e => {
     const canvas=canvasRef.current;
@@ -275,6 +288,7 @@ function Map() {
   };
 
   const handleMapClick = e => {
+    if(suppressClickRef.current){suppressClickRef.current=false;return;}
     const canvas=canvasRef.current;
     const rect=canvas.getBoundingClientRect();
     const px=(e.clientX-rect.left)*canvas.width/rect.width;
@@ -315,8 +329,10 @@ function Map() {
     } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
   };
   const chooseAction = (type) => {
-    setMarchNotice("");
+    if(!selectedTarget)return;
+    setMarchNotice("");setMarchDraft(null);
     setOriginPicker({type,target:selectedTarget});
+    setMarchHistoryOpen(false);
   };
   const prepareMarch = () => {
     const selected=Object.entries(marchUnits).filter(([,n])=>n>0);
@@ -377,13 +393,18 @@ function Map() {
     >
       <canvas
         ref={canvasRef}
-        width={1200}
-        height={800}
+        width={viewport.width}
+        height={viewport.height}
         style={{
           display: "block",
-          cursor: "crosshair",
+          cursor: dragRef.current ? "grabbing" : "grab",
+          width:"100%",height:"100%",touchAction:"none",
           backgroundColor: "#6d3429",
         }}
+        onPointerDown={startDrag}
+        onPointerMove={moveDrag}
+        onPointerUp={endDrag}
+        onPointerCancel={endDrag}
         onClick={handleMapClick}
         onMouseMove={handleMouseMove}
         title={hoveredTitle}
@@ -419,15 +440,26 @@ function Map() {
             <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?"MARCH CONTROL":originPicker?"SELECT LAUNCH BASE":"TARGET COMMAND"}</h2>
             <button onClick={()=>{setSelectedTarget(null);setOriginPicker(null);setMarchDraft(null);setMarchNotice("");}}>✕ Close</button>
           </div>
-          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?"Alien Stronghold · Level "+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:"Sector Patrol"} · Coordinates {selectedTarget?.x}:{selectedTarget?.y}</p>
-          {!originPicker && !marchDraft && <div style={{display:"flex",gap:12,flexWrap:"wrap",margin:"20px 0"}}>
-            {selectedTarget?.type==="alien" && <button style={{padding:"12px 24px",background:"#9e4437",color:"white"}} onClick={()=>chooseAction("Attack")}>⚔ Attack</button>}
-            {selectedTarget?.type==="castle" && !targetIsOwn && <button style={{padding:"12px 24px",background:"#9e4437",color:"white"}} onClick={()=>chooseAction("Attack")}>⚔ Attack</button>}
-            {selectedTarget?.type==="castle" && !targetIsOwn && canSupport && <button onClick={()=>chooseAction("Support")}>🛡 Support</button>}
-            {selectedTarget?.type==="field" && <button style={{padding:"12px 24px"}} onClick={()=>chooseAction("Patrol")}>◉ Patrol</button>}
-            {selectedTarget?.type==="castle" && !targetIsOwn && <button onClick={()=>setMarchNotice("Espionage will be available when reconnaissance is implemented.")}>◈ Espionage</button>}
-            <button onClick={()=>setMarchHistoryOpen(true)}>☷ Marches</button>
-            {targetIsOwn && <span>This is your base.</span>}
+          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?"Alien Stronghold · Level "+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:"Open Sector"} · Coordinates {selectedTarget?.x}:{selectedTarget?.y}</p>
+          {!originPicker && !marchDraft && <div>
+            <p>Choose mission type:</p>
+            <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
+              {["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(type=>{
+                const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
+                const allowed=type==="Attack"?!own: type==="Support"?!field&&!alien&&!own&&canSupport:
+                  type==="Espionage"?!field&&!own:
+                  type==="Patrol"?field:
+                  type==="Gather"?field:
+                  type==="Trade"?!field&&!alien&&!own:
+                  type==="Relocation"?field:false;
+                return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}
+                  style={{padding:"12px 18px",background:allowed?(type==="Attack"?"#9e4437":"#205c78"):"#253441",color:allowed?"white":"#788796",border:"1px solid #50718b",borderRadius:7,cursor:allowed?"pointer":"not-allowed"}}>
+                  {type==="Attack"?"⚔ ":type==="Espionage"?"◈ ":type==="Support"?"🛡 ":""}{type}
+                </button>;
+              })}
+            </div>
+            {targetIsOwn && <p>This is your own base. Choose another destination.</p>}
+            <p style={{fontSize:12,color:"#b2c8d8"}}>Unavailable mission types require their own gameplay systems. Select an available type to continue to base and troop selection.</p>
           </div>}
           {originPicker && !marchDraft && <div>
             <h3>Choose the base to launch {originPicker.type.toLowerCase()} from</h3>
@@ -464,7 +496,7 @@ function Map() {
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>🚀 MARCHES</h2><button onClick={()=>setMarchHistoryOpen(false)}>✕ Close</button></div>
           <p>Mission types</p>
-          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{["All","Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(t=><button key={t} onClick={()=>setMarchType(t)} style={{background:marchType===t?"#377d9f":"#24394b",color:"white",padding:"9px 12px",border:"1px solid #56758b",borderRadius:6}}>{t}</button>)}</div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{["All","Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(t=><button key={t} onClick={()=>{setMarchType(t);if(t!=="All"&&selectedTarget){setMarchHistoryOpen(false);chooseAction(t);}}} style={{background:marchType===t?"#377d9f":"#24394b",color:"white",padding:"9px 12px",border:"1px solid #56758b",borderRadius:6}}>{t}</button>)}</div>
           <h3>Active movements · {marchType}</h3>
           <p>No active movements. Dispatch, travel times, returning armies and reports require the server-side march system.</p>
         </div>
