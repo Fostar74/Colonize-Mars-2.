@@ -97,6 +97,7 @@ function initializeDatabase() {
     }
     db.exec("CREATE TABLE IF NOT EXISTS tutorial_claims (user_id INTEGER NOT NULL REFERENCES users(id), mission_id INTEGER NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, mission_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alien_campaign (user_id INTEGER PRIMARY KEY REFERENCES users(id), highest_defeated INTEGER NOT NULL DEFAULT 0)");
+    db.exec("CREATE TABLE IF NOT EXISTS daily_login_claims (user_id INTEGER NOT NULL REFERENCES users(id), day INTEGER NOT NULL CHECK(day BETWEEN 1 AND 30), claimed_date TEXT NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, day), UNIQUE(user_id, claimed_date))");
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);
@@ -495,6 +496,50 @@ class DatabaseManager {
       if (missionId===1) db.prepare("UPDATE game_runtime SET quest_claimed=1 WHERE user_id=?").run(userId);
       if (missionId===2) db.prepare("UPDATE game_runtime SET quest2_claimed=1 WHERE user_id=?").run(userId);
       return {resources,missionId};
+    })();
+  }
+
+  dailyLoginReward(day) {
+    if (day % 7 === 0) return {type:"equipment",label:"Cyber Knight Armor",item:{id:"login-armor-"+day,name:"Cyber Knight Armor",slot:"ARMOR",rarity:"Rare",level:1,stats:["+5 Defense"]}};
+    if (day % 5 === 0) return {type:"army",label:"Explorer Trooper",amount:5+day};
+    return {type:"resources",label:"Gold, Iron, Water, Solar",amount:250+day*100};
+  }
+
+  getDailyLogin(userId) {
+    if (!this.findUserById(userId)) return null;
+    const rows=db.prepare("SELECT day,claimed_date FROM daily_login_claims WHERE user_id=? ORDER BY day").all(userId);
+    const today=new Date().toISOString().slice(0,10);
+    const nextDay=rows.length+1;
+    return {today,nextDay,claimedToday:rows.some(row=>row.claimed_date===today),
+      days:Array.from({length:30},(_,i)=>({day:i+1,reward:this.dailyLoginReward(i+1),claimed:rows.some(row=>row.day===i+1)}))};
+  }
+
+  claimDailyLogin(userId) {
+    return db.transaction(()=>{
+      const state=this.getDailyLogin(userId);
+      if (!state) return {error:"Player not found."};
+      if (state.claimedToday) return {error:"Today's login reward has already been claimed."};
+      if (state.nextDay>30) return {error:"All 30 login rewards have been claimed."};
+      const progress=this.syncGame(userId);
+      if (!progress) return {error:"Player progress not found."};
+      const day=state.nextDay, reward=this.dailyLoginReward(day);
+      const today=new Date().toISOString().slice(0,10);
+      db.prepare("INSERT INTO daily_login_claims(user_id,day,claimed_date) VALUES (?,?,?)").run(userId,day,today);
+      if (reward.type==="resources") {
+        const resources={...progress.resources};
+        for(const key of ["Gold","Iron","Water","Solar"]) resources[key]=(Number(resources[key])||0)+reward.amount;
+        db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(resources),userId);
+      } else if(reward.type==="army") {
+        const army={...progress.army};
+        army[reward.label]=(Number(army[reward.label])||0)+reward.amount;
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(army),userId);
+      } else {
+        const existing=this.getUserEquipment(userId);
+        const inventory=existing?.gearInventory||[];
+        inventory.push({...reward.item,obtainedFrom:"Daily login day "+day});
+        this.saveUserEquipment(userId,existing?.equippedItems||{},inventory,existing?.craftingPoints||{});
+      }
+      return {day,reward,success:true};
     })();
   }
 
