@@ -37,7 +37,7 @@ function Map() {
       } catch (error) { if (!cancelled) setMapError(error.message); }
     };
     loadBases();
-    fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)setCampaign(d)}).catch(()=>{});
+    fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)setCampaign(d)}).catch(()=>{});
     const timer = setInterval(loadBases, 30000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
@@ -297,7 +297,7 @@ function Map() {
   const attackAlien = async () => {
     if (!selectedAlien) return;
     try {
-      const base=(process.env.REACT_APP_API_URL || window.location.origin).replace(/\\/$/,"");
+      const base=(process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"");
       const response=await fetch(base+"/alien-campaign/attack",{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
         body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:selectedAlien.level})
