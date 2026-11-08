@@ -13,6 +13,7 @@ function Game() {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [showCyberKnight, setShowCyberKnight] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
+  const onProgressChange = data => setResources(data.resources);
 
   useEffect(() => {
     const openBase = () => { setShowQuests(false); setActiveTab("structures"); setShowPopup(true); };
@@ -102,7 +103,7 @@ function Game() {
                 <button className="back-button" onClick={() => setShowPopup(false)}>
                   ← Back
                 </button>
-                <StructurePanel showNavigation={false} />
+                <StructurePanel showNavigation={false} onProgressChange={onProgressChange} />
               </div>
             )}
             {activeTab === "units" && (
