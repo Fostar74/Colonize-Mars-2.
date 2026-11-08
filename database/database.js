@@ -8,8 +8,10 @@ if (!fs.existsSync(dbDir)) {
 }
 
 const dbPath = process.env.DATABASE_PATH || path.join(dbDir, "colonize_mars.db");
+fs.mkdirSync(path.dirname(dbPath), { recursive: true });
 const db = new Database(dbPath);
 db.pragma("busy_timeout = 5000");
+db.pragma("foreign_keys = ON");
 db.pragma("journal_mode = WAL");
 
 function initializeDatabase() {
@@ -73,14 +75,6 @@ function initializeDatabase() {
         UNIQUE(x, y)
       )
     `);
-    db.exec(`
-      CREATE TABLE IF NOT EXISTS base_positions (
-        user_id INTEGER PRIMARY KEY REFERENCES users(id),
-        x INTEGER NOT NULL CHECK(x BETWEEN 1 AND 200),
-        y INTEGER NOT NULL CHECK(y BETWEEN 1 AND 200),
-        UNIQUE(x, y)
-      )
-    `);
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);
@@ -122,7 +116,7 @@ class DatabaseManager {
       `),
 
       getProgress: db.prepare(`
-        SELECT * FROM game_progress WHERE user_id = ? ORDER BY last_saved DESC, id DESC LIMIT 1 ORDER BY id DESC LIMIT 1
+        SELECT * FROM game_progress WHERE user_id = ? ORDER BY last_saved DESC, id DESC LIMIT 1
       `),
 
       updateProgress: db.prepare(`
@@ -207,21 +201,16 @@ class DatabaseManager {
       const result = this.userQueries.createUser.run(email, username, hashedPassword);
       const userId = Number(result.lastInsertRowid);
       this.statsQueries.createStats.run(userId);
-      const occupied = db.prepare(`
-        SELECT 1 FROM base_positions WHERE x = ? AND y = ?
-        UNION ALL
-        SELECT 1 FROM game_progress
-        WHERE json_valid(castle_data)
-          AND CAST(json_extract(castle_data, '$.x') AS INTEGER) = ?
-          AND CAST(json_extract(castle_data, '$.y') AS INTEGER) = ?
-        LIMIT 1
-      `);
+      const occupied = new Set(db.prepare("SELECT x, y FROM base_positions").all().map(p => `${p.x}:${p.y}`));
+      for (const row of db.prepare("SELECT castle_data FROM game_progress").all()) {
+        try { const c = JSON.parse(row.castle_data); if (Number.isInteger(c.x) && Number.isInteger(c.y)) occupied.add(`${c.x}:${c.y}`); } catch (_) {}
+      }
       const reserve = db.prepare("INSERT INTO base_positions (user_id, x, y) VALUES (?, ?, ?)");
       let position = null;
       for (let i = 0; i < 40000; i++) {
         const x = (i % 200) + 1;
         const y = Math.floor(i / 200) + 1;
-        if (!occupied.get(x, y, x, y)) {
+        if (!occupied.has(`${x}:${y}`)) {
           reserve.run(userId, x, y);
           position = { x, y };
           break;
