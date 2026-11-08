@@ -68,16 +68,22 @@ function Map() {
   ];
 
   // Alien strongholds occupy multiple rings: level 20 in the center, level 1 at the edge.
-  const alienBases = Array.from({ length: 100 }, (_, i) => {
-    const level = 20 - Math.floor(i / 5);
-    const radius = (20 - level) * 4.6;
-    const angle = (i % 5) * (Math.PI * 2 / 5) + level * 1.17;
-    return {
-      x: Math.round(100 + radius * Math.cos(angle)),
-      y: Math.round(100 + radius * Math.sin(angle)),
-      level
-    };
-  });
+  const alienBases = [
+    { x: 100, y: 100, level: 20 },
+    ...Array.from({ length: 19 }, (_, index) => {
+      const level = 19 - index;
+      const radius = (20 - level) * 4.6;
+      const count = Math.max(5, Math.round(2 * Math.PI * radius / 12));
+      return Array.from({ length: count }, (_, j) => {
+        const angle = (j + (level % 2) * 0.5) * 2 * Math.PI / count;
+        return {
+          x: Math.max(1, Math.min(200, Math.round(100 + radius * Math.cos(angle)))),
+          y: Math.max(1, Math.min(200, Math.round(100 + radius * Math.sin(angle)))),
+          level
+        };
+      });
+    }).flat()
+  ];
 
   useEffect(() => {
     const gold = new Image();
@@ -160,7 +166,7 @@ function Map() {
         const px = x * tileSize + offset.x;
         const py = y * tileSize + offset.y;
 
-        ctx.strokeStyle = "#0077cc";
+        if (px > canvas.width || py > canvas.height || px + tileSize < 0 || py + tileSize < 0) continue;\n        ctx.strokeStyle = "#0077cc";
         ctx.strokeRect(px, py, tileSize, tileSize);
       }
     }
