@@ -39,7 +39,8 @@ function Map() {
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
   const [hqIcon, setHqIcon] = useState(null);
-  const [hoveredTitle, setHoveredTitle] = useState("");\n  const [cursorCoord, setCursorCoord] = useState(null);
+  const [hoveredTitle, setHoveredTitle] = useState("");
+  const [cursorCoord, setCursorCoord] = useState(null);
   const [mineIcons, setMineIcons] = useState({});
   const [alienIcon, setAlienIcon] = useState(null);
 
@@ -249,7 +250,8 @@ function Map() {
 
     const rect = canvas.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;\n    setCursorCoord({x:Math.floor((mouseX-offset.x)/tileSize),y:Math.floor((mouseY-offset.y)/tileSize)});
+    const mouseY = e.clientY - rect.top;
+    setCursorCoord({x:Math.floor((mouseX-offset.x)/tileSize),y:Math.floor((mouseY-offset.y)/tileSize)});
 
     let hovered = null;
 
@@ -336,7 +338,8 @@ function Map() {
           zIndex: 10,
         }}
       >
-        <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>\n        <input type="text" id="usernameInput" placeholder="Search Username" />
+        <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
+        <input type="text" id="usernameInput" placeholder="Search Username" />
         <button onClick={searchByUsername}>Search</button>
         <br />
         <input type="number" id="xCoord" placeholder="X (1–200)" />
