@@ -33,6 +33,50 @@ function Game() {
     }
   }, []);
 
+  // Keep the HUD synchronized with the server even when the base panel is closed.
+  // The server accrues mine production and persists it in SQLite on each read.
+  useEffect(() => {
+    const userId = sessionStorage.getItem("userId");
+    if (!userId) return undefined;
+    let active = true;
+    let inFlight = false;
+    const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\\/$/, "");
+    const refresh = async () => {
+      if (!active || inFlight || document.hidden) return;
+      inFlight = true;
+      try {
+        const response = await fetch(base + "/get-progress/" + encodeURIComponent(userId), {
+          headers: { Authorization: "Bearer " + sessionStorage.getItem("authToken") },
+          cache: "no-store"
+        });
+        if (!response.ok) return;
+        const data = await response.json();
+        const progress = data.gameProgress;
+        if (active && progress?.resources) {
+          setResources(progress.resources);
+          sessionStorage.setItem("resources", JSON.stringify(progress.resources));
+          if (progress.structures) sessionStorage.setItem("structures", JSON.stringify(progress.structures));
+        }
+      } catch (_) {
+        // Keep last known values during temporary connectivity interruptions.
+      } finally { inFlight = false; }
+    };
+    const onVisible = () => { if (!document.hidden) refresh(); };
+    const onUpdated = () => {
+      try { setResources(JSON.parse(sessionStorage.getItem("resources") || "{}")); } catch (_) {}
+    };
+    refresh();
+    const interval = setInterval(refresh, 2000);
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("game-progress-updated", onUpdated);
+    return () => {
+      active = false;
+      clearInterval(interval);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("game-progress-updated", onUpdated);
+    };
+  }, []);
+
   const logout = () => {
     sessionStorage.clear();
     window.location.href = "/";
