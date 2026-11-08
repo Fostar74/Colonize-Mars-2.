@@ -282,12 +282,12 @@ class DatabaseManager {
       let trainingJob = state.training_job ? JSON.parse(state.training_job) : null;
       let changed = false;
       // Resource production is calculated from server time, including while logged out.
-      const elapsed = Math.max(0, (now - state.production_at) / 1000);
+      const elapsedTicks = Math.floor(Math.max(0, now - state.production_at) / 10000);
       const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
       for (const [resource, name] of Object.entries(rates)) {
         const level = Number(structures[name] || 0);
-        if (level > 0 && elapsed > 0) {
-          resources[resource] = Math.floor((Number(resources[resource]) || 0) + level * elapsed / 10);
+        if (level > 0 && elapsedTicks > 0) {
+          resources[resource] = Math.floor((Number(resources[resource]) || 0) + level * elapsedTicks);
           changed = true;
         }
       }
@@ -302,7 +302,7 @@ class DatabaseManager {
         changed = true;
       }
       db.prepare("UPDATE game_runtime SET production_at=?, building_job=?, training_job=?, army=? WHERE user_id=?")
-        .run(now, buildingJob ? JSON.stringify(buildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), userId);
+        .run(state.production_at + elapsedTicks * 10000, buildingJob ? JSON.stringify(buildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), userId);
       if (changed) db.prepare("UPDATE game_progress SET resources=?, structures=?, last_saved=CURRENT_TIMESTAMP WHERE id=?")
         .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
       return {
