@@ -92,6 +92,7 @@ function initializeDatabase() {
       db.exec("ALTER TABLE game_runtime ADD COLUMN quest2_claimed INTEGER NOT NULL DEFAULT 0");
     }
     db.exec("CREATE TABLE IF NOT EXISTS tutorial_claims (user_id INTEGER NOT NULL REFERENCES users(id), mission_id INTEGER NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, mission_id))");
+    db.exec("CREATE TABLE IF NOT EXISTS alien_campaign (user_id INTEGER PRIMARY KEY REFERENCES users(id), highest_defeated INTEGER NOT NULL DEFAULT 0)");
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);
@@ -417,6 +418,31 @@ class DatabaseManager {
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
       return { ...current, quest2Claimed: true };
+    })();
+  }
+
+  getAlienCampaign(userId) {
+    const row = db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
+    return { highestDefeated: row ? row.highest_defeated : 0, nextLevel: Math.min(20,(row ? row.highest_defeated : 0)+1) };
+  }
+
+  attackAlienBase(userId, level) {
+    if (!Number.isInteger(level) || level < 1 || level > 20) return {error:"Invalid alien base level."};
+    return db.transaction(() => {
+      const campaign = this.getAlienCampaign(userId);
+      if (level !== campaign.nextLevel || campaign.highestDefeated === 20)
+        return {error:"Defeat the previous alien base level first."};
+      const current = this.syncGame(userId);
+      if (!current) return {error:"Player progress not found."};
+      const strength = Object.values(current.army).reduce((sum,n)=>sum+Number(n||0),0);
+      const required = level * 5;
+      if (strength < required) return {error:"Not enough soldiers. Required army size: "+required};
+      db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=excluded.highest_defeated").run(userId,level);
+      const resources={...current.resources};
+      const reward=level*750;
+      for (const key of ["Gold","Iron","Water","Solar"]) resources[key]+=reward;
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(resources),userId);
+      return {level,highestDefeated:level,nextLevel:Math.min(20,level+1),reward,resources};
     })();
   }
 
