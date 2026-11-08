@@ -14,22 +14,13 @@ function CyberKnightPanel({ onClose }) {
 
   const progressManager = new GameProgressManager();
 
-  const gearSlots = ["HELMET", "SHIELD", "BOOTS", "WEAPON", "ARMOR", "GLOVES", "BELT"];
+  const gearSlots = ["HELMET", "SHIELD", "BOOTS", "WEAPON", "ARMOR", "GLOVES"];
 
-  const mockItems = [
-    {
-      name: "Epic Helmet",
-      level: 31,
-      rarity: "Epic",
-      stats: ["Light Cavalry attack: +71.3", "Macemen attack: +23.8", "Teutonic Knight attack: +35.6"],
-    },
-    {
-      name: "Epic Helmet",
-      level: 31,
-      rarity: "Epic",
-      stats: ["Ram attack: +118.8"],
-    },
-  ];
+  const [inventory, setInventory] = useState([]);
+  const [craftingPoints, setCraftingPoints] = useState({});
+  const itemsForSlot = inventory.filter(item =>
+    (item.slot || item.type || "").toUpperCase() === selectedSlot && item.rarity === rarityTab
+  );
 
   useEffect(() => {
     loadEquipmentData();
@@ -47,7 +38,7 @@ function CyberKnightPanel({ onClose }) {
 
       const equipmentData = await progressManager.loadEquipment();
       if (equipmentData) {
-        setEquippedItems(equipmentData.equippedItems || {});
+        setEquippedItems(equipmentData.equippedItems || {});\n        setInventory(equipmentData.gearInventory || []);\n        setCraftingPoints(equipmentData.craftingPoints || {});
       } else {
         const saved = sessionStorage.getItem("equippedItems");
         if (saved) {
@@ -68,7 +59,7 @@ function CyberKnightPanel({ onClose }) {
 
       sessionStorage.setItem("equippedItems", JSON.stringify(equippedItems));
 
-      await progressManager.saveEquipment(equippedItems, [], {});
+      await progressManager.saveEquipment(equippedItems, inventory, craftingPoints);
     } catch (error) {
       console.error("Error saving equipment data:", error);
     }
@@ -85,7 +76,7 @@ function CyberKnightPanel({ onClose }) {
     setRarityTab("Epic");
   };
 
-  const handleEquip = (slot, item) => {
+  const handleEquip = (slot, item) => {\n    if ((item.slot || item.type || "").toUpperCase() !== slot) return;
     setEquippedItems((prev) => ({
       ...prev,
       [slot]: item,
@@ -209,7 +200,7 @@ function CyberKnightPanel({ onClose }) {
       {activeModal === "dismantle" && selectedItem && (
         <div className="modal-window">
           <h3>Dismantle {selectedItem.name}?</h3>
-          <p>You will receive 5 Helmet Crafting Points.</p>
+          <p>You will receive 5 {selectedSlot} Crafting Points.</p>
           <button onClick={handleCloseAll}>Confirm</button>
           <button onClick={() => setActiveModal(null)}>Cancel</button>
         </div>
@@ -242,7 +233,7 @@ function CyberKnightPanel({ onClose }) {
               </ul>
             </div>
           </div>
-          <p>Required Helmet Crafting Points: 66</p>
+          <p>Required {selectedSlot} Crafting Points: 66</p>
           <button onClick={handleCloseAll}>Craft</button>
           <button onClick={() => setActiveModal(null)}>Cancel</button>
         </div>
