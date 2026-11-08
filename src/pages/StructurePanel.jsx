@@ -6,7 +6,7 @@ import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
-const {unitPrice,upgradePrice,unitRequirement} = unitEconomy;
+const {unitPrice,upgradePrice,unitRequirement,buildingPrice} = unitEconomy;
 
 const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
@@ -126,7 +126,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
             {buildings.map(name => {
               const level = Number(structures[name] || 0);
               const next = level + (game.buildingJob?.name === name ? 1 : 0) + 1;
-              const cost = { Gold:100*next, Iron:80*next, Water:60*next, Solar:40*next };
+              const cost = buildingPrice(name, next) || {Gold:0,Iron:0,Water:0,Solar:0};
               const affordable = Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
               return <div key={name} className="building" style={{padding:14}}>
                 {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}
