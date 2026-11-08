@@ -96,6 +96,21 @@ router.post("/login", async (req, res) => {
   }
 });
 
+router.get("/map/bases", requireSessionForMap, (req, res) => {
+  try {
+    res.json({ bases: db.getPublicBases() });
+  } catch (error) {
+    console.error("Map bases error:", error);
+    res.status(500).json({ message: "Could not load player bases." });
+  }
+});
+function requireSessionForMap(req, res, next) {
+  const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
+  const session = match && sessions.get(match[1]);
+  if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
+  next();
+}
+
 router.post("/upgrade-building", requireSession, (req, res) => {
   try {
     const result = db.upgradeBuilding(req.body.userId, req.body.name);
