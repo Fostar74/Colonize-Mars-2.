@@ -38,7 +38,9 @@ function CyberKnightPanel({ onClose }) {
 
       const equipmentData = await progressManager.loadEquipment();
       if (equipmentData) {
-        setEquippedItems(equipmentData.equippedItems || {});\n        setInventory(equipmentData.gearInventory || []);\n        setCraftingPoints(equipmentData.craftingPoints || {});
+        setEquippedItems(equipmentData.equippedItems || {});
+        setInventory(equipmentData.gearInventory || []);
+        setCraftingPoints(equipmentData.craftingPoints || {});
       } else {
         const saved = sessionStorage.getItem("equippedItems");
         if (saved) {
@@ -76,7 +78,8 @@ function CyberKnightPanel({ onClose }) {
     setRarityTab("Epic");
   };
 
-  const handleEquip = (slot, item) => {\n    if ((item.slot || item.type || "").toUpperCase() !== slot) return;
+  const handleEquip = (slot, item) => {
+    if ((item.slot || item.type || "").toUpperCase() !== slot) return;
     setEquippedItems((prev) => ({
       ...prev,
       [slot]: item,
