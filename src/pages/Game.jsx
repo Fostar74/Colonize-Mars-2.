@@ -3,6 +3,7 @@ import StructurePanel from "./StructurePanel";
 import CyberKnightPanel from "./CyberKnightPanel";
 import Quests from "./Quests";
 import "./Game.css";
+import marsBackground from "../images/mars-background.jpg";
 
 function Game() {
   const [showPopup, setShowPopup] = useState(false);
@@ -14,6 +15,7 @@ function Game() {
   const [showQuests, setShowQuests] = useState(false);
 
   useEffect(() => {
+    if (!sessionStorage.getItem("authToken")) { window.location.href = "/#/"; return; }
     const savedResources = sessionStorage.getItem("resources");
     if (savedResources) {
       try { setResources(JSON.parse(savedResources)); } catch (_) {}
@@ -38,7 +40,7 @@ function Game() {
     <div
       className="game-container"
       style={{
-        backgroundImage: 'url("/images/mars-background.jpg")',
+        backgroundImage: `url(${marsBackground})`,
         backgroundSize: "cover",
         backgroundRepeat: "no-repeat",
         backgroundPosition: "center top",
@@ -94,7 +96,7 @@ function Game() {
                 <button className="back-button" onClick={() => setShowPopup(false)}>
                   ← Back
                 </button>
-                <StructurePanel />
+                <StructurePanel showNavigation={false} />
               </div>
             )}
             {activeTab === "units" && (
