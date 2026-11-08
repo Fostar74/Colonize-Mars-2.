@@ -1,9 +1,21 @@
+const crypto = require("crypto");
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
 const DatabaseManager = require("../database/database");
 
 const db = new DatabaseManager();
+const sessions = new Map();
+const SESSION_MS = 24 * 60 * 60 * 1000;
+function requireSession(req, res, next) {
+  const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
+  const session = match && sessions.get(match[1]);
+  if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
+  const requestedId = req.params.userId ?? req.body?.userId;
+  if (String(requestedId) !== String(session.userId)) return res.status(403).json({ message: "Access denied." });
+  next();
+}
+
 
 router.post("/register", async (req, res) => {
   const { email, password, username } = req.body;
@@ -68,7 +80,10 @@ router.post("/login", async (req, res) => {
     const gameProgress = db.getGameProgress(user.id);
     const gameStats = db.getGameStats(user.id);
 
+    const token = crypto.randomBytes(32).toString("hex");
+    sessions.set(token, { userId: user.id, expires: Date.now() + SESSION_MS });
     res.status(200).json({
+      token,
       message: "Login successful!",
       username: user.username,
       userId: user.id,
@@ -81,7 +96,7 @@ router.post("/login", async (req, res) => {
   }
 });
 
-router.post("/save-progress", async (req, res) => {
+router.post("/save-progress", requireSession, async (req, res) => {
   const { userId, castleData, resources, structures } = req.body;
 
   if (!userId || !castleData || !resources || !structures) {
@@ -105,7 +120,7 @@ router.post("/save-progress", async (req, res) => {
   }
 });
 
-router.get("/get-progress/:userId", async (req, res) => {
+router.get("/get-progress/:userId", requireSession, async (req, res) => {
   const { userId } = req.params;
 
   try {
@@ -127,7 +142,7 @@ router.get("/get-progress/:userId", async (req, res) => {
   }
 });
 
-router.post("/update-stats", async (req, res) => {
+router.post("/update-stats", requireSession, async (req, res) => {
   const { userId, playTime, resourcesMined, structuresBuilt } = req.body;
 
   if (!userId) {
@@ -149,7 +164,7 @@ router.post("/update-stats", async (req, res) => {
   }
 });
 
-router.post("/save-equipment", async (req, res) => {
+router.post("/save-equipment", requireSession, async (req, res) => {
   const { userId, equippedItems, gearInventory, craftingPoints } = req.body;
 
   if (!userId) {
@@ -171,7 +186,7 @@ router.post("/save-equipment", async (req, res) => {
   }
 });
 
-router.get("/get-equipment/:userId", async (req, res) => {
+router.get("/get-equipment/:userId", requireSession, async (req, res) => {
   const { userId } = req.params;
 
   try {
@@ -191,7 +206,7 @@ router.get("/get-equipment/:userId", async (req, res) => {
   }
 });
 
-router.post("/update-equipment", async (req, res) => {
+router.post("/update-equipment", requireSession, async (req, res) => {
   const { userId, equippedItems, gearInventory, craftingPoints } = req.body;
 
   if (!userId) {
