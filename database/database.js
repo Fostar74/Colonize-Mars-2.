@@ -1,3 +1,4 @@
+const {unitPrice,upgradePrice} = require("../shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -344,22 +345,13 @@ class DatabaseManager {
   }
 
   trainUnits(userId, unit, quantity) {
-    const categories = {
-      Ground: ["Explorer Trooper", "Exo-Soldier", "Plasma Bladesman", "Nano Shieldman"],
-      Ranged: ["Railgunner", "Pulse Sniper", "Drone Operator"],
-      Mobile: ["Rover Scout", "Hoverbike Rider", "Mech Walker", "Hover Drone Rider"],
-      "Heavy Systems": ["Demolition Bot", "Missile Carrier", "Particle Blaster", "Orbital Strike Beacon"],
-      Elite: ["Martian Noble", "AI General", "Gene Warrior"]
-    };
-    if (!Object.values(categories).flat().includes(unit) || !Number.isInteger(quantity) || quantity < 1 || quantity > 10000)
+    if (!unitPrice(unit) || !Number.isInteger(quantity) || quantity < 1 || quantity > 10000)
       return { error: "Invalid unit or quantity." };
     return db.transaction(() => {
       const current = this.syncGame(userId);
       if (!current) return { error: "Player progress not found." };
       if (current.trainingJob) return { error: "Training already in progress." };
-      const category = Object.entries(categories).find(([, list]) => list.includes(unit))[0];
-      const tier = { Ground: 1, Ranged: 1.5, Mobile: 2, "Heavy Systems": 3, Elite: 5 }[category];
-      const cost = { Gold: Math.ceil(100 * tier) * quantity, Iron: Math.ceil(80 * tier) * quantity, Water: Math.ceil(60 * tier) * quantity, Solar: Math.ceil(40 * tier) * quantity };
+      const cost = Object.fromEntries(Object.entries(unitPrice(unit)).map(([resource,value])=>[resource,value*quantity]));
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       const job = { unit, quantity, endsAt: Date.now() + quantity * 30000 };
@@ -378,10 +370,9 @@ class DatabaseManager {
       const upgrades = current.unitUpgrades;
       const values = upgrades[unit] || { attack: 1, defense: 1 };
       if (values[stat] >= 20) return { error: "Maximum upgrade level." };
-      const price = 100 * (values[stat] + 1);
-      if (current.resources.Gold < price || current.resources.Iron < price) return { error: "Not enough Gold or Iron." };
-      current.resources.Gold -= price;
-      current.resources.Iron -= price;
+      const price = upgradePrice(values[stat]);
+      if (Object.keys(price).some(resource => current.resources[resource] < price[resource])) return { error: "Not enough resources." };
+      for (const resource of Object.keys(price)) current.resources[resource] -= price[resource];
       values[stat]++;
       upgrades[unit] = values;
       db.prepare("UPDATE game_runtime SET unit_upgrades=? WHERE user_id=?").run(JSON.stringify(upgrades), userId);
