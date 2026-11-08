@@ -11,15 +11,18 @@ import alienBaseImg from "../images/alien-base.png";
 
 function Map() {
   const canvasRef = useRef(null);
-  const tileSize = 60;
+  const [zoom, setZoom] = useState(1);
+  const tileSize = 60 * zoom;
   const mapSize = 200;
 
   const [offset, setOffset] = useState({ x: 0, y: 0 });
-  const [dragStart, setDragStart] = useState(null);
+  const [selectedTarget, setSelectedTarget] = useState(null);
+  const [marchNotice, setMarchNotice] = useState("");
   const [castles, setCastles] = useState([]);
   const [mapError, setMapError] = useState("");
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
   const [selectedAlien, setSelectedAlien] = useState(null);
+  const [viewCenter, setViewCenter] = useState({x:100,y:100});
   useEffect(() => {
     let cancelled = false;
     const loadBases = async () => {
@@ -224,76 +227,50 @@ function Map() {
         ctx.fillText(`${c.username} (${c.x}:${c.y})`, px + 2, py + tileSize - 5);
       }
     });
-  }, [offset, castles, hqIcon, mineIcons, alienIcon]);
+  }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom]);
 
-  const centerMapOn = (x, y) => {
+  // All markers and the grid share one fixed world coordinate system.
+  // The map is not draggable; only zoom and explicit coordinate navigation change the view.
+  const centerMapOn = (x, y) => setViewCenter({x,y});
+  useEffect(() => {
     const canvas = canvasRef.current;
+    if (!canvas) return;
+    setOffset({x:canvas.width/2-(viewCenter.x-.5)*tileSize,y:canvas.height/2-(viewCenter.y-.5)*tileSize});
+  }, [viewCenter, zoom, tileSize]);
 
-    setOffset({
-      x: canvas.width / 2 - x * tileSize,
-      y: canvas.height / 2 - y * tileSize,
-    });
-  };
-
-  const handleMouseDown = (e) => {
-    setDragStart({
-      x: e.clientX - offset.x,
-      y: e.clientY - offset.y,
-    });
-  };
-
-  const handleMouseUp = () => {
-    setDragStart(null);
-  };
-
-  const handleMouseMove = (e) => {
-    const canvas = canvasRef.current;
-
-    if (dragStart) {
-      setOffset({
-        x: e.clientX - dragStart.x,
-        y: e.clientY - dragStart.y,
-      });
-
-      return;
-    }
-
-    const rect = canvas.getBoundingClientRect();
-    const mouseX = e.clientX - rect.left;
-    const mouseY = e.clientY - rect.top;
-    setCursorCoord({x:Math.floor((mouseX-offset.x)/tileSize),y:Math.floor((mouseY-offset.y)/tileSize)});
-
-    let hovered = null;
-
-    for (const c of castles) {
-      const px = c.x * tileSize + offset.x;
-      const py = c.y * tileSize + offset.y;
-
-      if (
-        mouseX >= px &&
-        mouseX <= px + tileSize &&
-        mouseY >= py &&
-        mouseY <= py + tileSize
-      ) {
-        hovered = c;
-        break;
-      }
-    }
-
-    setHoveredTitle(
-      hovered
-        ? `${hovered.username} – Headquarter (${hovered.x}:${hovered.y})`
-        : ""
-    );
+  const handleMouseMove = e => {
+    const canvas=canvasRef.current;
+    const rect=canvas.getBoundingClientRect();
+    const mouseX=(e.clientX-rect.left)*canvas.width/rect.width;
+    const mouseY=(e.clientY-rect.top)*canvas.height/rect.height;
+    const x=Math.floor((mouseX-offset.x)/tileSize)+1;
+    const y=Math.floor((mouseY-offset.y)/tileSize)+1;
+    setCursorCoord(x>=1&&x<=200&&y>=1&&y<=200?{x,y}:null);
+    const hovered=castles.find(c=>c.x===x&&c.y===y);
+    setHoveredTitle(hovered?`${hovered.username} – Headquarter (${x}:${y})`:"");
   };
 
   const handleMapClick = e => {
-    const rect = canvasRef.current.getBoundingClientRect();
-    const x = (e.clientX-rect.left)*canvasRef.current.width/rect.width;
-    const y = (e.clientY-rect.top)*canvasRef.current.height/rect.height;
-    const alien = alienBases.find(b=>x>=b.x*tileSize+offset.x && x<(b.x+1)*tileSize+offset.x && y>=b.y*tileSize+offset.y && y<(b.y+1)*tileSize+offset.y);
-    setSelectedAlien(alien || null);
+    const canvas=canvasRef.current;
+    const rect=canvas.getBoundingClientRect();
+    const px=(e.clientX-rect.left)*canvas.width/rect.width;
+    const py=(e.clientY-rect.top)*canvas.height/rect.height;
+    const x=Math.floor((px-offset.x)/tileSize);
+    const y=Math.floor((py-offset.y)/tileSize);
+    if(x<0||x>=200||y<0||y>=200){setSelectedTarget(null);setSelectedAlien(null);return;}
+    const castle=castles.find(c=>Number(c.x)===x&&Number(c.y)===y);
+    const alien=alienBases.find(b=>b.x===x&&b.y===y);
+    setSelectedAlien(castle?null:alien||null);
+    setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x,y});
+    setMarchNotice("");
   };
+  const ownUsername=sessionStorage.getItem("username");
+  const targetIsOwn=selectedTarget?.type==="castle"&&selectedTarget.username===ownUsername;
+  // Clan diplomacy is not yet backed by a server-side alliance system.
+  // Never offer support to an unverified player.
+  const canSupport=false;
+  const showMarchNotice=kind=>setMarchNotice(kind+" marches will become available when the army dispatch and alliance systems are implemented.");
+
   const attackAlien = async () => {
     if (!selectedAlien) return;
     try {
@@ -351,12 +328,10 @@ function Map() {
         height={800}
         style={{
           display: "block",
-          cursor: "grab",
+          cursor: "crosshair",
           backgroundColor: "#0e3f1f",
         }}
         onClick={handleMapClick}
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         title={hoveredTitle}
       />
@@ -374,7 +349,19 @@ function Map() {
         }}
       >
         <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel}</div>
-        {selectedAlien && <div>Alien base level {selectedAlien.level} ({selectedAlien.x}:{selectedAlien.y}) <button disabled={selectedAlien.level!==campaign.nextLevel} onClick={attackAlien}>Attack</button></div>}
+        <div style={{margin:"8px 0"}}>Zoom <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(100.5,100.5);}}>Full map 200×200</button> <button onClick={()=>setZoom(1)}>100%</button></div>
+        {selectedTarget && <div style={{padding:8,border:"1px solid #777",marginBottom:8}}>
+          <strong>{selectedTarget.type==="alien"?"Alien base level "+selectedTarget.level:selectedTarget.type==="castle"?"Castle: "+selectedTarget.username:"Empty field"} ({selectedTarget.x}:{selectedTarget.y})</strong>
+          <div style={{marginTop:6}}>
+            {selectedTarget.type==="alien" && <button disabled={selectedTarget.level!==campaign.nextLevel} onClick={attackAlien}>Attack</button>}
+            {selectedTarget.type==="castle" && !targetIsOwn && <button onClick={()=>showMarchNotice("Player attack")}>Attack (coming soon)</button>}
+            {selectedTarget.type==="castle" && !targetIsOwn && canSupport && <button onClick={()=>showMarchNotice("Support")}>Support</button>}
+            {selectedTarget.type==="castle" && !targetIsOwn && !canSupport && <span style={{opacity:.75,marginLeft:8}}>Support requires a verified allied or peaceful clan</span>}
+            {selectedTarget.type==="field" && <button onClick={()=>showMarchNotice("Patrol")}>Patrol (coming soon)</button>}
+            {targetIsOwn && <span>Your castle</span>}
+          </div>
+        </div>}
+        {marchNotice && <div role="status">{marchNotice}</div>}
         {mapError && <div role="alert">{mapError}</div>}
         <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
         <input type="text" id="usernameInput" placeholder="Search Username" />
