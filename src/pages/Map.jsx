@@ -8,6 +8,7 @@ import ironMineImg from "../images/mine-iron.png";
 import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
 import alienBaseImg from "../images/alien-base.png";
+import unitEconomy from "../shared/unitEconomy";
 
 function Map() {
   const canvasRef = useRef(null);
@@ -17,6 +18,10 @@ function Map() {
 
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [selectedTarget, setSelectedTarget] = useState(null);
+  const [marchDraft, setMarchDraft] = useState(null);
+  const [availableArmy, setAvailableArmy] = useState({});
+  const [marchUnits, setMarchUnits] = useState({});
+  const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
   const [castles, setCastles] = useState([]);
   const [mapError, setMapError] = useState("");
@@ -261,6 +266,7 @@ function Map() {
     const castle=castles.find(c=>Number(c.x)===x&&Number(c.y)===y);
     const alien=alienBases.find(b=>b.x===x&&b.y===y);
     setSelectedAlien(castle?null:alien||null);
+    setMarchDraft(null);
     setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x,y});
     setMarchNotice("");
   };
@@ -269,7 +275,24 @@ function Map() {
   // Clan diplomacy is not yet backed by a server-side alliance system.
   // Never offer support to an unverified player.
   const canSupport=false;
-  const showMarchNotice=kind=>setMarchNotice(kind+" marches will become available when the army dispatch and alliance systems are implemented.");
+  const openMarch = async (type, target) => {
+    setMarchNotice("");
+    setMarchLoading(true);
+    try {
+      const base=(process.env.REACT_APP_API_URL || window.location.origin).replace(/\\/$/,"");
+      const response=await fetch(base+"/get-progress/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}});
+      if(!response.ok) throw new Error("Could not load your army. Please log in again.");
+      const data=await response.json();
+      setAvailableArmy(data.gameProgress?.army || {});
+      setMarchUnits({});
+      setMarchDraft({type,target});
+    } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
+  };
+  const prepareMarch = () => {
+    const selected=Object.entries(marchUnits).filter(([,n])=>n>0);
+    if(!selected.length){setMarchNotice("Choose at least one unit.");return;}
+    setMarchNotice("Army selection ready. Actual dispatch is not yet enabled; no troops were moved.");
+  };
 
   const attackAlien = async () => {
     if (!selectedAlien) return;
@@ -353,15 +376,28 @@ function Map() {
         {selectedTarget && <div style={{padding:8,border:"1px solid #777",marginBottom:8}}>
           <strong>{selectedTarget.type==="alien"?"Alien base level "+selectedTarget.level:selectedTarget.type==="castle"?"Castle: "+selectedTarget.username:"Empty field"} ({selectedTarget.x}:{selectedTarget.y})</strong>
           <div style={{marginTop:6}}>
-            {selectedTarget.type==="alien" && <button disabled={selectedTarget.level!==campaign.nextLevel} onClick={attackAlien}>Attack</button>}
-            {selectedTarget.type==="castle" && !targetIsOwn && <button onClick={()=>showMarchNotice("Player attack")}>Attack (coming soon)</button>}
-            {selectedTarget.type==="castle" && !targetIsOwn && canSupport && <button onClick={()=>showMarchNotice("Support")}>Support</button>}
+            {selectedTarget.type==="alien" && <button disabled={selectedTarget.level!==campaign.nextLevel} onClick={()=>openMarch("Attack",selectedTarget)}>Attack</button>}
+            {selectedTarget.type==="castle" && !targetIsOwn && <button onClick={()=>openMarch("Attack",selectedTarget)}>Attack</button>}
+            {selectedTarget.type==="castle" && !targetIsOwn && canSupport && <button onClick={()=>openMarch("Support",selectedTarget)}>Support</button>}
             {selectedTarget.type==="castle" && !targetIsOwn && !canSupport && <span style={{opacity:.75,marginLeft:8}}>Support requires a verified allied or peaceful clan</span>}
-            {selectedTarget.type==="field" && <button onClick={()=>showMarchNotice("Patrol")}>Patrol (coming soon)</button>}
+            {selectedTarget.type==="field" && <button onClick={()=>openMarch("Patrol",selectedTarget)}>Patrol</button>}
             {targetIsOwn && <span>Your castle</span>}
           </div>
         </div>}
-        {marchNotice && <div role="status">{marchNotice}</div>}
+        {marchLoading && <div>Loading your army...</div>}
+        {marchDraft && <div style={{marginTop:10,padding:10,border:"1px solid #66aacc",background:"#172735",maxHeight:"38vh",overflowY:"auto"}}>
+          <strong>Marches — {marchDraft.type} to ({marchDraft.target.x}:{marchDraft.target.y})</strong>
+          <div>Select troops from your available army:</div>
+          {Object.values(unitEconomy.categories).flat().filter(unit=>Number(availableArmy[unit]||0)>0).map(unit=><label key={unit} style={{display:"flex",justifyContent:"space-between",gap:8,margin:"5px 0"}}>
+            <span>{unit} (available: {availableArmy[unit]})</span>
+            <input type="number" min="0" max={availableArmy[unit]} style={{width:70}} value={marchUnits[unit]||0}
+              onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
+          </label>)}
+          {!Object.values(availableArmy).some(n=>Number(n)>0) && <div>No trained units available.</div>}
+          <div style={{marginTop:8}}><button onClick={prepareMarch}>Prepare march</button> <button onClick={()=>setMarchDraft(null)}>Cancel</button></div>
+          <small>Dispatch and troop travel are not active yet. Preparing does not send an army.</small>
+        </div>}
+        {marchNotice && <div role="status">{marchNotice}</div>
         {mapError && <div role="alert">{mapError}</div>}
         <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
         <input type="text" id="usernameInput" placeholder="Search Username" />
