@@ -79,24 +79,37 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
     }));
   };
 
+  const [expandedSections, setExpandedSections] = useState({ Resources: true });
+  const buildingImages = { "Gold Synthesizer": goldIcon, "Iron Driller": ironIcon, "Solar Array": solarIcon, "Water Extractor": waterIcon };
   const renderStructures = () => (
     <>
       <h2 style={{ textAlign: "center" }}>Structures</h2>
       {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
+      <p style={{textAlign:"center",opacity:.8}}>Build your resource facilities first. Upgrade all four to level 3.</p>
       {Object.entries(structureTypes).map(([section, buildings]) => (
-        <div key={section}>
-          <h3>{section}</h3>
-          <div className="building-grid">
-            {buildings.map((name) => (
-              <div key={name} className="building">
-                <h4>{name}</h4>
-                <p>Level: {Number(structures[name] || 0)}</p>
-                <p>Next level cost: {100 * (Number(structures[name] || 0) + 1)} Gold · {80 * (Number(structures[name] || 0) + 1)} Iron · {60 * (Number(structures[name] || 0) + 1)} Water · {40 * (Number(structures[name] || 0) + 1)} Solar</p>
-                <button className="upgrade-btn" disabled={!!busy || Number(structures[name] || 0) >= 20} onClick={() => upgrade(name)}>{busy === name ? "Building..." : "Build / Upgrade"}</button>
-              </div>
-            ))}
-          </div>
-        </div>
+        <section key={section} style={{marginBottom:16}}>
+          <button type="button" onClick={() => setExpandedSections(prev => ({...prev,[section]:!prev[section]}))}
+            style={{width:"100%",textAlign:"left",padding:"12px 16px",background:"#333",color:"#fff",border:"1px solid #555",cursor:"pointer",fontWeight:"bold"}}>
+            {expandedSections[section] ? "▾" : "▸"} {section} {section === "Resources" ? "— start here" : ""}
+          </button>
+          {expandedSections[section] && <div className="building-grid">
+            {buildings.map(name => {
+              const level = Number(structures[name] || 0);
+              const next = level + 1;
+              const cost = { Gold:100*next, Iron:80*next, Water:60*next, Solar:40*next };
+              const affordable = Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
+              return <div key={name} className="building" style={{padding:14}}>
+                {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}
+                <h4 style={{margin:"6px 0"}}>{name}</h4>
+                <div>Level {level} / 20</div>
+                <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>Next: {cost.Gold} Gold · {cost.Iron} Iron · {cost.Water} Water · {cost.Solar} Solar</p>
+                <button className="upgrade-btn" disabled={!!busy || level >= 20 || !affordable} onClick={() => upgrade(name)}>
+                  {busy === name ? "Building..." : level >= 20 ? "Max level" : !affordable ? "Not enough resources" : level === 0 ? "Build" : "Upgrade"}
+                </button>
+              </div>;
+            })}
+          </div>}
+        </section>
       ))}
     </>
   );
