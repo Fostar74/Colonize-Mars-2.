@@ -6,7 +6,7 @@ import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
-const {unitPrice,upgradePrice} = unitEconomy;
+const {unitPrice,upgradePrice,unitRequirement} = unitEconomy;
 
 const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
@@ -115,6 +115,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
       {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
       <p style={{textAlign:"center",opacity:.8}}>Build your resource facilities first. Upgrade all four to level 3.</p>
       <p style={{textAlign:"center"}}>Production per 10 sec: Gold {game.productionRates?.Gold ? game.productionRates.Gold*10 : 0} · Iron {game.productionRates?.Iron ? game.productionRates.Iron*10 : 0} · Water {game.productionRates?.Water ? game.productionRates.Water*10 : 0} · Solar {game.productionRates?.Solar ? game.productionRates.Solar*10 : 0}</p>
+      <p>Construction: {game.buildingJob ? game.buildingJob.name + " (" + formatTime(remaining(game.buildingJob)) + ")" : "Idle"} · Queue: {game.queuedBuildingJob ? game.queuedBuildingJob.name + " (level " + game.queuedBuildingJob.level + ")" : "Empty"}</p>
       {Object.entries(structureTypes).map(([section, buildings]) => (
         <section key={section} style={{marginBottom:16}}>
           <button type="button" onClick={() => setExpandedSections(prev => ({...prev,[section]:!prev[section]}))}
@@ -124,7 +125,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
           {expandedSections[section] && <div className="building-grid">
             {buildings.map(name => {
               const level = Number(structures[name] || 0);
-              const next = level + 1;
+              const next = level + (game.buildingJob?.name === name ? 1 : 0) + 1;
               const cost = { Gold:100*next, Iron:80*next, Water:60*next, Solar:40*next };
               const affordable = Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
               return <div key={name} className="building" style={{padding:14}}>
@@ -132,9 +133,10 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
                 <h4 style={{margin:"6px 0"}}>{name}</h4>
                 <div>Level {level} / 20</div>
                 {game.buildingJob?.name === name && <div>Construction: {formatTime(remaining(game.buildingJob))}</div>}
+                {game.queuedBuildingJob?.name === name && <div>Queued: Level {game.queuedBuildingJob.level}</div>}
                 <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>Next: {cost.Gold} Gold · {cost.Iron} Iron · {cost.Water} Water · {cost.Solar} Solar</p>
-                <button className="upgrade-btn" disabled={!!busy || !!game.buildingJob || level >= 20 || !affordable} onClick={() => upgrade(name)}>
-                  {busy === name ? "Starting..." : game.buildingJob?.name === name ? "Under construction" : game.buildingJob ? "Builder busy" : level >= 20 ? "Max level" : !affordable ? "Not enough resources" : level === 0 ? "Build" : "Upgrade"}
+                <button className="upgrade-btn" disabled={!!busy || !!game.queuedBuildingJob || next > 20 || !affordable} onClick={() => upgrade(name)}>
+                  {busy === name ? "Starting..." : game.queuedBuildingJob ? "Queue full" : next > 20 ? "Max level" : game.buildingJob ? "Queue as second" : !affordable ? "Not enough resources" : level === 0 ? "Build" : "Upgrade"}
                 </button>
               </div>;
             })}
@@ -158,11 +160,14 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
           const qty = Number(trainAmounts[unit]) || 0;
           const totalTime = baseTrainTime * qty;
           const price = unitPrice(unit);
+          const requirement = unitRequirement(unit);
+          const unlocked = Number(structures[requirement.building] || 0) >= requirement.level;
           const timeDisplay = formatTime(totalTime);
 
           return (
             <div key={unit} className="unit-card">
               <h4>{unit}</h4>
+              {!unlocked && <p style={{color:"#ffbb77"}}>Locked: Requires {requirement.building} level {requirement.level}</p>}
               <div className="train-slider">
                 <button onClick={() => handlePresetClick(unit, 0)}>–</button>
                 <button onClick={() => handlePresetClick(unit, 0.25)}>1/4</button>
@@ -180,7 +185,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
                 <div className="resource-cost"><img src={waterIcon} alt="Water" /><span>{price.Water}</span></div>
                 <div className="resource-cost"><img src={solarIcon} alt="Solar" /><span>{price.Solar}</span></div>
               </div>
-              <button style={{ marginTop: 10 }} disabled={!qty || qty > calculateMaxTrainable(unit) || !!busy || !!game.trainingJob} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
+              <button style={{ marginTop: 10 }} disabled={!unlocked || !qty || qty > calculateMaxTrainable(unit) || !!busy || !!game.trainingJob} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
                 {game.trainingJob ? "Training queue busy" : "Train"}
               </button>
             </div>
