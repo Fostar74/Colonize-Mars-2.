@@ -350,7 +350,9 @@ class DatabaseManager {
       const current = this.syncGame(userId);
       if (!current) return { error: "Player progress not found." };
       if (current.trainingJob) return { error: "Training already in progress." };
-      const cost = { Gold: 100 * quantity, Iron: 80 * quantity, Water: 60 * quantity, Solar: 40 * quantity };
+      const category = Object.entries(categories).find(([, list]) => list.includes(unit))[0];
+      const tier = { Ground: 1, Ranged: 1.5, Mobile: 2, "Heavy Systems": 3, Elite: 5 }[category];
+      const cost = { Gold: Math.ceil(100 * tier) * quantity, Iron: Math.ceil(80 * tier) * quantity, Water: Math.ceil(60 * tier) * quantity, Solar: Math.ceil(40 * tier) * quantity };
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       const job = { unit, quantity, endsAt: Date.now() + quantity * 30000 };
@@ -367,7 +369,7 @@ class DatabaseManager {
     return db.transaction(() => {
       const current = this.syncGame(userId);
       const upgrades = current.unitUpgrades;
-      const values = upgrades[unit] || { attack: 3, defense: 2 };
+      const values = upgrades[unit] || { attack: 1, defense: 1 };
       if (values[stat] >= 20) return { error: "Maximum upgrade level." };
       const price = 100 * (values[stat] + 1);
       if (current.resources.Gold < price || current.resources.Iron < price) return { error: "Not enough Gold or Iron." };
