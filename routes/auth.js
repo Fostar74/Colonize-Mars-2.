@@ -96,6 +96,17 @@ router.post("/login", async (req, res) => {
   }
 });
 
+router.post("/upgrade-building", requireSession, (req, res) => {
+  try {
+    const result = db.upgradeBuilding(req.body.userId, req.body.name);
+    if (result.error) return res.status(400).json({ message: result.error });
+    return res.json(result);
+  } catch (error) {
+    console.error("Building upgrade error:", error);
+    return res.status(500).json({ message: "Could not upgrade building." });
+  }
+});
+
 router.post("/save-progress", requireSession, async (req, res) => {
   const { userId, castleData, resources, structures } = req.body;
 
@@ -111,7 +122,8 @@ router.post("/save-progress", requireSession, async (req, res) => {
 
     const assigned = db.ensureBase(user.id, user.username);
     // Never trust client-provided map coordinates.
-    db.saveGameProgress(userId, assigned, resources, structures);
+    const current = db.getGameProgress(userId);
+    db.saveGameProgress(userId, assigned, current.resources, current.structures);
 
     res.status(200).json({ message: "Game progress saved successfully!" });
   } catch (error) {
