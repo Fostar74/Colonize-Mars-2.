@@ -17,7 +17,7 @@ function Map() {
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [dragStart, setDragStart] = useState(null);
   const [castles, setCastles] = useState([]);
-  const [mapError, setMapError] = useState("");
+  const [mapError, setMapError] = useState("");\n  const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});\n  const [selectedAlien, setSelectedAlien] = useState(null);
   useEffect(() => {
     let cancelled = false;
     const loadBases = async () => {
@@ -34,7 +34,7 @@ function Map() {
         }
       } catch (error) { if (!cancelled) setMapError(error.message); }
     };
-    loadBases();
+    loadBases();\n    fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)setCampaign(d)}).catch(()=>{});
     const timer = setInterval(loadBases, 30000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
@@ -283,6 +283,30 @@ function Map() {
     );
   };
 
+  const handleMapClick = e => {
+    const rect = canvasRef.current.getBoundingClientRect();
+    const x = (e.clientX-rect.left)*canvasRef.current.width/rect.width;
+    const y = (e.clientY-rect.top)*canvasRef.current.height/rect.height;
+    const alien = alienBases.find(b=>x>=b.x*tileSize+offset.x && x<(b.x+1)*tileSize+offset.x && y>=b.y*tileSize+offset.y && y<(b.y+1)*tileSize+offset.y);
+    setSelectedAlien(alien || null);
+  };
+  const attackAlien = async () => {
+    if (!selectedAlien) return;
+    try {
+      const base=(process.env.REACT_APP_API_URL || window.location.origin).replace(/\\/$/,"");
+      const response=await fetch(base+"/alien-campaign/attack",{
+        method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
+        body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:selectedAlien.level})
+      });
+      const data=await response.json();
+      if(!response.ok) throw new Error(data.message || "Attack failed");
+      setCampaign({highestDefeated:data.highestDefeated,nextLevel:data.nextLevel});
+      sessionStorage.setItem("resources",JSON.stringify(data.resources));
+      window.dispatchEvent(new Event("game-progress-updated"));
+      setMapError("Alien base level "+data.level+" defeated. Reward: "+data.reward+" of each resource.");
+    } catch(error) {setMapError(error.message);}
+  };
+
   const goToCoordinates = () => {
     const x = parseInt(document.getElementById("xCoord").value);
     const y = parseInt(document.getElementById("yCoord").value);
@@ -326,7 +350,7 @@ function Map() {
           cursor: "grab",
           backgroundColor: "#0e3f1f",
         }}
-        onMouseDown={handleMouseDown}
+        onClick={handleMapClick}\n        onMouseDown={handleMouseDown}
         onMouseUp={handleMouseUp}
         onMouseMove={handleMouseMove}
         title={hoveredTitle}
@@ -344,6 +368,9 @@ function Map() {
           zIndex: 10,
         }}
       >
+        <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel}</div>
+        {selectedAlien && <div>Alien base level {selectedAlien.level} ({selectedAlien.x}:{selectedAlien.y}) <button disabled={selectedAlien.level!==campaign.nextLevel} onClick={attackAlien}>Attack</button></div>}
+        {mapError && <div role="alert">{mapError}</div>}
         <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
         <input type="text" id="usernameInput" placeholder="Search Username" />
         <button onClick={searchByUsername}>Search</button>
