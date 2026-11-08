@@ -172,6 +172,17 @@ class DatabaseManager {
     };
   }
 
+  chooseSpawn(occupied) {
+    for (let i = 0; i < 40000; i++) {
+      const angle = i * 2.399963229728653;
+      const radius = 85 + (i % 12);
+      const x = Math.max(1, Math.min(200, Math.round(100.5 + radius * Math.cos(angle))));
+      const y = Math.max(1, Math.min(200, Math.round(100.5 + radius * Math.sin(angle))));
+      if (!occupied.has(x + ":" + y)) return { x, y };
+    }
+    throw new Error("No available spawn position");
+  }
+
   // Allocates a unique base tile within a transaction; existing saved bases are respected.
   ensureBase(userId, username) {
     return db.transaction(() => {
@@ -193,11 +204,7 @@ class DatabaseManager {
           !db.prepare("SELECT 1 FROM base_positions WHERE x = ? AND y = ?").get(preferred.x, preferred.y)) {
         selected = { x: preferred.x, y: preferred.y };
       } else {
-        for (let i = 0; i < 40000; i++) {
-          const x = (i % 200) + 1;
-          const y = Math.floor(i / 200) + 1;
-          if (!occupied.has(x + ":" + y)) { selected = { x, y }; break; }
-        }
+        selected = this.chooseSpawn(occupied);
       }
       if (!selected) throw new Error("Map is full");
       db.prepare("INSERT INTO base_positions(user_id, x, y) VALUES (?, ?, ?)").run(userId, selected.x, selected.y);
@@ -218,15 +225,8 @@ class DatabaseManager {
       }
       const reserve = db.prepare("INSERT INTO base_positions (user_id, x, y) VALUES (?, ?, ?)");
       let position = null;
-      for (let i = 0; i < 40000; i++) {
-        const x = (i % 200) + 1;
-        const y = Math.floor(i / 200) + 1;
-        if (!occupied.has(`${x}:${y}`)) {
-          reserve.run(userId, x, y);
-          position = { x, y };
-          break;
-        }
-      }
+      position = this.chooseSpawn(occupied);
+      reserve.run(userId, position.x, position.y);
       if (!position) throw new Error("Mars map is full");
       db.prepare(`INSERT INTO game_progress
         (user_id, castle_data, resources, structures) VALUES (?, ?, ?, ?)`)
