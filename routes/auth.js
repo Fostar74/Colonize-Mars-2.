@@ -156,12 +156,19 @@ router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
 });
 router.post("/alien-campaign/attack",requireSession,(req,res)=>{
   try {
-    const result=db.attackAlienBase(Number(req.body.userId),Number(req.body.level));
+    const result=db.attackAlienBase(Number(req.body.userId),Number(req.body.level),req.body.army,req.body.formation);
     if(result.error) return res.status(400).json({message:result.error});
     res.json(result);
   } catch(error) {console.error(error);res.status(500).json({message:"Attack unavailable."});}
 });
 
+router.post("/alien-campaign/side-quest",requireSession,(req,res)=>{
+  try{
+    const result=db.claimAlienSideQuest(Number(req.body.userId),Number(req.body.milestone));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(e){console.error(e);res.status(500).json({message:"Side quest unavailable."});}
+});
 router.get("/tutorial/:userId", requireSession, (req,res) => {
   try {
     const data = db.getTutorial(Number(req.params.userId));
