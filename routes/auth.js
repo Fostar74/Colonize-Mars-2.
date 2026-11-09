@@ -165,6 +165,17 @@ router.post("/alliance/create",requireSession,(req,res)=>{
 router.post("/alliance/join",requireSession,(req,res)=>{
   try{const result=db.joinAlliance(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot join alliance."});}
 });
+for(const [route,method] of [["application","allianceApplication"],["role","allianceRole"],["leave","allianceLeave"],["transfer","allianceTransfer"]]){
+  router.post("/alliance/"+route,requireSession,(req,res)=>{
+    try{
+      const userId=Number(req.body.userId),targetId=Number(req.body.targetId);
+      if(!Number.isSafeInteger(targetId)||targetId<1)return res.status(400).json({message:"Invalid player."});
+      const result=route==="application"?db[method](userId,targetId,req.body.accept===true):route==="role"?db[method](userId,targetId,req.body.role):db[method](userId,targetId);
+      if(result.error)return res.status(400).json({message:result.error});
+      res.json(result);
+    }catch(e){console.error(e);res.status(500).json({message:"Alliance action failed."});}
+  });
+}
 router.post("/alliance/request-help",requireSession,(req,res)=>{
   try{const result=db.requestAllianceHelp(Number(req.body.userId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
 });
