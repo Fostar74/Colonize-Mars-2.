@@ -139,6 +139,17 @@ router.post("/upgrade-unit", requireSession, (req, res) => {
   } catch (error) { console.error("Upgrade unit:", error); res.status(500).json({ message: "Upgrade failed." }); }
 });
 
+router.get("/inventory/:userId",requireSession,(req,res)=>{
+  try {res.json(db.getInventory(Number(req.params.userId)));} catch(e){console.error(e);res.status(500).json({message:"Inventory unavailable."});}
+});
+router.post("/inventory/withdraw",requireSession,(req,res)=>{
+  try {
+    const result=db.withdrawInventory(Number(req.body.userId),req.body.kind,req.body.name,Number(req.body.amount));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch(e){console.error(e);res.status(500).json({message:"Withdrawal unavailable."});}
+});
+
 router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
   try { res.json(db.getAlienCampaign(Number(req.params.userId))); }
   catch(error) { console.error(error);res.status(500).json({message:"Campaign unavailable."}); }
