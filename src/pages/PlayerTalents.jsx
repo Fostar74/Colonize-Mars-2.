@@ -9,7 +9,7 @@ export default function PlayerTalents(){
  useEffect(()=>{refresh();},[refresh]);
  const upgrade=async name=>{setBusy(true);setError("");try{const response=await fetch(api+"/player-talents/upgrade",{method:"POST",headers:headers(),body:JSON.stringify({userId,name})});const data=await response.json();if(!response.ok)throw Error(data.message||"Upgrade failed.");await refresh();}catch(e){setError(e.message);}finally{setBusy(false);}};
  const tierNames=["Locked","Initiate","Advanced","Elite"];
- const active=new Set(["Resource Management","Accelerated Training","Advanced Research"]);
+ const active=new Set(["Resource Management","Accelerated Training","Advanced Research","Precision Fire","Reinforced Armor","Infantry Command","Mobile Warfare","Heavy Artillery"]);
  return <div style={{padding:16,color:"#eaf6ff",maxWidth:1050}}>
   <h2>Commander Protocols</h2>
   <p>Develop your commander with Protocol Points (PP). Each protocol has three tiers: Initiate, Advanced and Elite.</p>
