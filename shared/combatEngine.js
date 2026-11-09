@@ -33,8 +33,14 @@ function createGroups(army,types,formation){
   }
   return groups;
 }
-function fight(attackerArmy,defenderArmy,formation){
+function fight(attackerArmy,defenderArmy,formation,bonuses={}){
   const sides=[createGroups(attackerArmy,playerTypes,formation),createGroups(defenderArmy,alienTypes)];
+  // Player-only Commander Protocol bonuses; alien garrisons keep their base stats.
+  for(const group of sides[0]){
+    const categoryBonus=group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
+    group.attack*=1+(Number(categoryBonus)||0)/100;
+    group.hp*=1+((Number(bonuses.allHealth)||0)+(group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
+  }
   const report=[];let rounds=0;
   const alive=side=>side.some(g=>g.count>0);
   while(alive(sides[0])&&alive(sides[1])&&rounds<80){
