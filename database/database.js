@@ -488,7 +488,7 @@ class DatabaseManager {
     const row=db.prepare("SELECT xp,talents FROM player_talents WHERE user_id=?").get(userId);
     const level=this.playerLevel(row.xp),talents=JSON.parse(row.talents);
     const earned=Array.from({length:level},(_,i)=>i+1).reduce((sum,n)=>sum+(n%5===0?2:1),0);
-    const spent=Object.values(talents).reduce((sum,t)=>sum+[0,1,3,6][t]||sum,0);
+    const spent=Object.values(talents).reduce((sum,t)=>sum+([0,1,3,6][Math.max(0,Math.min(3,Number(t)||0))]||0),0);
     return {level,xp:row.xp,nextLevelXp:level>=40?null:level*1000,skillPoints:Math.max(0,earned-spent),talents,catalog:this.talentCatalog()};
   }
   awardPlayerXp(userId,amount){
@@ -498,7 +498,9 @@ class DatabaseManager {
     db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
   }
   upgradePlayerTalent(userId,name){
+    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research"]);
     if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
+    if(!activeProtocols.has(name))return {error:"This protocol is not active yet. Protocol Points have not been spent."};
     return db.transaction(()=>{
       const state=this.playerTalents(userId),tier=state.talents[name]||0;
       if(tier>=3)return {error:"Talent already at Master."};
