@@ -104,6 +104,7 @@ function initializeDatabase() {
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returned_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returned_at INTEGER");
     db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
+    db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
     db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
@@ -371,6 +372,7 @@ class DatabaseManager {
       }
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
+      this.awardPlayerXp(userId,50*(level+1));
       return { ...current, resources: current.resources, buildingJob: current.buildingJob || job, queuedBuildingJob: current.buildingJob ? {name,level:level+1,duration} : null };
     })();
   }
@@ -387,6 +389,7 @@ class DatabaseManager {
       const cost = Object.fromEntries(Object.entries(unitPrice(unit)).map(([resource,value])=>[resource,value*quantity]));
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
+      this.awardPlayerXp(userId,Math.min(1000,quantity*2));
       const job = { unit, quantity, endsAt: Date.now() + quantity * 30000 };
       db.prepare("UPDATE game_runtime SET training_job=? WHERE user_id=?").run(JSON.stringify(job), userId);
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
@@ -444,6 +447,44 @@ class DatabaseManager {
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
       return { ...current, quest2Claimed: true };
+    })();
+  }
+
+  talentCatalog(){
+    return [
+      ["Rapid Deployment",[15,35,60],"% army speed"],["Resource Management",[10,25,45],"% economy"],
+      ["Mining Operations",[1,3,6],"extra mines"],["Precision Fire",[15,35,60],"% ranged attack"],
+      ["Reinforced Armor",[10,25,45],"% unit HP"],["Infantry Command",[10,25,45],"% infantry attack and HP"],
+      ["Battle Command",[6,16,30],"% leadership"],["Advanced Recon",[10,30,50],"% spy discount"],
+      ["Evasion Protocol",[3,8,15],"% evade"],["Combat Recovery",[3,8,15],"% revive"],
+      ["Mobile Warfare",[10,25,45],"% mobile attack"],["Heavy Artillery",[10,25,45],"% siege attack"],
+      ["Advanced Research",[10,25,45],"% XP"],["Accelerated Training",[10,25,45],"% training speed"],
+      ["Forward Operations",[1,3,6],"extra camps"]
+    ].map(([name,values,description])=>({name,values,description}));
+  }
+  playerLevel(xp){return Math.min(40,1+Math.floor(Math.max(0,xp)/1000));}
+  playerTalents(userId){
+    db.prepare("INSERT OR IGNORE INTO player_talents(user_id) VALUES (?)").run(userId);
+    const row=db.prepare("SELECT xp,talents FROM player_talents WHERE user_id=?").get(userId);
+    const level=this.playerLevel(row.xp),talents=JSON.parse(row.talents);
+    const earned=Array.from({length:level},(_,i)=>i+1).reduce((sum,n)=>sum+(n%5===0?2:1),0);
+    const spent=Object.values(talents).reduce((sum,t)=>sum+[0,1,3,6][t]||sum,0);
+    return {level,xp:row.xp,nextLevelXp:level>=40?null:level*1000,skillPoints:Math.max(0,earned-spent),talents,catalog:this.talentCatalog()};
+  }
+  awardPlayerXp(userId,amount){
+    if(!Number.isSafeInteger(amount)||amount<1)return;
+    db.prepare("INSERT OR IGNORE INTO player_talents(user_id) VALUES (?)").run(userId);
+    db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(amount,userId);
+  }
+  upgradePlayerTalent(userId,name){
+    if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
+    return db.transaction(()=>{
+      const state=this.playerTalents(userId),tier=state.talents[name]||0;
+      if(tier>=3)return {error:"Talent already at Master."};
+      if(state.skillPoints<tier+1)return {error:"Not enough skill points."};
+      const talents={...state.talents,[name]:tier+1};
+      db.prepare("UPDATE player_talents SET talents=? WHERE user_id=?").run(JSON.stringify(talents),userId);
+      return this.playerTalents(userId);
     })();
   }
 
@@ -678,6 +719,7 @@ class DatabaseManager {
         const {fight}=require("../shared/combatEngine");
         const result=fight(armyData.units,this.getAlienArmy(mission.level),armyData.formation);
         if(result.victory){
+          this.awardPlayerXp(userId,mission.level*100);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
           db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
           db.prepare("UPDATE alien_rewards SET victories=victories+1,knight_level=1+CAST((victories+1)/20 AS INTEGER) WHERE user_id=?").run(userId);
