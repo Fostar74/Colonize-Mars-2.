@@ -507,7 +507,7 @@ class DatabaseManager {
     db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
   }
   upgradePlayerTalent(userId,name){
-    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research"]);
+    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery"]);
     if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
     if(!activeProtocols.has(name))return {error:"This protocol is not active yet. Protocol Points have not been spent."};
     return db.transaction(()=>{
@@ -815,7 +815,14 @@ class DatabaseManager {
       for(const mission of due){
         const armyData=JSON.parse(mission.army);
         const {fight}=require("../shared/combatEngine");
-        const result=fight(armyData.units,this.getAlienArmy(mission.level),armyData.formation);
+        const result=fight(armyData.units,this.getAlienArmy(mission.level),armyData.formation,{
+          rangedAttack:this.protocolBonus(userId,"Precision Fire"),
+          allHealth:this.protocolBonus(userId,"Reinforced Armor"),
+          infantryAttack:this.protocolBonus(userId,"Infantry Command"),
+          infantryHealth:this.protocolBonus(userId,"Infantry Command"),
+          mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
+          artilleryAttack:this.protocolBonus(userId,"Heavy Artillery")
+        });
         if(result.victory){
           this.awardPlayerXp(userId,mission.level*100);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
