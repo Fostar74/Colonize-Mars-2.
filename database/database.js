@@ -581,7 +581,7 @@ class DatabaseManager {
       if(!a)return {error:"Join an alliance first."};
       const job=this.syncGame(userId)?.buildingJob;
       if(!job||job.endsAt<=Date.now())return {error:"No active construction to request help for."};
-      const old=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND job_ends_at=?").get(userId,job.name,job.level,job.endsAt);
+      const old=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND requested_at>=?").get(userId,job.name,job.level,Date.now()-Math.max(86400000,job.duration||0));
       if(old)return {error:"Help already requested for this construction."};
       const id=db.prepare("INSERT INTO alliance_help(requester_id,alliance_id,building_name,building_level,requested_at,job_ends_at) VALUES (?,?,?,?,?,?)").run(userId,a.alliance_id,job.name,job.level,Date.now(),job.endsAt).lastInsertRowid;
       return {requestId:Number(id)};
