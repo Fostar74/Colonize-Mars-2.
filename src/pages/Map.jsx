@@ -353,7 +353,7 @@ function Map() {
       });
       const data=await response.json();
       if(!response.ok) throw new Error(data.message || "Attack failed");
-      setCampaign({highestDefeated:data.highestDefeated,nextLevel:data.nextLevel});
+      setCampaign({highestDefeated:data.highestDefeated,nextLevel:data.nextLevel,defenders:data.nextDefenders});
       sessionStorage.setItem("resources",JSON.stringify(data.resources));
       window.dispatchEvent(new Event("game-progress-updated"));
       setMapError("Alien base level "+data.level+" defeated. Reward: "+data.reward+" of each resource.");
@@ -444,6 +444,13 @@ function Map() {
             <button onClick={()=>{setSelectedTarget(null);setMarchDraft(null);setMarchNotice("");}}>✕ Close</button>
           </div>
           <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?"Alien Stronghold · Level "+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:"Open Sector"} · Coordinates {selectedTarget?.x}:{selectedTarget?.y}</p>
+          {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
+            <strong>Alien garrison · Level {selectedTarget.level}</strong>
+            {selectedTarget.level===campaign.nextLevel && campaign.defenders ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:6,marginTop:8}}>
+              {Object.entries(campaign.defenders).map(([unit,count])=><div key={unit}>{unit}: <strong>{count.toLocaleString()}</strong></div>)}
+            </div> : <p>Defender intelligence is available for your next campaign level ({campaign.nextLevel}).</p>}
+            <p style={{fontSize:12}}>Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.</p>
+          </div>}
           {!marchDraft && <div>
             <p>Choose mission type:</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
