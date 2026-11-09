@@ -325,11 +325,12 @@ class DatabaseManager {
       let changed = false;
       // Resource production is calculated from server time, including while logged out.
       const elapsedTicks = Math.floor(Math.max(0, now - state.production_at) / 10000);
+      const economyBonus = this.protocolBonus(userId, "Resource Management") / 100;
       const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
       for (const [resource, name] of Object.entries(rates)) {
         const level = Number(structures[name] || 0);
         if (level > 0 && elapsedTicks > 0) {
-          resources[resource] = Math.floor((Number(resources[resource]) || 0) + level * elapsedTicks);
+          resources[resource] = Math.floor((Number(resources[resource]) || 0) + level * elapsedTicks * (1 + economyBonus));
           changed = true;
         }
       }
@@ -355,7 +356,7 @@ class DatabaseManager {
         castle: JSON.parse(row.castle_data), resources, structures, army,
         buildingJob, queuedBuildingJob, trainingJob, unitUpgrades: JSON.parse(state.unit_upgrades),
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
-        productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * 10) / 100])),
+        productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * (1 + economyBonus) * 10) / 100])),
         serverTime: now
       };
     })();
@@ -403,7 +404,8 @@ class DatabaseManager {
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       this.awardPlayerXp(userId,Math.min(1000,quantity*2));
-      const job = { unit, quantity, endsAt: Date.now() + quantity * 30000 };
+      const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
+      const job = { unit, quantity, endsAt: Date.now() + Math.max(1000, Math.ceil(quantity * 30000 * (1 - trainingBonus))) };
       db.prepare("UPDATE game_runtime SET training_job=? WHERE user_id=?").run(JSON.stringify(job), userId);
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
@@ -461,6 +463,13 @@ class DatabaseManager {
     })();
   }
 
+  protocolBonus(userId,name){
+    const row=db.prepare("SELECT talents FROM player_talents WHERE user_id=?").get(userId);
+    if(!row)return 0;
+    const tier=Math.max(0,Math.min(3,Number(JSON.parse(row.talents||"{}")[name])||0));
+    const protocol=this.talentCatalog().find(item=>item.name===name);
+    return tier&&protocol?protocol.values[tier-1]:0;
+  }
   talentCatalog(){
     return [
       ["Rapid Deployment",[15,35,60],"% army speed"],["Resource Management",[10,25,45],"% economy"],
@@ -485,7 +494,8 @@ class DatabaseManager {
   awardPlayerXp(userId,amount){
     if(!Number.isSafeInteger(amount)||amount<1)return;
     db.prepare("INSERT OR IGNORE INTO player_talents(user_id) VALUES (?)").run(userId);
-    db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(amount,userId);
+    const bonus=this.protocolBonus(userId,"Advanced Research")/100;
+    db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
   }
   upgradePlayerTalent(userId,name){
     if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
