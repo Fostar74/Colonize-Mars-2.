@@ -3,6 +3,7 @@ import StructurePanel from "./StructurePanel";
 import CyberKnightPanel from "./CyberKnightPanel";
 import Quests from "./Quests";
 import AlliancePanel from "./AlliancePanel";
+import PlayerTalents from "./PlayerTalents";
 import Inventory from "./Inventory";
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
@@ -15,6 +16,7 @@ function Game() {
   const [showCyberKnight, setShowCyberKnight] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showAlliance,setShowAlliance]=useState(false);
+  const [showTalents,setShowTalents]=useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const onProgressChange = data => setResources(data.resources);
 
@@ -112,6 +114,7 @@ function Game() {
 
       <div className="bottom-bar">
         <button onClick={() => setShowCyberKnight(true)}>Cyber Knight</button>
+        <button onClick={()=>setShowTalents(true)}>Player Talents</button>
         <button onClick={() => setShowQuests(true)}>Quests</button>
         <button>Campaign</button>
         <button onClick={() => (window.location.href = "/#/map")}>Map</button>
@@ -152,6 +155,7 @@ function Game() {
         </div>
       )}
 
+      {showTalents&&<div className="popup"><div className="popup-header"><span>PLAYER TALENTS</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
       {showAlliance&&<div className="popup"><div className="popup-header"><span>ALLIANCE</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel/></div></div>}
       {showQuests && (
         <div className="popup">
