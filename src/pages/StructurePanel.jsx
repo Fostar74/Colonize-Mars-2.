@@ -30,6 +30,8 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
   const [error, setError] = useState("");
   const [game, setGame] = useState({});
   const [clock, setClock] = useState(Date.now());
+  const [allianceHelpMessage,setAllianceHelpMessage]=useState("");
+  const [allianceHelpBusy,setAllianceHelpBusy]=useState(false);
   const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
   const userId = sessionStorage.getItem("userId");
   const apply = (data) => {
@@ -78,6 +80,15 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
     catch (e) { setError(e.message); }
     finally { setBusy(""); }
   };
+  const requestBuildingHelp=async()=>{
+    setAllianceHelpBusy(true);setAllianceHelpMessage("");
+    try{
+      const response=await request("/alliance/request-help",{});
+      setAllianceHelpMessage("Help request sent to your alliance. Members can now assist from Alliance → Help Requests.");
+      window.dispatchEvent(new Event("alliance-help-updated"));
+    }catch(e){setAllianceHelpMessage(e.message);}
+    finally{setAllianceHelpBusy(false);}
+  };
   const upgrade = name => act("/upgrade-building", { name }, name);
   const remaining = job => job ? Math.max(0, Math.ceil((job.endsAt - clock) / 1000)) : 0;
   const [unitTab, setUnitTab] = useState("Ground");
@@ -116,6 +127,12 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
       <p style={{textAlign:"center",opacity:.8}}>Build your resource facilities first. Upgrade all four to level 3.</p>
       <p style={{textAlign:"center"}}>Production per 10 sec: Gold {game.productionRates?.Gold ? game.productionRates.Gold*10 : 0} · Iron {game.productionRates?.Iron ? game.productionRates.Iron*10 : 0} · Water {game.productionRates?.Water ? game.productionRates.Water*10 : 0} · Solar {game.productionRates?.Solar ? game.productionRates.Solar*10 : 0}</p>
       <p>Construction: {game.buildingJob ? game.buildingJob.name + " (" + formatTime(remaining(game.buildingJob)) + ")" : "Idle"} · Queue: {game.queuedBuildingJob ? game.queuedBuildingJob.name + " (level " + game.queuedBuildingJob.level + ")" : "Empty"}</p>
+      {game.buildingJob&&<div style={{padding:12,margin:"12px 0",border:"1px solid #4b96ac",borderRadius:8,background:"#183449"}}>
+        <strong>🤝 Alliance Construction Help</strong>
+        <p>Ask your alliance to speed up {game.buildingJob.name} (Level {game.buildingJob.level}). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.</p>
+        <button className="upgrade-btn" disabled={allianceHelpBusy} onClick={requestBuildingHelp}>{allianceHelpBusy?"Sending...":"Request Alliance Help"}</button>
+        {allianceHelpMessage&&<p role="status">{allianceHelpMessage}</p>}
+      </div>}
       {Object.entries(structureTypes).map(([section, buildings]) => (
         <section key={section} style={{marginBottom:16}}>
           <button type="button" onClick={() => setExpandedSections(prev => ({...prev,[section]:!prev[section]}))}
