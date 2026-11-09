@@ -438,6 +438,13 @@ function Map() {
         }}
       >
         <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel} · Attacks left: {campaign.remaining??"—"}/20 · Cyber Knight Lv {campaign.knightLevel||1}</div>
+        <div style={{fontSize:12}}>Mission travel: 60 seconds · Daily reset: 00:00 UTC</div>
+        {(campaign.sideQuests||[]).filter(q=>q.completed&&!q.claimed).map(q=><button key={q.level} onClick={async()=>{
+          const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+          const r=await fetch(base+"/alien-campaign/side-quest",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),milestone:q.level})});
+          const d=await r.json();setMapError(r.ok?"Side quest claimed! "+d.amount+" of each resource added to Inventory.":d.message);
+          if(r.ok)setCampaign(old=>({...old,sideQuests:old.sideQuests.map(x=>x.level===q.level?{...x,claimed:true}:x)}));
+        }}>Side Quest: claim Level {q.level} reward</button>)}
         <div style={{margin:"8px 0"}}>Zoom <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(50.5,50.5);}}>Full map 100×100</button> <button onClick={()=>setZoom(1)}>100%</button></div>
         {mapError && <div role="alert">{mapError}</div>}
         <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
@@ -496,6 +503,10 @@ function Map() {
                 <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
                   onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
                 <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>MAX</button>
+                <span>Formation row (1 front / 4 rear)</span>
+                <select value={formationRows[unit]||(["Railgunner","Pulse Sniper","Drone Operator","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"].includes(unit)?4:1)} onChange={e=>setFormationRows(old=>({...old,[unit]:Number(e.target.value)}))}>
+                  {[1,2,3,4].map(row=><option key={row} value={row}>Row {row}</option>)}
+                </select>
               </label>)}
             </div>
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -508,6 +519,19 @@ function Map() {
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{marchNotice}</p>}
         </div>
+      </div>}
+      {marchHistoryOpen&&<div style={{position:"absolute",right:18,bottom:78,zIndex:30,background:"#132538",border:"1px solid #5989aa",padding:16,borderRadius:10,color:"white",width:"min(600px,90vw)",maxHeight:"65vh",overflowY:"auto"}}>
+        <button onClick={()=>setMarchHistoryOpen(false)}>Close</button><h3>Alien Mission Reports</h3>
+        {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
+          <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result?(m.result.victory?"VICTORY":"DEFEAT"):"Travelling / awaiting battle"}</summary>
+          {m.result&&<div><p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
+          <p>Reward: {m.result.reward?JSON.stringify(m.result.reward):"None"}</p>
+          <p>Survivors: {Object.entries(m.result.survivors||{}).map(([u,n])=>u+": "+n).join(", ")}</p>
+          {(m.result.report||[]).map(round=><details key={round.round}><summary>Round {round.round}</summary>
+            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.attacker}: {e.units} {e.unit} → {e.target} · {e.damage} damage</p>)}
+          </details>)}</div>}
+        </details>)}
+        {!(campaign.missions||[]).length&&<p>No alien missions yet.</p>}
       </div>}
       <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>🚀 MARCHES</button>
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
