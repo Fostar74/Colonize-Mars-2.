@@ -12,9 +12,18 @@ export default function AlliancePanel(){
   {message&&<p role="status">{message}</p>}
   {loadError&&<div role="alert" style={{padding:12,background:"#49332d",borderRadius:8}}>{loadError} <button onClick={refresh}>Retry</button></div>}
   {!state?<p>{loadError?"Alliance data could not be loaded.":"Loading…"}</p>:!state.alliance?<div>
-   <p>Create a new alliance or apply to join an existing alliance by its exact name.</p>
-   <input placeholder="Alliance name" maxLength={32} value={name} onChange={e=>setName(e.target.value)}/>
-   <div style={{display:"flex",gap:8,marginTop:10}}><button disabled={busy} onClick={()=>action("create",{name})}>Create Alliance</button><button disabled={busy} onClick={()=>action("join",{name})}>Apply to Join</button></div>
+   <h3>Browse Alliances</h3>
+   <input aria-label="Search alliances" placeholder="Search alliances..." value={name} onChange={e=>setName(e.target.value)} style={{padding:9,maxWidth:"100%",marginBottom:12}}/>
+   <div style={{maxHeight:380,overflowY:"auto"}}>
+    {(state.alliances||[]).filter(a=>a.name.toLowerCase().includes(name.trim().toLowerCase())).map(a=><div key={a.id} style={{border:"1px solid #47758e",borderRadius:8,padding:12,marginBottom:9}}>
+     <strong>🛡 {a.name}</strong><div style={{fontSize:13,margin:"5px 0"}}>Leader: {a.leader} · Members: {a.memberCount}</div>
+     <button disabled={busy||a.pending} onClick={()=>action("join",{name:a.name})}>{a.pending?"Application Pending":"Apply to Join"}</button>
+    </div>)}
+    {!(state.alliances||[]).some(a=>a.name.toLowerCase().includes(name.trim().toLowerCase()))&&<p>No alliances found.</p>}
+   </div>
+   <h3>Create Alliance</h3>
+   <p style={{fontSize:13}}>Enter a new alliance name to create your own.</p>
+   <button disabled={busy||!name.trim()} onClick={()=>action("create",{name})}>Create Alliance: {name||"…"}</button>
   </div>:<div>
    <h3>🛡 {state.alliance.name}</h3>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
