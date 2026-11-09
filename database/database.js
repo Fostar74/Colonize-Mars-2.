@@ -484,30 +484,111 @@ class DatabaseManager {
   }
 
   getAlienCampaign(userId) {
-    const row = db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
-    const highestDefeated=row ? row.highest_defeated : 0;
+    this.resolveAlienMissions(userId);
+    const row=db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
+    const highestDefeated=row?.highest_defeated||0;
     const nextLevel=Math.min(20,highestDefeated+1);
-    return {highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)]))};
+    const today=new Date().toISOString().slice(0,10);
+    const used=db.prepare("SELECT COUNT(*) AS n FROM alien_missions WHERE user_id=? AND launched_at>=? AND launched_at<?").get(userId,Date.parse(today+"T00:00:00Z"),Date.parse(today+"T00:00:00Z")+86400000).n;
+    const missions=db.prepare("SELECT id,level,launched_at,arrives_at,resolved_at,result FROM alien_missions WHERE user_id=? ORDER BY id DESC LIMIT 15").all(userId).map(m=>({...m,result:m.result?JSON.parse(m.result):null}));
+    const knight=db.prepare("SELECT victories,knight_level FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1};
+    const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
+    return {highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
-  attackAlienBase(userId, level) {
-    if (!Number.isInteger(level) || level < 1 || level > 20) return {error:"Invalid alien base level."};
-    return db.transaction(() => {
-      const campaign = this.getAlienCampaign(userId);
-      if (level !== campaign.nextLevel || campaign.highestDefeated === 20)
-        return {error:"Defeat the previous alien base level first."};
-      const current = this.syncGame(userId);
-      if (!current) return {error:"Player progress not found."};
-      const strength = Object.values(current.army).reduce((sum,n)=>sum+Number(n||0),0);
-      const defenders=this.getAlienArmy(level);
-      const required=Object.values(defenders).reduce((sum,n)=>sum+n,0);
-      if(strength<required) return {error:"Not enough soldiers. Alien defenders: "+required,defenders};
-      db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=excluded.highest_defeated").run(userId,level);
-      const resources={...current.resources};
-      const reward=level*750;
-      for(const key of ["Gold","Iron","Water","Solar"]) resources[key]+=reward;
-      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(resources),userId);
-      return {level,highestDefeated:level,nextLevel:Math.min(20,level+1),reward,resources,defenders,nextDefenders:level<20?this.getAlienArmy(level+1):null};
+  attackAlienBase(userId,level,selectedArmy,formation) {
+    if(!Number.isInteger(level)||level<1||level>20)return {error:"Invalid alien base level."};
+    return db.transaction(()=>{
+      const campaign=this.getAlienCampaign(userId);
+      if(level>campaign.nextLevel)return {error:"Defeat the previous alien base level first."};
+      if(campaign.remaining<=0)return {error:"All 20 daily attacks have been used. Reset is at 00:00 UTC."};
+      if(campaign.missions.some(m=>!m.resolved_at))return {error:"Wait for your current alien mission to arrive."};
+      if(!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy))return {error:"Choose an army."};
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      const {playerTypes}=require("../shared/combatEngine");
+      let total=0;
+      for(const [unit,n] of Object.entries(selectedArmy)){
+        if(!playerTypes[unit]||!Number.isSafeInteger(n)||n<0||n>Number(current.army[unit]||0))return {error:"Invalid troop selection."};
+        total+=n;
+      }
+      if(!total)return {error:"Select at least one unit."};
+      const {fight}=require("../shared/combatEngine");
+      // Validate formation before reserving any troops.
+      // Battle is computed at arrival, using the chosen formation and static garrison.
+      const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,n])=>n>0));
+      if(formation){
+        if(!Array.isArray(formation)||formation.length>100)return {error:"Invalid formation."};
+        const tally={};
+        for(const g of formation){
+          if(!g||!playerTypes[g.unit]||!Number.isSafeInteger(g.count)||g.count<=0||!Number.isInteger(g.row)||g.row<1||g.row>4)return {error:"Invalid formation."};
+          tally[g.unit]=(tally[g.unit]||0)+g.count;
+        }
+        if(Object.keys({...selected,...tally}).some(u=>(selected[u]||0)!==(tally[u]||0)))return {error:"Formation does not match selected troops."};
+      }
+      for(const [unit,n] of Object.entries(selected))current.army[unit]-=n;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      const now=Date.now(),arrivesAt=now+60000;
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:formation||null}),now,arrivesAt);
+      return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,remaining:campaign.remaining-1};
+    })();
+  }
+
+  resolveAlienMissions(userId) {
+    return db.transaction(()=>{
+      const due=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(userId,Date.now());
+      for(const mission of due){
+        const armyData=JSON.parse(mission.army);
+        const {fight}=require("../shared/combatEngine");
+        const result=fight(armyData.units,this.getAlienArmy(mission.level),armyData.formation);
+        const current=this.syncGame(userId);
+        for(const [unit,n] of Object.entries(result.survivors))current.army[unit]=(current.army[unit]||0)+n;
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+        if(result.victory){
+          db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
+          db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
+          db.prepare("UPDATE alien_rewards SET victories=victories+1,knight_level=1+CAST((victories+1)/20 AS INTEGER) WHERE user_id=?").run(userId);
+          const rewardType=["equipment","crafting","resources","army"][(mission.id-1)%4];
+          if(rewardType==="equipment"){
+            const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
+            const slot=slots[(mission.id-1)%slots.length];
+            const bonusCount=mission.level===20?5:Math.min(4,1+Math.floor(mission.level/5));
+            const item={id:"alien-"+mission.id,name:"Alien "+slot,slot,rarity:mission.level===20?"Legendary":mission.level>=10?"Rare":"Common",level:0,stats:[],bonusSlots:bonusCount,obtainedFrom:"Alien Base "+mission.level};
+            const old=this.getUserEquipment(userId);
+            this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
+            result.reward={type:"equipment",item};
+          }else if(rewardType==="crafting"){
+            const old=this.getUserEquipment(userId);
+            const points={...(old?.craftingPoints||{})};
+            points.Universal=(Number(points.Universal)||0)+20;
+            this.saveUserEquipment(userId,old?.equippedItems||{},old?.gearInventory||[],points);
+            result.reward={type:"crafting",amount:20};
+          }else if(rewardType==="resources"){
+            const amount=mission.level*750;
+            for(const key of ["Gold","Iron","Water","Solar"])this.addInventoryReward(userId,"resources",key,amount);
+            result.reward={type:"resources",amount};
+          }else{
+            const amount=10*mission.level;
+            this.addInventoryReward(userId,"army","Explorer Trooper",amount);
+            result.reward={type:"army",unit:"Explorer Trooper",amount};
+          }
+        }
+        db.prepare("UPDATE alien_missions SET resolved_at=?,result=? WHERE id=?").run(Date.now(),JSON.stringify(result),mission.id);
+      }
+      return due.length;
+    })();
+  }
+
+  claimAlienSideQuest(userId,milestone){
+    if(![1,5,10,15,20].includes(milestone))return {error:"Invalid side quest."};
+    return db.transaction(()=>{
+      const highest=db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId)?.highest_defeated||0;
+      if(highest<milestone)return {error:"Defeat the required alien base first."};
+      const insert=db.prepare("INSERT OR IGNORE INTO alien_side_quests(user_id,milestone) VALUES (?,?)").run(userId,milestone);
+      if(!insert.changes)return {error:"Side quest already claimed."};
+      const amount=milestone*1000;
+      for(const name of ["Gold","Iron","Water","Solar"])this.addInventoryReward(userId,"resources",name,amount);
+      return {milestone,amount};
     })();
   }
 
