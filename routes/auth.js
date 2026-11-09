@@ -156,6 +156,7 @@ router.post("/wheel/spin",requireSession,(req,res)=>{
     res.json(result);
   }catch(e){console.error(e);res.status(500).json({message:"Spin unavailable."});}
 });
+router.get("/rankings/:userId",requireSession,(req,res)=>{try{res.json(db.rankings(Number(req.params.userId)));}catch(e){console.error("Rankings:",e);res.status(500).json({message:"Rankings unavailable."});}});
 router.get("/alliance/:userId",requireSession,(req,res)=>{
   try{res.json(db.allianceState(Number(req.params.userId)));}catch(e){console.error(e);res.status(500).json({message:"Alliance unavailable."});}
 });
