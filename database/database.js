@@ -355,7 +355,7 @@ class DatabaseManager {
         castle: JSON.parse(row.castle_data), resources, structures, army,
         buildingJob, queuedBuildingJob, trainingJob, unitUpgrades: JSON.parse(state.unit_upgrades),
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
-        productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Number(structures[name] || 0) * 0.1])),
+        productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * 10) / 100])),
         serverTime: now
       };
     })();
@@ -424,6 +424,7 @@ class DatabaseManager {
       for (const resource of Object.keys(price)) current.resources[resource] -= price[resource];
       values[stat]++;
       upgrades[unit] = values;
+      this.awardPlayerXp(userId, Math.max(1, Math.floor(Object.values(price).reduce((sum, value) => sum + Number(value || 0), 0) / 10)));
       db.prepare("UPDATE game_runtime SET unit_upgrades=? WHERE user_id=?").run(JSON.stringify(upgrades), userId);
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources), userId);
       return { ...current, unitUpgrades: upgrades };
