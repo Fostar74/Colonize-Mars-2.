@@ -1,12 +1,12 @@
 import React,{useEffect,useState,useCallback} from "react";
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
-const userId=sessionStorage.getItem("userId");
+const getUserId=()=>sessionStorage.getItem("userId");
 const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 export default function AlliancePanel(){
  const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[tab,setTab]=useState("members");
- const refresh=useCallback(async()=>{try{if(!userId||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(userId),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
+ const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
- const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId,...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
+ const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  return <div style={{color:"#eef6ff",padding:15,minWidth:300}}>
   <h2>Alliance Command</h2><p>Help clanmates build faster and earn 1 wheel token per successful help.</p>
   {message&&<p role="status">{message}</p>}
@@ -25,14 +25,14 @@ export default function AlliancePanel(){
     <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",textAlign:"left"}}>
      <thead><tr><th>Player</th><th>Role</th><th>Actions</th></tr></thead>
      <tbody>{(state.members||[]).map(m=><tr key={m.id} style={{borderTop:"1px solid #416177"}}>
-      <td style={{padding:8}}>{m.username}{String(m.id)===String(userId)?" (You)":""}</td>
+      <td style={{padding:8}}>{m.username}{String(m.id)===String(getUserId())?" (You)":""}</td>
       <td>{m.role}</td>
       <td style={{padding:8}}>
        {state.alliance.role==="Leader"&&m.role!=="Leader"&&<><select aria-label={"Role for "+m.username} value={m.role} onChange={e=>action("role",{targetId:m.id,role:e.target.value})} disabled={busy}>
         {["Member","Co-Leader","Treasurer","Diplomat","General","Strategist"].map(role=><option key={role}>{role}</option>)}
        </select> <button disabled={busy} onClick={()=>{if(window.confirm("Transfer leadership to "+m.username+"?"))action("transfer",{targetId:m.id});}}>Transfer Leader</button> </>}
-       {String(m.id)===String(userId)&&m.role!=="Leader"&&<button disabled={busy} onClick={()=>{if(window.confirm("Leave this alliance?"))action("leave",{targetId:m.id});}}>Leave</button>}
-       {String(m.id)!==String(userId)&&m.role!=="Leader"&&["Leader","Co-Leader"].includes(state.alliance.role)&&<button disabled={busy} onClick={()=>{if(window.confirm("Remove "+m.username+"?"))action("leave",{targetId:m.id});}}>Remove</button>}
+       {String(m.id)===String(getUserId())&&m.role!=="Leader"&&<button disabled={busy} onClick={()=>{if(window.confirm("Leave this alliance?"))action("leave",{targetId:m.id});}}>Leave</button>}
+       {String(m.id)!==String(getUserId())&&m.role!=="Leader"&&["Leader","Co-Leader"].includes(state.alliance.role)&&<button disabled={busy} onClick={()=>{if(window.confirm("Remove "+m.username+"?"))action("leave",{targetId:m.id});}}>Remove</button>}
       </td>
      </tr>)}</tbody>
     </table></div>
@@ -51,7 +51,7 @@ export default function AlliancePanel(){
    {(state.requests||[]).map(h=><div key={h.id} style={{padding:12,border:"1px solid #47758e",borderRadius:8,marginBottom:8}}>
     <strong>{h.username}</strong> · {h.building_name} Lv {h.building_level}
     <p>Reduce remaining time by 1 minute or 1%, whichever is greater.</p>
-    <button disabled={busy||h.helped||String(h.requester_id)===String(userId)} onClick={()=>action("help",{requestId:h.id})}>{h.helped?"Already helped":String(h.requester_id)===String(userId)?"Your construction":"Help · Earn 1 Token"}</button>
+    <button disabled={busy||h.helped||String(h.requester_id)===String(getUserId())} onClick={()=>action("help",{requestId:h.id})}>{h.helped?"Already helped":String(h.requester_id)===String(getUserId())?"Your construction":"Help · Earn 1 Token"}</button>
    </div>)}
    </div>}
   </div>}
