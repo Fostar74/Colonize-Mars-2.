@@ -15,8 +15,8 @@ export default function ActivityWheel(){
    const d=await r.json();if(!r.ok)throw Error(d.message||"Spin failed");
    setServerOffset(Number(d.wheel.serverTime||Date.now())-Date.now());setState(d.wheel);
    // The wheel rotates clockwise; the prize center stops at the 12 o'clock pointer.
-   setRotation(old=>old+1800+((12-d.index)%12)*30-(old%360));
-   setTimeout(()=>{setLast(d.prize);setNotice("You won: "+d.prize.label+"! Reward sent to Inventory.");setBusy(false);window.dispatchEvent(new Event("game-progress-updated"));},4200);
+   setRotation(old=>old+1800+((360-(d.index*30+15))%360)-(old%360));
+   setLast(d.prize);setNotice("Prize awarded: "+d.prize.label+". "+(d.prize.kind==="equipment"?"Find it in Cyber Knight equipment.":d.prize.kind==="crafting"?"Universal forging points added to Cyber Knight.":"Check the matching Inventory tab."));setTimeout(()=>{setBusy(false);window.dispatchEvent(new Event("game-progress-updated"));},4200);
   }catch(e){setNotice("Spin error: "+e.message);setBusy(false);refresh();}
  };
  const remaining=state?Math.max(0,(state.freeAvailableAt||0)-(now+serverOffset)):0;
@@ -45,6 +45,12 @@ export default function ActivityWheel(){
    </div>
   </div>
   {notice&&<p role="status" style={{padding:12,background:"#173b4e",borderRadius:8}}>{notice}</p>}
-  {last&&<p><strong>Collected:</strong> {last.label}</p>}
+  {last&&<div role="status" style={{padding:16,border:"2px solid #75c8a4",borderRadius:10,background:"#133d3a",fontSize:19,textAlign:"center"}}><strong>🎉 YOU WON: {last.label}</strong><div style={{fontSize:13,marginTop:6}}>Reward confirmed by the server.</div></div>}
+  {!!state?.recent?.length&&<div style={{marginTop:16,padding:12,background:"#172f44",borderRadius:8}}>
+    <strong>Recent prizes (saved on server)</strong>
+    {state.recent.map((spin,i)=><div key={spin.spun_at+"-"+i} style={{fontSize:13,padding:"5px 0",borderBottom:"1px solid #3b5264"}}>
+      {new Date(spin.spun_at).toLocaleString()} · {state.prizes?.[spin.reward_id]?.label||"Prize"} · {spin.free?"Free":"50 tokens"}
+    </div>)}
+  </div>}
  </div>;
 }
