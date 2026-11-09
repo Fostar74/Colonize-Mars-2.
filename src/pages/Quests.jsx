@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from "react";
 import "./Quests.css";
+import ActivityWheel from "./ActivityWheel";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
@@ -106,7 +107,7 @@ const Quests = () => {
             !m.available ? "Feature under development" :
             m.completed ? "Completed — collect your reward" :
             m.progress + " / " + m.target}</div>
-          <div className="quest-rewards">Reward: {m.reward.toLocaleString()} each — Gold, Iron, Water, Solar</div>
+          <div className="quest-rewards">Reward: {m.reward.toLocaleString()} each — Gold, Iron, Water, Solar + 100 Wheel Tokens</div>
           {m.claimed ? <button disabled>Reward claimed</button> :
             !m.unlocked || !m.available ? <button disabled>{m.unlocked?"Coming soon":"Locked"}</button> :
             m.completed ? <button disabled={claimBusy} onClick={()=>claimTutorial(m.id)}>Claim reward</button> :
@@ -144,16 +145,7 @@ const Quests = () => {
     </div>
   );
 
-  const renderActivityRewards = () => (
-    <div className="quest-section">
-      <h3>Activity Rewards</h3>
-      <div className="wheel-placeholder">
-        <p>🎯 Free spin every 2 hours or spend tokens to spin again.</p>
-        <button disabled>Spin Wheel</button>
-        <div className="tokens-count">Tokens: 0</div>
-      </div>
-    </div>
-  );
+  const renderActivityRewards = () => <ActivityWheel />;
 
   const claimLoginReward = async () => {
     setLoginBusy(true); setLoginMessage("");
