@@ -87,7 +87,7 @@ const Quests = () => {
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.message || "Cannot claim reward");
-      sessionStorage.setItem("resources",JSON.stringify(data.resources));
+      // Rewards now go to Inventory; leave the base resource balance unchanged.
       window.dispatchEvent(new Event("game-progress-updated"));
       await refresh();
     } catch(error) { setClaimError(error.message); }
