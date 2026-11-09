@@ -41,6 +41,8 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
     group.attack*=1+(Number(categoryBonus)||0)/100;
     group.hp*=1+((Number(bonuses.allHealth)||0)+(group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
   }
+  const dodgeChance=Math.max(0,Math.min(0.15,(Number(bonuses.dodge)||0)/100));
+  const reviveRate=Math.max(0,Math.min(0.15,(Number(bonuses.revive)||0)/100));
   const report=[];let rounds=0;
   const alive=side=>side.some(g=>g.count>0);
   while(alive(sides[0])&&alive(sides[1])&&rounds<80){
@@ -59,12 +61,26 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
       }
       const hits=new Map();
       for(const shot of shots){
-        hits.set(shot.target,(hits.get(shot.target)||0)+shot.damage);
+        // Evasion applies to incoming alien volleys only. The target group
+        // dodges the volley, not an arbitrary percentage of its casualties.
+        shot.dodged=shot.side===1&&Math.random()<dodgeChance;
+        if(!shot.dodged)hits.set(shot.target,(hits.get(shot.target)||0)+shot.damage);
       }
       for(const [target,damage] of hits){
         target.count=Math.max(0,target.count-Math.min(target.count,Math.floor(damage/target.hp)));
       }
-      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:Math.round(shot.damage),kills:Math.min(shot.target.original,Math.floor(shot.damage/shot.target.hp))});
+      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:shot.dodged?0:Math.min(shot.target.original,Math.floor(shot.damage/shot.target.hp))});
+    }
+    // Restore a percentage of casualties at the end of each round, capped
+    // at the original deployed group size. Fractions accumulate per group.
+    if(reviveRate>0){
+      for(const group of sides[0]){
+        const missing=group.original-group.count;
+        if(missing<=0)continue;
+        group.reviveCarry=(group.reviveCarry||0)+missing*reviveRate;
+        const restored=Math.min(missing,Math.floor(group.reviveCarry+1e-9));
+        if(restored>0){group.count+=restored;group.reviveCarry-=restored;round.events.push({phase:4,attacker:"Nano Regeneration",unit:group.unit,restored});}
+      }
     }
     // Shift only when the frontmost occupied row is eliminated.
     for(const side of sides){
