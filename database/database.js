@@ -433,9 +433,30 @@ class DatabaseManager {
     })();
   }
 
+  getAlienArmy(level) {
+    if (!Number.isInteger(level) || level < 1 || level > 20) return null;
+    const roster = [
+      ["Alien Scout",1,0],["Xeno Warrior",3,0],["Spore Archer",5,0],
+      ["Plasma Stalker",8,0],["War Drone",11,0],["Siege Behemoth",15,0],
+      ["Praetorian Guard",18,0]
+    ];
+    const base = Math.round(5 * Math.pow(1.36,level-1));
+    const army = {};
+    for (const [name,unlock] of roster) {
+      if(level<unlock) continue;
+      const weight = name==="Alien Scout"?.45:name==="Xeno Warrior"?.3:name==="Spore Archer"?.2:name==="Plasma Stalker"?.14:name==="War Drone"?.1:name==="Siege Behemoth"?.06:.04;
+      const unlockedScale=Math.max(0.35,1-(unlock-1)*.035);
+      army[name]=Math.max(1,Math.round(base*weight*unlockedScale));
+    }
+    if(level===20) army["Alien Overlord"]=1;
+    return army;
+  }
+
   getAlienCampaign(userId) {
     const row = db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
-    return { highestDefeated: row ? row.highest_defeated : 0, nextLevel: Math.min(20,(row ? row.highest_defeated : 0)+1) };
+    const highestDefeated=row ? row.highest_defeated : 0;
+    const nextLevel=Math.min(20,highestDefeated+1);
+    return {highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel)};
   }
 
   attackAlienBase(userId, level) {
@@ -447,14 +468,15 @@ class DatabaseManager {
       const current = this.syncGame(userId);
       if (!current) return {error:"Player progress not found."};
       const strength = Object.values(current.army).reduce((sum,n)=>sum+Number(n||0),0);
-      const required = level * 5;
-      if (strength < required) return {error:"Not enough soldiers. Required army size: "+required};
+      const defenders=this.getAlienArmy(level);
+      const required=Object.values(defenders).reduce((sum,n)=>sum+n,0);
+      if(strength<required) return {error:"Not enough soldiers. Alien defenders: "+required,defenders};
       db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=excluded.highest_defeated").run(userId,level);
       const resources={...current.resources};
       const reward=level*750;
-      for (const key of ["Gold","Iron","Water","Solar"]) resources[key]+=reward;
+      for(const key of ["Gold","Iron","Water","Solar"]) resources[key]+=reward;
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(resources),userId);
-      return {level,highestDefeated:level,nextLevel:Math.min(20,level+1),reward,resources};
+      return {level,highestDefeated:level,nextLevel:Math.min(20,level+1),reward,resources,defenders,nextDefenders:level<20?this.getAlienArmy(level+1):null};
     })();
   }
 
