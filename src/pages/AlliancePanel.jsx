@@ -51,7 +51,8 @@ export default function AlliancePanel(){
     <strong>{h.username}</strong> · {h.building_name} Lv {h.building_level}
     <p>Reduce remaining time by 1 minute or 1%, whichever is greater.</p>
     <button disabled={busy||h.helped||String(h.requester_id)===String(userId)} onClick={()=>action("help",{requestId:h.id})}>{h.helped?"Already helped":String(h.requester_id)===String(userId)?"Your construction":"Help · Earn 1 Token"}</button>
-   </div></div>}
+   </div>)}
+   </div>}
   </div>}
  </div>;
 }
