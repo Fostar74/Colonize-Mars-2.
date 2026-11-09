@@ -437,11 +437,10 @@ class DatabaseManager {
       if (current.questClaimed) return { error: "Reward already claimed." };
       if (!["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"].every(name => Number(current.structures[name] || 0) >= 3))
         return { error: "Quest is not complete." };
-      for (const key of ["Gold", "Iron", "Water", "Solar"]) current.resources[key] += 3000;
+      for (const key of ["Gold", "Iron", "Water", "Solar"]) this.addInventoryReward(userId,"resources",key,3000);
       db.prepare("UPDATE game_runtime SET quest_claimed=1 WHERE user_id=?").run(userId);
       this.creditTokens(userId,100);
-      db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources), userId);
-      return { ...current, questClaimed: true };
+      return { ...current, questClaimed: true, inventory: this.getInventory(userId) };
     })();
   }
 
@@ -454,12 +453,10 @@ class DatabaseManager {
       if (Number(current.structures["Training Center"] || 0) < 1 ||
           Object.values(current.army).reduce((sum, count) => sum + Number(count || 0), 0) < 10)
         return { error: "Build a Training Center and train 10 soldiers." };
-      for (const key of ["Gold", "Iron", "Water", "Solar"]) current.resources[key] += 5000;
+      for (const key of ["Gold", "Iron", "Water", "Solar"]) this.addInventoryReward(userId,"resources",key,5000);
       db.prepare("UPDATE game_runtime SET quest2_claimed=1 WHERE user_id=?").run(userId);
       this.creditTokens(userId,100);
-      db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
-        .run(JSON.stringify(current.resources), userId);
-      return { ...current, quest2Claimed: true };
+      return { ...current, quest2Claimed: true, inventory: this.getInventory(userId) };
     })();
   }
 
