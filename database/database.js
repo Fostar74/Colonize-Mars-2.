@@ -109,6 +109,8 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_applications (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), applied_at INTEGER NOT NULL, PRIMARY KEY(user_id,alliance_id))");
+    try { db.exec("ALTER TABLE alliance_members ADD COLUMN role TEXT NOT NULL DEFAULT 'Member'"); } catch(e) { if(!String(e.message).includes("duplicate column"))throw e; }
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help (id INTEGER PRIMARY KEY AUTOINCREMENT, requester_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, requested_at INTEGER NOT NULL, job_ends_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_clicks (request_id INTEGER NOT NULL REFERENCES alliance_help(id), helper_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY(request_id,helper_id))");
     console.log("Database initialized successfully");
@@ -552,14 +554,15 @@ class DatabaseManager {
   }
 
   allianceState(userId){
-    const membership=db.prepare("SELECT a.id,a.name,a.leader_id FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
+    const membership=db.prepare("SELECT a.id,a.name,a.leader_id,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
     if(!membership)return {alliance:null,requests:[]};
-    const members=db.prepare("SELECT u.id,u.username FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=?").all(membership.id);
+    const members=db.prepare("SELECT u.id,u.username,m.role FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=? ORDER BY CASE WHEN m.role='Leader' THEN 0 WHEN m.role='Co-Leader' THEN 1 ELSE 2 END,u.username").all(membership.id);
+    const applications=db.prepare("SELECT u.id,u.username,a.applied_at FROM alliance_applications a JOIN users u ON u.id=a.user_id WHERE a.alliance_id=? ORDER BY a.applied_at").all(membership.id);
     const requests=db.prepare("SELECT h.id,h.requester_id,h.building_name,h.building_level,h.requested_at,u.username FROM alliance_help h JOIN users u ON u.id=h.requester_id WHERE h.alliance_id=? ORDER BY h.id DESC LIMIT 30").all(membership.id).filter(h=>{
       const job=this.syncGame(h.requester_id)?.buildingJob;
-      return job&&job.name===h.building_name&&job.level===h.building_level&&job.endsAt> Date.now();
+      return job&&job.name===h.building_name&&job.level===h.building_level&&job.endsAt>Date.now();
     }).map(h=>({...h,helped:!!db.prepare("SELECT 1 FROM alliance_help_clicks WHERE request_id=? AND helper_id=?").get(h.id,userId)}));
-    return {alliance:membership,members,requests};
+    return {alliance:membership,members,applications,requests};
   }
   createAlliance(userId,name){
     if(typeof name!=="string"||name.trim().length<3||name.trim().length>32)return {error:"Alliance name must be 3–32 characters."};
@@ -567,7 +570,8 @@ class DatabaseManager {
       if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(userId))return {error:"Leave your current alliance first."};
       if(db.prepare("SELECT 1 FROM alliances WHERE name=? COLLATE NOCASE").get(name.trim()))return {error:"Alliance name already exists."};
       const id=db.prepare("INSERT INTO alliances(name,leader_id) VALUES (?,?)").run(name.trim(),userId).lastInsertRowid;
-      db.prepare("INSERT INTO alliance_members(user_id,alliance_id) VALUES (?,?)").run(userId,id);
+      db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Leader')").run(userId,id);
+      db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(userId);
       return this.allianceState(userId);
     })();
   }
@@ -577,7 +581,56 @@ class DatabaseManager {
       if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(userId))return {error:"Already in an alliance."};
       const a=db.prepare("SELECT id FROM alliances WHERE name=? COLLATE NOCASE").get(name.trim());
       if(!a)return {error:"Alliance not found."};
-      db.prepare("INSERT INTO alliance_members(user_id,alliance_id) VALUES (?,?)").run(userId,a.id);
+      db.prepare("INSERT OR IGNORE INTO alliance_applications(user_id,alliance_id,applied_at) VALUES (?,?,?)").run(userId,a.id,Date.now());
+      return {applied:true,message:"Application sent. Wait for alliance leadership to accept."};
+    })();
+  }
+  allianceApplication(userId,applicantId,accept){
+    return db.transaction(()=>{
+      const officer=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      if(!officer||!["Leader","Co-Leader","Diplomat"].includes(officer.role))return {error:"You cannot process applications."};
+      const application=db.prepare("SELECT 1 FROM alliance_applications WHERE user_id=? AND alliance_id=?").get(applicantId,officer.alliance_id);
+      if(!application)return {error:"Application not found."};
+      if(accept){
+        if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(applicantId))return {error:"Applicant is already in an alliance."};
+        db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Member')").run(applicantId,officer.alliance_id);
+        db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(applicantId);
+      }else db.prepare("DELETE FROM alliance_applications WHERE user_id=? AND alliance_id=?").run(applicantId,officer.alliance_id);
+      return this.allianceState(userId);
+    })();
+  }
+  allianceRole(userId,targetId,role){
+    const allowed=["Member","Co-Leader","Treasurer","Diplomat","General","Strategist"];
+    if(!allowed.includes(role))return {error:"Invalid alliance role."};
+    return db.transaction(()=>{
+      const officer=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      const target=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(targetId);
+      if(!officer||!target||officer.alliance_id!==target.alliance_id||officer.role!=="Leader"||target.role==="Leader")return {error:"Only the leader can assign member roles."};
+      if(role!=="Member"&&db.prepare("SELECT 1 FROM alliance_members WHERE alliance_id=? AND role=? AND user_id<>?").get(officer.alliance_id,role,targetId))return {error:"This role is already assigned."};
+      db.prepare("UPDATE alliance_members SET role=? WHERE user_id=?").run(role,targetId);
+      return this.allianceState(userId);
+    })();
+  }
+  allianceLeave(userId,targetId){
+    return db.transaction(()=>{
+      const actor=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      const target=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(targetId);
+      if(!actor||!target||actor.alliance_id!==target.alliance_id)return {error:"Player is not in your alliance."};
+      if(userId!==targetId&&!["Leader","Co-Leader"].includes(actor.role))return {error:"Insufficient permission to remove member."};
+      if(target.role==="Leader")return {error:"Transfer leadership before the leader can leave."};
+      if(target.role==="Co-Leader"&&actor.role!=="Leader"&&userId!==targetId)return {error:"Only leader can remove co-leader."};
+      db.prepare("DELETE FROM alliance_members WHERE user_id=?").run(targetId);
+      return {success:true};
+    })();
+  }
+  allianceTransfer(userId,targetId){
+    return db.transaction(()=>{
+      const actor=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      const target=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(targetId);
+      if(!actor||actor.role!=="Leader"||!target||target.alliance_id!==actor.alliance_id||targetId===userId)return {error:"Leadership transfer not allowed."};
+      db.prepare("UPDATE alliance_members SET role='Member' WHERE user_id=?").run(userId);
+      db.prepare("UPDATE alliance_members SET role='Leader' WHERE user_id=?").run(targetId);
+      db.prepare("UPDATE alliances SET leader_id=? WHERE id=?").run(targetId,actor.alliance_id);
       return this.allianceState(userId);
     })();
   }
