@@ -139,6 +139,33 @@ router.post("/upgrade-unit", requireSession, (req, res) => {
   } catch (error) { console.error("Upgrade unit:", error); res.status(500).json({ message: "Upgrade failed." }); }
 });
 
+router.get("/wheel/:userId",requireSession,(req,res)=>{
+  try{res.json(db.getWheel(Number(req.params.userId)));}catch(e){console.error(e);res.status(500).json({message:"Wheel unavailable."});}
+});
+router.post("/wheel/spin",requireSession,(req,res)=>{
+  try{
+    if(typeof req.body.paid!=="boolean")return res.status(400).json({message:"Choose free or token spin."});
+    const result=db.spinWheel(Number(req.body.userId),req.body.paid);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(e){console.error(e);res.status(500).json({message:"Spin unavailable."});}
+});
+router.get("/alliance/:userId",requireSession,(req,res)=>{
+  try{res.json(db.allianceState(Number(req.params.userId)));}catch(e){console.error(e);res.status(500).json({message:"Alliance unavailable."});}
+});
+router.post("/alliance/create",requireSession,(req,res)=>{
+  try{const result=db.createAlliance(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot create alliance."});}
+});
+router.post("/alliance/join",requireSession,(req,res)=>{
+  try{const result=db.joinAlliance(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot join alliance."});}
+});
+router.post("/alliance/request-help",requireSession,(req,res)=>{
+  try{const result=db.requestAllianceHelp(Number(req.body.userId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
+});
+router.post("/alliance/help",requireSession,(req,res)=>{
+  try{const result=db.helpAlliance(Number(req.body.userId),Number(req.body.requestId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot help construction."});}
+});
+
 router.get("/inventory/:userId",requireSession,(req,res)=>{
   try {res.json(db.getInventory(Number(req.params.userId)));} catch(e){console.error(e);res.status(500).json({message:"Inventory unavailable."});}
 });
