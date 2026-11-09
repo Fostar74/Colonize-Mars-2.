@@ -509,7 +509,7 @@ class DatabaseManager {
       {label:"Railgunner × 15",kind:"army",name:"Railgunner",amount:15},
       {label:"Rover Scout × 10",kind:"army",name:"Rover Scout",amount:10},
       {label:"Universal Forge × 20",kind:"crafting",amount:20},
-      {label:"Cyber Knight Gear",kind:"equipment"},
+      {label:"Water × 15,000",kind:"resources",name:"Water",amount:15000},
       {label:"Gold × 15,000",kind:"resources",name:"Gold",amount:15000}
     ];
   }
