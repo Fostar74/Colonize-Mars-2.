@@ -107,6 +107,9 @@ const Quests = () => {
             !m.available ? "Feature under development" :
             m.completed ? "Completed — collect your reward" :
             m.progress + " / " + m.target}</div>
+          {m.kind==="mines" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
+            {productionBuildings.map(name => {const level=Number(structures[name]?.level ?? structures[name] ?? 0);return <div key={name}>{level>=m.target?"✓ ":"○ "}{name}: Level {level} / {m.target}</div>;})}
+          </div>}
           <div className="quest-rewards">Reward: {m.reward.toLocaleString()} each — Gold, Iron, Water, Solar + 100 Wheel Tokens</div>
           {m.claimed ? <button disabled>Reward claimed</button> :
             !m.unlocked || !m.available ? <button disabled>{m.unlocked?"Coming soon":"Locked"}</button> :
