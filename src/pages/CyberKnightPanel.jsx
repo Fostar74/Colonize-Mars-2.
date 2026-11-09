@@ -6,7 +6,7 @@ import GameProgressManager from "../utils/gameProgress";
 function CyberKnightPanel({ onClose }) {
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [equippedItems, setEquippedItems] = useState({});
-  const [rarityTab, setRarityTab] = useState("Epic");
+  const [rarityTab, setRarityTab] = useState("Common");
   const [activeModal, setActiveModal] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
@@ -67,23 +67,19 @@ function CyberKnightPanel({ onClose }) {
     }
   };
 
-  useEffect(() => {
-    if (!isLoading) {
-      saveEquipmentData();
-    }
-  }, [equippedItems, isLoading]);
+
 
   const handleSlotClick = (slotName) => {
     setSelectedSlot(slotName);
-    setRarityTab("Epic");
+    setRarityTab("Common");
   };
 
-  const handleEquip = (slot, item) => {
+  const handleEquip = async (slot, item) => {
     if ((item.slot || item.type || "").toUpperCase() !== slot) return;
-    setEquippedItems((prev) => ({
-      ...prev,
-      [slot]: item,
-    }));
+    const nextEquipped = {...equippedItems,[slot]:item};
+    const saved=await progressManager.saveEquipment(nextEquipped,inventory,craftingPoints);
+    if(!saved){alert("Could not save equipment. Please retry.");return;}
+    setEquippedItems(nextEquipped);
     setActiveModal(null);
     setSelectedItem(null);
   };
@@ -109,6 +105,7 @@ function CyberKnightPanel({ onClose }) {
             {imageFailed ? <div role="img" aria-label="Cyber Knight" style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",minHeight:280,color:"#00f0ff",fontSize:22}}>CYBER KNIGHT</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
           </div>
 
+          <div style={{padding:"10px 14px",color:"#e7f8ff",background:"#142e43",borderRadius:8,marginBottom:12}}><strong>Gear Inventory: {inventory.length} item(s)</strong><div style={{fontSize:12}}>Click a gear slot below. Wheel prizes are Common rarity unless otherwise stated.</div>{inventory.slice(-5).map(item=><div key={item.id||item.name} style={{fontSize:12}}>{item.name} · {item.slot} · {item.rarity}</div>)}</div>
           <div className="equipment-slots">
             {gearSlots.map((slot) => (
               <div key={slot} className="gear-slot-wrapper">
@@ -144,6 +141,7 @@ function CyberKnightPanel({ onClose }) {
           </div>
 
           <div className="item-grid">
+            {!itemsForSlot.length&&<p style={{color:"#d6e7f0"}}>No {rarityTab} items for {selectedSlot}. Try another rarity or check Gear Inventory above.</p>}
             {itemsForSlot.map((item, index) => (
                 <div key={index} className="item-card">
                   <h4>{item.name}</h4>
