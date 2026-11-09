@@ -98,6 +98,10 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS tutorial_claims (user_id INTEGER NOT NULL REFERENCES users(id), mission_id INTEGER NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, mission_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alien_campaign (user_id INTEGER PRIMARY KEY REFERENCES users(id), highest_defeated INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS daily_login_claims (user_id INTEGER NOT NULL REFERENCES users(id), day INTEGER NOT NULL CHECK(day BETWEEN 1 AND 30), claimed_date TEXT NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, day), UNIQUE(user_id, claimed_date))");
+    db.exec("CREATE TABLE IF NOT EXISTS inventory_reserves (user_id INTEGER PRIMARY KEY REFERENCES users(id), resources TEXT NOT NULL, army TEXT NOT NULL)");
+    db.exec("CREATE TABLE IF NOT EXISTS alien_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, army TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, result TEXT)");
+    db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
+    db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);
@@ -433,6 +437,39 @@ class DatabaseManager {
     })();
   }
 
+  getInventory(userId) {
+    db.prepare("INSERT OR IGNORE INTO inventory_reserves(user_id,resources,army) VALUES (?,?,?)").run(userId,JSON.stringify({Gold:10000,Iron:10000,Water:10000,Solar:10000}),"{}");
+    const row=db.prepare("SELECT resources,army FROM inventory_reserves WHERE user_id=?").get(userId);
+    return {resources:JSON.parse(row.resources),army:JSON.parse(row.army)};
+  }
+
+  withdrawInventory(userId,kind,name,amount) {
+    if(!["resources","army"].includes(kind)||!Number.isSafeInteger(amount)||amount<=0) return {error:"Invalid withdrawal."};
+    if(kind==="resources"&&!["Gold","Iron","Water","Solar"].includes(name)) return {error:"Invalid resource."};
+    if(kind==="army"&&!unitPrice(name)) return {error:"Invalid unit."};
+    return db.transaction(()=>{
+      const reserve=this.getInventory(userId),progress=this.syncGame(userId);
+      if(!progress) return {error:"Player not found."};
+      if((reserve[kind][name]||0)<amount) return {error:"Insufficient inventory reserve."};
+      reserve[kind][name]-=amount;
+      if(kind==="resources"){
+        progress.resources[name]=(progress.resources[name]||0)+amount;
+        db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
+      } else {
+        progress.army[name]=(progress.army[name]||0)+amount;
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),userId);
+      }
+      db.prepare("UPDATE inventory_reserves SET resources=?,army=? WHERE user_id=?").run(JSON.stringify(reserve.resources),JSON.stringify(reserve.army),userId);
+      return {inventory:reserve,resources:progress.resources,army:progress.army};
+    })();
+  }
+
+  addInventoryReward(userId,kind,name,amount) {
+    const reserve=this.getInventory(userId);
+    reserve[kind][name]=(reserve[kind][name]||0)+amount;
+    db.prepare("UPDATE inventory_reserves SET resources=?,army=? WHERE user_id=?").run(JSON.stringify(reserve.resources),JSON.stringify(reserve.army),userId);
+  }
+
   getAlienArmy(level) {
     if (!Number.isInteger(level) || level < 1 || level > 20) return null;
     // Fixed garrisons adapted from the level 1–20 bandit-camp progression.
@@ -542,13 +579,9 @@ class DatabaseManager {
       const today=new Date().toISOString().slice(0,10);
       db.prepare("INSERT INTO daily_login_claims(user_id,day,claimed_date) VALUES (?,?,?)").run(userId,day,today);
       if (reward.type==="resources") {
-        const resources={...progress.resources};
-        for(const key of ["Gold","Iron","Water","Solar"]) resources[key]=(Number(resources[key])||0)+reward.amount;
-        db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(resources),userId);
+        for(const key of ["Gold","Iron","Water","Solar"]) this.addInventoryReward(userId,"resources",key,reward.amount);
       } else if(reward.type==="army") {
-        const army={...progress.army};
-        army[reward.label]=(Number(army[reward.label])||0)+reward.amount;
-        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(army),userId);
+        this.addInventoryReward(userId,"army",reward.label,reward.amount);
       } else {
         const existing=this.getUserEquipment(userId);
         const inventory=existing?.gearInventory||[];
