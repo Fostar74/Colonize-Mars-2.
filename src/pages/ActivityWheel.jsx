@@ -7,12 +7,12 @@ const colors=["#194f6c","#2a5773","#1b5c67","#2b657b","#17415c","#315b78","#2547
 export default function ActivityWheel(){
  const [state,setState]=useState(null),[serverOffset,setServerOffset]=useState(0),[now,setNow]=useState(Date.now()),[busy,setBusy]=useState(false),[rotation,setRotation]=useState(0),[notice,setNotice]=useState(""),[last,setLast]=useState(null);
  const refresh=useCallback(async()=>{try{const r=await fetch(api+"/wheel/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});if(!r.ok){const body=await r.json().catch(()=>({}));throw Error(body.message||"Wheel unavailable (HTTP "+r.status+").");}const d=await r.json();setServerOffset(Number(d.serverTime||Date.now())-Date.now());setState(d);}catch(e){setNotice("Wheel status: "+e.message);}},[]);
- useEffect(()=>{refresh();const t=setInterval(()=>{setNow(Date.now());},1000);return()=>clearInterval(t);},[refresh]);
+ useEffect(()=>{refresh();const tick=setInterval(()=>setNow(Date.now()),1000);const sync=setInterval(refresh,30000);const visible=()=>{if(!document.hidden)refresh();};document.addEventListener("visibilitychange",visible);return()=>{clearInterval(tick);clearInterval(sync);document.removeEventListener("visibilitychange",visible);};},[refresh]);
  const spin=async(paid)=>{
   if(busy)return;setBusy(true);setNotice("");setLast(null);
   try{
    const r=await fetch(api+"/wheel/spin",{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),paid})});
-   const d=await r.json();if(!r.ok)throw Error(d.message||"Spin failed");
+   const d=await r.json().catch(()=>({}));if(!r.ok)throw Error(d.message||(r.status===401?"Session expired. Please log in again.":"Spin failed (HTTP "+r.status+")."));
    setServerOffset(Number(d.wheel.serverTime||Date.now())-Date.now());setState(d.wheel);
    // The wheel rotates clockwise; the prize center stops at the 12 o'clock pointer.
    setRotation(old=>old+1800+((360-(d.index*30+15))%360)-(old%360));
@@ -37,7 +37,7 @@ export default function ActivityWheel(){
    </div>
    <div style={{minWidth:205,display:"grid",gap:12}}>
     <div style={{padding:16,background:"#18354b",border:"1px solid #5a8299",borderRadius:10}}><strong>Next free spin</strong><div style={{fontSize:26,fontWeight:800,margin:"8px 0"}}>{clock}</div>
-     <button disabled={busy} onClick={()=>{if(!state)refresh();else spin(false);}} style={{padding:12,background:remaining>0?"#536575":"#218766",color:"white",border:0,borderRadius:7,width:"100%"}}>{busy?"SPINNING…":remaining>0?"🎁 FREE SPIN (cooldown)":"🎁 FREE SPIN"}</button>
+     <button disabled={busy} onClick={()=>spin(false)} style={{padding:12,background:remaining>0?"#536575":"#218766",color:"white",border:0,borderRadius:7,width:"100%"}}>{busy?"SPINNING…":remaining>0?"🎁 FREE SPIN · "+clock:"🎁 FREE SPIN"}</button>
     </div>
     <div style={{padding:16,background:"#18354b",border:"1px solid #5a8299",borderRadius:10}}><strong>Tokens: {state?.tokens??"…"}</strong>
      <button disabled={busy||!state||state.tokens<50} onClick={()=>spin(true)} style={{padding:12,marginTop:12,background:"#62468c",color:"white",border:0,borderRadius:7,width:"100%"}}>🎯 SPIN · 50 TOKENS</button>
