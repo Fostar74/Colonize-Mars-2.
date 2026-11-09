@@ -104,6 +104,12 @@ function initializeDatabase() {
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returned_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returned_at INTEGER");
     db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
+    db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
+    db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
+    db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_help (id INTEGER PRIMARY KEY AUTOINCREMENT, requester_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, requested_at INTEGER NOT NULL, job_ends_at INTEGER NOT NULL)");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_help_clicks (request_id INTEGER NOT NULL REFERENCES alliance_help(id), helper_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY(request_id,helper_id))");
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);
@@ -417,6 +423,7 @@ class DatabaseManager {
         return { error: "Quest is not complete." };
       for (const key of ["Gold", "Iron", "Water", "Solar"]) current.resources[key] += 3000;
       db.prepare("UPDATE game_runtime SET quest_claimed=1 WHERE user_id=?").run(userId);
+      this.creditTokens(userId,100);
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources), userId);
       return { ...current, questClaimed: true };
     })();
@@ -433,9 +440,67 @@ class DatabaseManager {
         return { error: "Build a Training Center and train 10 soldiers." };
       for (const key of ["Gold", "Iron", "Water", "Solar"]) current.resources[key] += 5000;
       db.prepare("UPDATE game_runtime SET quest2_claimed=1 WHERE user_id=?").run(userId);
+      this.creditTokens(userId,100);
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
       return { ...current, quest2Claimed: true };
+    })();
+  }
+
+  getTokens(userId){
+    db.prepare("INSERT OR IGNORE INTO player_tokens(user_id) VALUES (?)").run(userId);
+    return db.prepare("SELECT balance,last_free_spin FROM player_tokens WHERE user_id=?").get(userId);
+  }
+  creditTokens(userId,amount){
+    if(!Number.isSafeInteger(amount)||amount<=0)throw Error("Invalid token reward");
+    this.getTokens(userId);
+    db.prepare("UPDATE player_tokens SET balance=balance+? WHERE user_id=?").run(amount,userId);
+  }
+  wheelPrizes(){
+    return [
+      {label:"Gold × 3,000",kind:"resources",name:"Gold",amount:3000},
+      {label:"Iron × 3,000",kind:"resources",name:"Iron",amount:3000},
+      {label:"Water × 3,000",kind:"resources",name:"Water",amount:3000},
+      {label:"Solar × 3,000",kind:"resources",name:"Solar",amount:3000},
+      {label:"Gold × 7,500",kind:"resources",name:"Gold",amount:7500},
+      {label:"Iron × 7,500",kind:"resources",name:"Iron",amount:7500},
+      {label:"Explorer Trooper × 25",kind:"army",name:"Explorer Trooper",amount:25},
+      {label:"Railgunner × 15",kind:"army",name:"Railgunner",amount:15},
+      {label:"Rover Scout × 10",kind:"army",name:"Rover Scout",amount:10},
+      {label:"Universal Forge × 20",kind:"crafting",amount:20},
+      {label:"Cyber Knight Gear",kind:"equipment"},
+      {label:"Gold × 15,000",kind:"resources",name:"Gold",amount:15000}
+    ];
+  }
+  getWheel(userId){
+    const state=this.getTokens(userId),now=Date.now();
+    return {tokens:state.balance,freeAvailableAt:state.last_free_spin+3600000,freeReady:now>=state.last_free_spin+3600000,serverTime:now,spinCost:50,prizes:this.wheelPrizes(),recent:db.prepare("SELECT spun_at,reward_id,free FROM wheel_spins WHERE user_id=? ORDER BY id DESC LIMIT 8").all(userId)};
+  }
+  spinWheel(userId,paid){
+    return db.transaction(()=>{
+      const state=this.getTokens(userId),now=Date.now();
+      if(paid){
+        if(state.balance<50)return {error:"Not enough tokens (50 required)."};
+        db.prepare("UPDATE player_tokens SET balance=balance-50 WHERE user_id=?").run(userId);
+      }else{
+        if(now-state.last_free_spin<3600000)return {error:"Free spin is not ready yet."};
+        db.prepare("UPDATE player_tokens SET last_free_spin=? WHERE user_id=?").run(now,userId);
+      }
+      const index=require("crypto").randomInt(12),prize=this.wheelPrizes()[index];
+      db.prepare("INSERT INTO wheel_spins(user_id,spun_at,reward_id,free) VALUES (?,?,?,?)").run(userId,now,index,paid?0:1);
+      if(prize.kind==="resources"||prize.kind==="army")this.addInventoryReward(userId,prize.kind,prize.name,prize.amount);
+      if(prize.kind==="crafting"){
+        const gear=this.getUserEquipment(userId);
+        const points={...(gear?.craftingPoints||{})};
+        points.Universal=(Number(points.Universal)||0)+prize.amount;
+        this.saveUserEquipment(userId,gear?.equippedItems||{},gear?.gearInventory||[],points);
+      }
+      if(prize.kind==="equipment"){
+        const gear=this.getUserEquipment(userId),slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"],slot=slots[require("crypto").randomInt(slots.length)];
+        const item={id:"wheel-"+now+"-"+userId,name:"Wheel "+slot,slot,rarity:"Common",level:0,stats:[],obtainedFrom:"Activity Wheel"};
+        this.saveUserEquipment(userId,gear?.equippedItems||{},[...(gear?.gearInventory||[]),item],gear?.craftingPoints||{});
+      }
+      return {index,prize,wheel:this.getWheel(userId)};
     })();
   }
 
@@ -593,6 +658,7 @@ class DatabaseManager {
       if(highest<milestone)return {error:"Defeat the required alien base first."};
       const insert=db.prepare("INSERT OR IGNORE INTO alien_side_quests(user_id,milestone) VALUES (?,?)").run(userId,milestone);
       if(!insert.changes)return {error:"Side quest already claimed."};
+      this.creditTokens(userId,100);
       const amount=milestone*1000;
       for(const name of ["Gold","Iron","Water","Solar"])this.addInventoryReward(userId,"resources",name,amount);
       return {milestone,amount};
@@ -631,6 +697,7 @@ class DatabaseManager {
       if (!mission.unlocked || !mission.completed) return {error:"Mission requirements not completed."};
       const result = db.prepare("INSERT OR IGNORE INTO tutorial_claims(user_id,mission_id) VALUES (?,?)").run(userId,missionId);
       if (!result.changes) return {error:"Reward already claimed."};
+      this.creditTokens(userId,100);
       const resources = {...tutorial.resources};
       for (const key of ["Gold","Iron","Water","Solar"]) resources[key] += mission.reward;
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(resources),userId);
