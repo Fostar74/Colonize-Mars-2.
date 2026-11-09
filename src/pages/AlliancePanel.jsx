@@ -3,14 +3,15 @@ const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost
 const userId=sessionStorage.getItem("userId");
 const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 export default function AlliancePanel(){
- const [state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[tab,setTab]=useState("members");
- const refresh=useCallback(async()=>{try{const r=await fetch(api+"/alliance/"+encodeURIComponent(userId),{headers:headers()});if(!r.ok)throw Error("Cannot load alliance");setState(await r.json());}catch(e){setMessage(e.message);}},[]);
+ const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[tab,setTab]=useState("members");
+ const refresh=useCallback(async()=>{try{if(!userId||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(userId),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
  const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId,...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  return <div style={{color:"#eef6ff",padding:15,minWidth:300}}>
   <h2>Alliance Command</h2><p>Help clanmates build faster and earn 1 wheel token per successful help.</p>
   {message&&<p role="status">{message}</p>}
-  {!state?<p>Loading…</p>:!state.alliance?<div>
+  {loadError&&<div role="alert" style={{padding:12,background:"#49332d",borderRadius:8}}>{loadError} <button onClick={refresh}>Retry</button></div>}
+  {!state?<p>{loadError?"Alliance data could not be loaded.":"Loading…"}</p>:!state.alliance?<div>
    <p>Create a new alliance or apply to join an existing alliance by its exact name.</p>
    <input placeholder="Alliance name" maxLength={32} value={name} onChange={e=>setName(e.target.value)}/>
    <div style={{display:"flex",gap:8,marginTop:10}}><button disabled={busy} onClick={()=>action("create",{name})}>Create Alliance</button><button disabled={busy} onClick={()=>action("join",{name})}>Apply to Join</button></div>
