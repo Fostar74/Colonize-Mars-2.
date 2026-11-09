@@ -455,7 +455,7 @@ function Map() {
           {!marchDraft && <div>
             <p>Choose mission type:</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
-              {["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(type=>{
+              {(selectedTarget?.type==="alien"?["Attack"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
                 const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
                 const allowed=type==="Attack"?!own: type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
@@ -470,7 +470,7 @@ function Map() {
               })}
             </div>
             {targetIsOwn && <p>This is your own base. Choose another destination.</p>}
-            <p style={{fontSize:12,color:"#b2c8d8"}}>Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.</p>
+            {selectedTarget?.type==="alien" ? <p style={{fontSize:12,color:"#b2c8d8"}}>Alien bases can only be attacked. Their fixed defenders are visible above; espionage is unnecessary.</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.</p>}
           </div>}
           {marchLoading && <p>Loading your army...</p>}
           {marchDraft && <div>
