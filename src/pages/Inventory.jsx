@@ -1,60 +1,63 @@
-import React, {useEffect,useState} from "react";
+import React,{useEffect,useState,useCallback} from "react";
 import unitEconomy from "../shared/unitEconomy";
-
-const api=(process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(new RegExp("/$"),"");
+const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const names=["Gold","Iron","Water","Solar"];
-
-export default function Inventory({onClose}) {
+export default function Inventory(){
   const [tab,setTab]=useState("resources");
+  const [reserve,setReserve]=useState(null);
   const [progress,setProgress]=useState(null);
-  const [login,setLogin]=useState(null);
-  const [error,setError]=useState("");
-  useEffect(()=>{
-    let mounted=true;
-    const userId=sessionStorage.getItem("userId");
-    if(!userId){setError("Please log in again.");return;}
-    const headers={Authorization:"Bearer "+sessionStorage.getItem("authToken")};
-    const refresh=async()=>{
-      try {
-        const [a,b]=await Promise.all([
-          fetch(api+"/get-progress/"+encodeURIComponent(userId),{headers,cache:"no-store"}),
-          fetch(api+"/daily-login/"+encodeURIComponent(userId),{headers,cache:"no-store"})
-        ]);
-        if(!a.ok) throw new Error("Could not load your inventory.");
-        const data=await a.json();
-        if(mounted){setProgress(data.gameProgress);setError("");}
-        if(b.ok){const result=await b.json();if(mounted)setLogin(result);}
-      } catch(e){if(mounted)setError(e.message);}
-    };
-    refresh();
-    const timer=setInterval(refresh,5000);
-    window.addEventListener("game-progress-updated",refresh);
-    return ()=>{mounted=false;clearInterval(timer);window.removeEventListener("game-progress-updated",refresh);};
-  },[]);
-  const buttonStyle={padding:"9px 16px",background:"#20384d",border:"1px solid #668ba3",borderRadius:6,color:"white",cursor:"pointer"};
-  const cardStyle={padding:12,border:"1px solid #4a6c83",background:"#172c40",borderRadius:8};
-  const claimed=(login?.days||[]).filter(d=>d.claimed);
+  const [amounts,setAmounts]=useState({});
+  const [message,setMessage]=useState("");
+  const [busy,setBusy]=useState(false);
+  const userId=sessionStorage.getItem("userId");
+  const headers={Authorization:"Bearer "+sessionStorage.getItem("authToken")};
+  const refresh=useCallback(async()=>{
+    if(!userId)return;
+    try{
+      const [a,b]=await Promise.all([fetch(api+"/inventory/"+encodeURIComponent(userId),{headers,cache:"no-store"}),fetch(api+"/get-progress/"+encodeURIComponent(userId),{headers,cache:"no-store"})]);
+      if(!a.ok||!b.ok)throw Error("Unable to load inventory.");
+      setReserve(await a.json());setProgress((await b.json()).gameProgress);
+    }catch(e){setMessage(e.message);}
+  },[userId]);
+  useEffect(()=>{refresh();window.addEventListener("game-progress-updated",refresh);return()=>window.removeEventListener("game-progress-updated",refresh);},[refresh]);
+  const withdraw=async(kind,name,available)=>{
+    const amount=Number(amounts[kind+name]||0);
+    if(!Number.isSafeInteger(amount)||amount<1||amount>available){setMessage("Enter a valid amount within your reserve.");return;}
+    setBusy(true);setMessage("");
+    try{
+      const r=await fetch(api+"/inventory/withdraw",{method:"POST",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify({userId,kind,name,amount})});
+      const d=await r.json();if(!r.ok)throw Error(d.message||"Withdrawal failed.");
+      setReserve(d.inventory);setProgress(p=>({...p,resources:d.resources,army:d.army}));
+      sessionStorage.setItem("resources",JSON.stringify(d.resources));
+      window.dispatchEvent(new Event("game-progress-updated"));
+      setAmounts(p=>({...p,[kind+name]:""}));setMessage(amount+" "+name+" transferred to your base.");
+    }catch(e){setMessage(e.message);}finally{setBusy(false);}
+  };
+  const card={padding:12,border:"1px solid #4a6c83",background:"#172c40",borderRadius:8};
+  const button={padding:"8px 12px",background:"#205c78",border:"1px solid #668ba3",borderRadius:6,color:"white",cursor:"pointer"};
+  const rows=tab==="resources"?names:Object.values(unitEconomy.categories).flat().filter(n=>Number(reserve?.army?.[n]||0)>0);
   return <div style={{color:"white"}}>
-    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:16}}>
-      {[["resources","Resources"],["army","Army"],["boosters","Boosters"]].map(([key,label])=><button key={key} onClick={()=>setTab(key)} style={{...buttonStyle,background:tab===key?"#26765e":"#20384d"}}>{label}</button>)}
+    <p>Inventory is your separate emergency reserve. Building, training and combat use only resources and troops already in your base.</p>
+    <div style={{display:"flex",gap:8,marginBottom:16}}>
+      {["resources","army","boosters"].map(t=><button key={t} style={{...button,background:tab===t?"#26765e":"#20384d"}} onClick={()=>setTab(t)}>{t==="resources"?"Resources":t==="army"?"Army":"Boosters"}</button>)}
     </div>
-    {error&&<p role="alert">{error}</p>}
-    {!progress&&!error&&<p>Loading inventory...</p>}
-    {progress&&tab==="resources"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(145px,1fr))",gap:10}}>
-      {names.map(name=><div key={name} style={cardStyle}><strong>{name}</strong><p style={{fontSize:22,margin:"8px 0"}}>{Number(progress.resources?.[name]||0).toLocaleString()}</p></div>)}
+    {message&&<p role="status">{message}</p>}
+    {!reserve&&<p>Loading inventory...</p>}
+    {reserve&&tab!=="boosters"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(200px,1fr))",gap:10}}>
+      {rows.map(name=>{
+        const kind=tab;const count=Number(reserve[kind]?.[name]||0);
+        return <div key={name} style={card}><strong>{name}</strong>
+          <p>In inventory: <b>{count.toLocaleString()}</b></p>
+          <p>In base: {Number((kind==="resources"?progress?.resources:progress?.army)?.[name]||0).toLocaleString()}</p>
+          <div style={{display:"flex",gap:6}}>
+            <input aria-label={"Withdraw "+name} type="number" min="1" max={count} value={amounts[kind+name]||""} onChange={e=>setAmounts(v=>({...v,[kind+name]:e.target.value}))} style={{width:85}}/>
+            <button disabled={busy||count<1} style={button} onClick={()=>withdraw(kind,name,count)}>Withdraw</button>
+            <button disabled={busy||count<1} style={button} onClick={()=>setAmounts(v=>({...v,[kind+name]:String(count)}))}>Max</button>
+          </div>
+        </div>;
+      })}
+      {!rows.length&&<p>No reserve troops. Troops earned as rewards will appear here.</p>}
     </div>}
-    {progress&&tab==="army"&&<div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
-      {Object.values(unitEconomy.categories).flat().filter(unit=>Number(progress.army?.[unit]||0)>0).map(unit=><div key={unit} style={cardStyle}><strong>{unit}</strong><p>Owned: {Number(progress.army[unit]).toLocaleString()}</p></div>)}
-      {!Object.values(unitEconomy.categories).flat().some(unit=>Number(progress.army?.[unit]||0)>0)&&<p>No trained troops yet.</p>}
-    </div>}
-    {tab==="boosters"&&<div>
-      <p>Stored boosters and subscriptions will appear here when these rewards become available. No boosters are currently issued by the game.</p>
-      <div style={cardStyle}><strong>Boosters</strong><p>0 available</p><p>Future types: resource production, construction speed, training speed.</p></div>
-    </div>}
-    {login&&<div style={{marginTop:20}}>
-      <h4>Daily login rewards collected: {claimed.length}/30</h4>
-      {claimed.length>0?<p>{claimed.map(d=>"Day "+d.day+": "+(d.reward.type==="resources"?d.reward.amount+" of each resource":d.reward.type==="army"?d.reward.amount+" "+d.reward.label:d.reward.label)).join(" · ")}</p>:<p>No daily login rewards collected yet.</p>}
-      <p style={{fontSize:12,opacity:.8}}>Claimed resources and troops are added directly to their balances. Cyber Knight equipment is stored in the knight's equipment inventory.</p>
-    </div>}
+    {tab==="boosters"&&<p>Boosters are not available yet.</p>}
   </div>;
 }
