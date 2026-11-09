@@ -435,20 +435,14 @@ class DatabaseManager {
 
   getAlienArmy(level) {
     if (!Number.isInteger(level) || level < 1 || level > 20) return null;
-    const roster = [
-      ["Alien Scout",1,0],["Xeno Warrior",3,0],["Spore Archer",5,0],
-      ["Plasma Stalker",8,0],["War Drone",11,0],["Siege Behemoth",15,0],
-      ["Praetorian Guard",18,0]
-    ];
-    const base = Math.round(5 * Math.pow(1.36,level-1));
+    // Fixed garrisons adapted from the level 1–20 bandit-camp progression.
+    // Columns: scout infantry, heavy infantry, ranged, elite infantry,
+    // mobile cavalry equivalents, artillery, elite guard.
+    const garrisons = [[50,0,0,0,0,0,0],[75,0,0,0,0,0,0],[125,0,75,0,0,0,0],[350,175,150,0,0,0,0],[450,225,500,0,0,0,0],[550,275,800,275,0,0,0],[650,325,1200,325,25,0,0],[750,375,1700,375,75,25,0],[850,425,2300,425,200,85,0],[950,475,2900,475,325,145,0],[1050,525,3500,525,550,180,0],[1150,575,6300,575,850,240,0],[1250,625,7500,625,1250,290,0],[1350,675,8700,675,1700,405,0],[1450,725,9900,725,2250,545,200],[1550,775,10950,775,2800,615,400],[1650,825,11850,825,3350,690,550],[1750,875,12750,875,4050,765,700],[1850,925,13650,925,4700,840,850],[2200,1100,15300,1100,6500,920,1100]];
+    const names = ["Alien Scout","Xeno Warrior","Spore Archer","Plasma Stalker","War Drone","Siege Behemoth","Praetorian Guard"];
     const army = {};
-    for (const [name,unlock] of roster) {
-      if(level<unlock) continue;
-      const weight = name==="Alien Scout"?.45:name==="Xeno Warrior"?.3:name==="Spore Archer"?.2:name==="Plasma Stalker"?.14:name==="War Drone"?.1:name==="Siege Behemoth"?.06:.04;
-      const unlockedScale=Math.max(0.35,1-(unlock-1)*.035);
-      army[name]=Math.max(1,Math.round(base*weight*unlockedScale));
-    }
-    if(level===20) army["Alien Overlord"]=1;
+    garrisons[level - 1].forEach((count, index) => { if (count > 0) army[names[index]] = count; });
+    if (level === 20) army["Alien Overlord"] = 1;
     return army;
   }
 
@@ -456,7 +450,7 @@ class DatabaseManager {
     const row = db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
     const highestDefeated=row ? row.highest_defeated : 0;
     const nextLevel=Math.min(20,highestDefeated+1);
-    return {highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel)};
+    return {highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)]))};
   }
 
   attackAlienBase(userId, level) {
