@@ -47,6 +47,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
   const alive=side=>side.some(g=>g.count>0);
   while(alive(sides[0])&&alive(sides[1])&&rounds<80){
     rounds++;
+    for(const group of sides[0])group.roundStartCount=group.count;
     const round={round:rounds,events:[]};
     for(let step=0;step<4;step++){
       // All groups in the same phase fire using their numbers at phase start.
@@ -66,10 +67,18 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
         shot.dodged=shot.side===1&&Math.random()<dodgeChance;
         if(!shot.dodged)hits.set(shot.target,(hits.get(shot.target)||0)+shot.damage);
       }
+      const casualties=new Map();
       for(const [target,damage] of hits){
-        target.count=Math.max(0,target.count-Math.min(target.count,Math.floor(damage/target.hp)));
+        const killed=Math.min(target.count,Math.floor(damage/target.hp));
+        target.count-=killed;
+        casualties.set(target,killed);
       }
-      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:shot.dodged?0:Math.min(shot.target.original,Math.floor(shot.damage/shot.target.hp))});
+      // Damage and losses are computed per target, not independently for
+      // each shot: independent calculations overstated kills on shared targets.
+      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:0});
+      for(const [target,killed] of casualties){
+        if(killed)round.events.push({phase:step,attacker:"Combat",unit:target.unit,kills:killed,event:"casualties"});
+      }
     }
     // Restore a percentage of casualties at the end of each round, capped
     // at the original deployed group size. Fractions accumulate per group.
@@ -77,7 +86,11 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
       for(const group of sides[0]){
         const missing=group.original-group.count;
         if(missing<=0)continue;
-        group.reviveCarry=(group.reviveCarry||0)+missing*reviveRate;
+        // Only casualties suffered during this round are eligible for
+        // regeneration; repeatedly healing the entire historical deficit
+        // would make the effective recovery exceed the selected tier.
+        const lostThisRound=Math.max(0,(group.roundStartCount??group.original)-group.count);
+        group.reviveCarry=(group.reviveCarry||0)+lostThisRound*reviveRate;
         const restored=Math.min(missing,Math.floor(group.reviveCarry+1e-9));
         if(restored>0){group.count+=restored;group.reviveCarry-=restored;round.events.push({phase:4,attacker:"Nano Regeneration",unit:group.unit,restored});}
       }
