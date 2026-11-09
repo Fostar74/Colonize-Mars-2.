@@ -95,6 +95,9 @@ function initializeDatabase() {
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "queued_building_job")) {
       db.exec("ALTER TABLE game_runtime ADD COLUMN queued_building_job TEXT");
     }
+    if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "production_carry")) {
+      db.exec("ALTER TABLE game_runtime ADD COLUMN production_carry TEXT NOT NULL DEFAULT '{}'");
+    }
     db.exec("CREATE TABLE IF NOT EXISTS tutorial_claims (user_id INTEGER NOT NULL REFERENCES users(id), mission_id INTEGER NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, mission_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alien_campaign (user_id INTEGER PRIMARY KEY REFERENCES users(id), highest_defeated INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS daily_login_claims (user_id INTEGER NOT NULL REFERENCES users(id), day INTEGER NOT NULL CHECK(day BETWEEN 1 AND 30), claimed_date TEXT NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, day), UNIQUE(user_id, claimed_date))");
@@ -326,11 +329,17 @@ class DatabaseManager {
       // Resource production is calculated from server time, including while logged out.
       const elapsedTicks = Math.floor(Math.max(0, now - state.production_at) / 10000);
       const economyBonus = this.protocolBonus(userId, "Resource Management") / 100;
+      const productionCarry = JSON.parse(state.production_carry || "{}");
       const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
       for (const [resource, name] of Object.entries(rates)) {
         const level = Number(structures[name] || 0);
         if (level > 0 && elapsedTicks > 0) {
-          resources[resource] = Math.floor((Number(resources[resource]) || 0) + level * elapsedTicks * (1 + economyBonus));
+          // Preserve sub-unit production between 10-second ticks; otherwise frequent polling
+          // silently discards most of the Resource Management protocol bonus.
+          const produced = level * elapsedTicks * (1 + economyBonus) + (Number(productionCarry[resource]) || 0);
+          const whole = Math.floor(produced + 1e-9);
+          productionCarry[resource] = Math.max(0, Math.round((produced - whole) * 1000000) / 1000000);
+          resources[resource] = (Number(resources[resource]) || 0) + whole;
           changed = true;
         }
       }
@@ -348,8 +357,8 @@ class DatabaseManager {
         trainingJob = null;
         changed = true;
       }
-      db.prepare("UPDATE game_runtime SET production_at=?, building_job=?, queued_building_job=?, training_job=?, army=? WHERE user_id=?")
-        .run(state.production_at + elapsedTicks * 10000, buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), userId);
+      db.prepare("UPDATE game_runtime SET production_at=?, production_carry=?, building_job=?, queued_building_job=?, training_job=?, army=? WHERE user_id=?")
+        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), userId);
       if (changed) db.prepare("UPDATE game_progress SET resources=?, structures=?, last_saved=CURRENT_TIMESTAMP WHERE id=?")
         .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
       return {
