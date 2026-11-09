@@ -351,7 +351,7 @@ function Map() {
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
       setCampaign(old=>({...old,remaining:data.remaining}));
-      setMarchNotice("Mission dispatched! Battle in 60 seconds. Check MARCHES for results.");
+      setMarchNotice("Mission dispatched! Battle in 60 seconds. Check CAMPAIGNS for results.");
       setMarchDraft(null);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
@@ -533,10 +533,10 @@ function Map() {
         </details>)}
         {!(campaign.missions||[]).length&&<p>No alien missions yet.</p>}
       </div>}
-      <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>🚀 MARCHES</button>
+      <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>🚀 CAMPAIGNS</button>
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
-          <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>🚀 MARCHES</h2><button onClick={()=>setMarchHistoryOpen(false)}>✕ Close</button></div>
+          <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>🚀 CAMPAIGNS</h2><button onClick={()=>setMarchHistoryOpen(false)}>✕ Close</button></div>
           <p>Mission types</p>
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{["All","Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(t=><button key={t} onClick={()=>{setMarchType(t);if(t!=="All"&&selectedTarget){setMarchHistoryOpen(false);chooseAction(t);}}} style={{background:marchType===t?"#377d9f":"#24394b",color:"white",padding:"9px 12px",border:"1px solid #56758b",borderRadius:6}}>{t}</button>)}</div>
           <h3>Active movements · {marchType}</h3>
