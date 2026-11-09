@@ -504,6 +504,67 @@ class DatabaseManager {
     })();
   }
 
+  allianceState(userId){
+    const membership=db.prepare("SELECT a.id,a.name,a.leader_id FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
+    if(!membership)return {alliance:null,requests:[]};
+    const members=db.prepare("SELECT u.id,u.username FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=?").all(membership.id);
+    const requests=db.prepare("SELECT h.id,h.requester_id,h.building_name,h.building_level,h.requested_at,u.username FROM alliance_help h JOIN users u ON u.id=h.requester_id WHERE h.alliance_id=? ORDER BY h.id DESC LIMIT 30").all(membership.id).filter(h=>{
+      const job=this.syncGame(h.requester_id)?.buildingJob;
+      return job&&job.name===h.building_name&&job.level===h.building_level&&job.endsAt> Date.now();
+    }).map(h=>({...h,helped:!!db.prepare("SELECT 1 FROM alliance_help_clicks WHERE request_id=? AND helper_id=?").get(h.id,userId)}));
+    return {alliance:membership,members,requests};
+  }
+  createAlliance(userId,name){
+    if(typeof name!=="string"||name.trim().length<3||name.trim().length>32)return {error:"Alliance name must be 3–32 characters."};
+    return db.transaction(()=>{
+      if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(userId))return {error:"Leave your current alliance first."};
+      if(db.prepare("SELECT 1 FROM alliances WHERE name=? COLLATE NOCASE").get(name.trim()))return {error:"Alliance name already exists."};
+      const id=db.prepare("INSERT INTO alliances(name,leader_id) VALUES (?,?)").run(name.trim(),userId).lastInsertRowid;
+      db.prepare("INSERT INTO alliance_members(user_id,alliance_id) VALUES (?,?)").run(userId,id);
+      return this.allianceState(userId);
+    })();
+  }
+  joinAlliance(userId,name){
+    if(typeof name!=="string")return {error:"Enter an alliance name."};
+    return db.transaction(()=>{
+      if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(userId))return {error:"Already in an alliance."};
+      const a=db.prepare("SELECT id FROM alliances WHERE name=? COLLATE NOCASE").get(name.trim());
+      if(!a)return {error:"Alliance not found."};
+      db.prepare("INSERT INTO alliance_members(user_id,alliance_id) VALUES (?,?)").run(userId,a.id);
+      return this.allianceState(userId);
+    })();
+  }
+  requestAllianceHelp(userId){
+    return db.transaction(()=>{
+      const a=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!a)return {error:"Join an alliance first."};
+      const job=this.syncGame(userId)?.buildingJob;
+      if(!job||job.endsAt<=Date.now())return {error:"No active construction to request help for."};
+      const old=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND job_ends_at=?").get(userId,job.name,job.level,job.endsAt);
+      if(old)return {error:"Help already requested for this construction."};
+      const id=db.prepare("INSERT INTO alliance_help(requester_id,alliance_id,building_name,building_level,requested_at,job_ends_at) VALUES (?,?,?,?,?,?)").run(userId,a.alliance_id,job.name,job.level,Date.now(),job.endsAt).lastInsertRowid;
+      return {requestId:Number(id)};
+    })();
+  }
+  helpAlliance(userId,requestId){
+    if(!Number.isSafeInteger(requestId)||requestId<1)return {error:"Invalid help request."};
+    return db.transaction(()=>{
+      const h=db.prepare("SELECT * FROM alliance_help WHERE id=?").get(requestId);
+      const m=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!h||!m||m.alliance_id!==h.alliance_id)return {error:"Help request unavailable."};
+      if(h.requester_id===userId)return {error:"Cannot help your own construction."};
+      if(db.prepare("SELECT 1 FROM alliance_help_clicks WHERE request_id=? AND helper_id=?").get(requestId,userId))return {error:"Already helped this construction."};
+      const job=this.syncGame(h.requester_id)?.buildingJob;
+      if(!job||job.name!==h.building_name||job.level!==h.building_level||job.endsAt<=Date.now())return {error:"Construction already finished."};
+      const reduction=Math.max(60000,Math.ceil((job.endsAt-Date.now())*.01));
+      job.endsAt=Math.max(Date.now(),job.endsAt-reduction);
+      db.prepare("UPDATE game_runtime SET building_job=? WHERE user_id=?").run(JSON.stringify(job),h.requester_id);
+      db.prepare("INSERT INTO alliance_help_clicks(request_id,helper_id) VALUES (?,?)").run(requestId,userId);
+      this.creditTokens(userId,1);
+      return {reductionMs:reduction,tokens:this.getTokens(userId).balance};
+    })();
+  }
+
   getInventory(userId) {
     db.prepare("INSERT OR IGNORE INTO inventory_reserves(user_id,resources,army) VALUES (?,?,?)").run(userId,JSON.stringify({Gold:10000,Iron:10000,Water:10000,Solar:10000}),"{}");
     const row=db.prepare("SELECT resources,army FROM inventory_reserves WHERE user_id=?").get(userId);
