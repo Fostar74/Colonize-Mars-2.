@@ -107,6 +107,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
     db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
+    db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_applications (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), applied_at INTEGER NOT NULL, PRIMARY KEY(user_id,alliance_id))");
@@ -382,7 +383,9 @@ class DatabaseManager {
       }
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
-      this.awardPlayerXp(userId,50*(level+1));
+      const spent=Object.values(cost).reduce((sum,n)=>sum+Number(n),0);
+      db.prepare("INSERT INTO ranking_points(user_id,construction_points) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET construction_points=construction_points+excluded.construction_points").run(userId,spent);
+      this.awardPlayerXp(userId,spent);
       return { ...current, resources: current.resources, buildingJob: current.buildingJob || job, queuedBuildingJob: current.buildingJob ? {name,level:level+1,duration} : null };
     })();
   }
@@ -555,6 +558,13 @@ class DatabaseManager {
     })();
   }
 
+  rankings(userId){
+    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.construction_points,0) AS points FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN ranking_points r ON r.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
+    const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.construction_points),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN ranking_points r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
+    const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+    const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
+    return {players,alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};
+  }
   allianceDirectory(userId){
     const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,(SELECT COUNT(*) FROM alliance_members m WHERE m.alliance_id=a.id) AS memberCount FROM alliances a JOIN users u ON u.id=a.leader_id ORDER BY memberCount DESC,a.name COLLATE NOCASE").all();
     const pending=db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(x=>x.alliance_id);
