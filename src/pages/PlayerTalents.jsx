@@ -9,6 +9,7 @@ export default function PlayerTalents(){
  useEffect(()=>{refresh();},[refresh]);
  const upgrade=async name=>{setBusy(true);setError("");try{const response=await fetch(api+"/player-talents/upgrade",{method:"POST",headers:headers(),body:JSON.stringify({userId,name})});const data=await response.json();if(!response.ok)throw Error(data.message||"Upgrade failed.");await refresh();}catch(e){setError(e.message);}finally{setBusy(false);}};
  const tierNames=["Locked","Initiate","Advanced","Elite"];
+ const active=new Set(["Resource Management","Accelerated Training","Advanced Research"]);
  return <div style={{padding:16,color:"#eaf6ff",maxWidth:1050}}>
   <h2>Commander Protocols</h2>
   <p>Develop your commander with Protocol Points (PP). Each protocol has three tiers: Initiate, Advanced and Elite.</p>
@@ -21,7 +22,8 @@ export default function PlayerTalents(){
       <p>{tierNames[tier]} · Level {tier}/3</p>
       <p>{item.description} · {tier?item.values[tier-1]:0}{item.description.startsWith("%")?"%":""} current</p>
       <p>Tier bonuses: {item.values.join(" / ")}</p>
-      <button disabled={busy||tier>=3||state.skillPoints<cost} onClick={()=>upgrade(item.name)}>{tier>=3?"Elite unlocked":`Upgrade to ${tierNames[tier+1]} · ${cost} PP`}</button>
+      {!active.has(item.name)&&<p style={{color:"#ffd28b"}}>Bonus integration pending — upgrades temporarily disabled.</p>}
+      <button disabled={busy||!active.has(item.name)||tier>=3||state.skillPoints<cost} onClick={()=>upgrade(item.name)}>{tier>=3?"Elite unlocked":`Upgrade to ${tierNames[tier+1]} · ${cost} PP`}</button>
     </section>;})}
    </div>
   </>}
