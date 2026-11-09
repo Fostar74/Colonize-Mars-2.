@@ -577,7 +577,7 @@ class DatabaseManager {
     if(!membership)return {alliance:null,requests:[],...this.allianceDirectory(userId)};
     const members=db.prepare("SELECT u.id,u.username,m.role FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=? ORDER BY CASE WHEN m.role='Leader' THEN 0 WHEN m.role='Co-Leader' THEN 1 ELSE 2 END,u.username").all(membership.id);
     const applications=db.prepare("SELECT u.id,u.username,a.applied_at FROM alliance_applications a JOIN users u ON u.id=a.user_id WHERE a.alliance_id=? ORDER BY a.applied_at").all(membership.id);
-    const requests=db.prepare("SELECT h.id,h.requester_id,h.building_name,h.building_level,h.requested_at,u.username FROM alliance_help h JOIN users u ON u.id=h.requester_id WHERE h.alliance_id=? ORDER BY h.id DESC LIMIT 30").all(membership.id).filter(h=>{
+    const requests=db.prepare("SELECT h.id,h.requester_id,h.building_name,h.building_level,h.requested_at,h.job_key,h.job_ends_at,u.username FROM alliance_help h JOIN users u ON u.id=h.requester_id WHERE h.alliance_id=? ORDER BY h.id DESC LIMIT 30").all(membership.id).filter(h=>{
       const job=this.syncGame(h.requester_id)?.buildingJob;
       return this.allianceRequestMatches(h,job);
     }).map(h=>({...h,helped:!!db.prepare("SELECT 1 FROM alliance_help_clicks WHERE request_id=? AND helper_id=?").get(h.id,userId)}));
@@ -880,12 +880,17 @@ class DatabaseManager {
       const result = db.prepare("INSERT OR IGNORE INTO tutorial_claims(user_id,mission_id) VALUES (?,?)").run(userId,missionId);
       if (!result.changes) return {error:"Reward already claimed."};
       this.creditTokens(userId,100);
-      const resources = {...tutorial.resources};
-      for (const key of ["Gold","Iron","Water","Solar"]) resources[key] += mission.reward;
-      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(resources),userId);
+      // Tutorial resource rewards are stored in Inventory until the player withdraws them.
+      // The claim, token credit and reserve update share this database transaction.
+      const inventory = this.getInventory(userId);
+      for (const key of ["Gold","Iron","Water","Solar"]) {
+        inventory.resources[key] = (Number(inventory.resources[key]) || 0) + mission.reward;
+      }
+      db.prepare("UPDATE inventory_reserves SET resources=? WHERE user_id=?")
+        .run(JSON.stringify(inventory.resources),userId);
       if (missionId===1) db.prepare("UPDATE game_runtime SET quest_claimed=1 WHERE user_id=?").run(userId);
       if (missionId===2) db.prepare("UPDATE game_runtime SET quest2_claimed=1 WHERE user_id=?").run(userId);
-      return {resources,missionId};
+      return {inventory,missionId};
     })();
   }
 
