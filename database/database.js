@@ -507,7 +507,7 @@ class DatabaseManager {
     db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
   }
   upgradePlayerTalent(userId,name){
-    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery"]);
+    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery"]);
     if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
     if(!activeProtocols.has(name))return {error:"This protocol is not active yet. Protocol Points have not been spent."};
     return db.transaction(()=>{
@@ -825,7 +825,9 @@ class DatabaseManager {
           infantryAttack:this.protocolBonus(userId,"Infantry Command"),
           infantryHealth:this.protocolBonus(userId,"Infantry Command"),
           mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
-          artilleryAttack:this.protocolBonus(userId,"Heavy Artillery")
+          artilleryAttack:this.protocolBonus(userId,"Heavy Artillery"),
+          dodge:this.protocolBonus(userId,"Evasion Protocol"),
+          revive:this.protocolBonus(userId,"Combat Recovery")
         });
         if(result.victory){
           this.awardPlayerXp(userId,mission.level*100);
