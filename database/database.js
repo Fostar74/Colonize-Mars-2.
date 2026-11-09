@@ -507,7 +507,7 @@ class DatabaseManager {
     db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
   }
   upgradePlayerTalent(userId,name){
-    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery"]);
+    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery"]);
     if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
     if(!activeProtocols.has(name))return {error:"This protocol is not active yet. Protocol Points have not been spent."};
     return db.transaction(()=>{
@@ -795,7 +795,11 @@ class DatabaseManager {
       }
       for(const [unit,n] of Object.entries(selected))current.army[unit]-=n;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
-      const now=Date.now(),arrivesAt=now+60000;
+      const now=Date.now();
+      // Hyperdrive increases march speed (not a flat reduction in travel duration).
+      const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
+      const travelMs=Math.max(1000,Math.ceil(60000/(1+speedBonus)));
+      const arrivesAt=now+travelMs;
       const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:formation||null}),now,arrivesAt);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,remaining:campaign.remaining-1};
     })();
@@ -853,7 +857,7 @@ class DatabaseManager {
             result.reward={type:"army",unit:"Explorer Trooper",amount};
           }
         }
-        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),Date.now()+60000,JSON.stringify(result),mission.id);
+        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),Date.now()+Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100))),JSON.stringify(result),mission.id);
       }
       return due.length;
     })();
