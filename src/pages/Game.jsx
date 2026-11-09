@@ -3,6 +3,7 @@ import StructurePanel from "./StructurePanel";
 import CyberKnightPanel from "./CyberKnightPanel";
 import Quests from "./Quests";
 import AlliancePanel from "./AlliancePanel";
+import Rankings from "./Rankings";
 import PlayerTalents from "./PlayerTalents";
 import Inventory from "./Inventory";
 import "./Game.css";
@@ -16,6 +17,7 @@ function Game() {
   const [showCyberKnight, setShowCyberKnight] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showAlliance,setShowAlliance]=useState(false);
+  const [showRankings,setShowRankings]=useState(false);
   const [showTalents,setShowTalents]=useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const onProgressChange = data => setResources(data.resources);
@@ -119,6 +121,7 @@ function Game() {
         <button>Campaign</button>
         <button onClick={() => (window.location.href = "/#/map")}>Map</button>
         <button onClick={()=>setShowAlliance(true)}>Alliance</button>
+        <button onClick={()=>setShowRankings(true)}>Rankings</button>
         <button>Messages</button>
         <button onClick={() => setShowInventory(true)}>Inventory</button>
         <button onClick={() => setOptionsVisible(!optionsVisible)}>Options</button>
@@ -157,6 +160,7 @@ function Game() {
 
       {showTalents&&<div className="popup"><div className="popup-header"><span>PLAYER TALENTS</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
       {showAlliance&&<div className="popup"><div className="popup-header"><span>ALLIANCE</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel/></div></div>}
+      {showRankings&&<div className="popup"><div className="popup-header"><span>RANKINGS</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings/></div></div>}
       {showQuests && (
         <div className="popup">
           <div className="popup-header">
