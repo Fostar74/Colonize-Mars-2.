@@ -198,14 +198,20 @@ class DatabaseManager {
   }
 
   chooseSpawn(occupied) {
-    for (let i = 0; i < 40000; i++) {
-      const angle = i * 2.399963229728653;
-      const radius = 38 + (i % 9);
-      const x = Math.max(1, Math.min(100, Math.round(50.5 + radius * Math.cos(angle))));
-      const y = Math.max(1, Math.min(100, Math.round(50.5 + radius * Math.sin(angle))));
-      if (!occupied.has(x + ":" + y)) return { x, y };
+    // Randomized peripheral spawn: bases start in the outer 15 tiles of
+    // the 100x100 map, leaving the central region for exploration.
+    // Shuffle all eligible coordinates so a fresh database never
+    // deterministically assigns the same first position.
+    const crypto = require("crypto");
+    const candidates = [];
+    for (let x = 1; x <= 100; x++) {
+      for (let y = 1; y <= 100; y++) {
+        if (x > 15 && x < 86 && y > 15 && y < 86) continue;
+        if (!occupied.has(x + ":" + y)) candidates.push({ x, y });
+      }
     }
-    throw new Error("No available spawn position");
+    if (!candidates.length) throw new Error("No available peripheral spawn position");
+    return candidates[crypto.randomInt(candidates.length)];
   }
 
   // Allocates a unique base tile within a transaction; existing saved bases are respected.
