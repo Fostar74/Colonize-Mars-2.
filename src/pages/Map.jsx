@@ -23,6 +23,7 @@ function Map() {
   const [marchDraft, setMarchDraft] = useState(null);
   const [availableArmy, setAvailableArmy] = useState({});
   const [marchUnits, setMarchUnits] = useState({});
+  const [formationRows,setFormationRows]=useState({});
   const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
   const [marchType, setMarchType] = useState("All");
@@ -55,7 +56,7 @@ function Map() {
     };
     loadBases();
     fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)setCampaign(d)}).catch(()=>{});
-    const timer = setInterval(loadBases, 30000);
+    const timer = setInterval(()=>{loadBases();fetch((process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"")+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d&&!cancelled)setCampaign(d)}).catch(()=>{});},10000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
   const [hqIcon, setHqIcon] = useState(null);
@@ -322,6 +323,7 @@ function Map() {
       const data=await response.json();
       setAvailableArmy(data.gameProgress?.army || {});
       setMarchUnits({});
+      setFormationRows({});
       setMarchDraft({type,target,origin});
       } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
   };
@@ -337,12 +339,22 @@ function Map() {
     }
     openMarch(type, selectedTarget, home);
   };
-  const prepareMarch = () => {
-    const selected=Object.entries(marchUnits).filter(([,n])=>n>0);
-    if(!selected.length){setMarchNotice("Choose at least one unit.");return;}
-    setMarchNotice("Troops selected. Sending and travel are not yet implemented; no army has left the base.");
+  const prepareMarch = async () => {
+    const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
+    if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
+    if(marchDraft?.target?.type!=="alien"){setMarchNotice("Player marches are not yet enabled.");return;}
+    try{
+      setMarchLoading(true);
+      const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:Number(formationRows[unit]||(["Railgunner","Pulse Sniper","Drone Operator","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"].includes(unit)?4:1))}));
+      const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation})});
+      const data=await response.json();
+      if(!response.ok)throw Error(data.message||"Mission failed.");
+      setCampaign(old=>({...old,remaining:data.remaining}));
+      setMarchNotice("Mission dispatched! Battle in 60 seconds. Check MARCHES for results.");
+      setMarchDraft(null);
+    }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
-
   const attackAlien = async () => {
     if (!selectedAlien) return;
     try {
@@ -425,7 +437,7 @@ function Map() {
           zIndex: 10,
         }}
       >
-        <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel}</div>
+        <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel} · Attacks left: {campaign.remaining??"—"}/20 · Cyber Knight Lv {campaign.knightLevel||1}</div>
         <div style={{margin:"8px 0"}}>Zoom <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(50.5,50.5);}}>Full map 100×100</button> <button onClick={()=>setZoom(1)}>100%</button></div>
         {mapError && <div role="alert">{mapError}</div>}
         <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
@@ -489,10 +501,10 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits(Object.fromEntries(Object.entries(availableArmy).map(([k,v])=>[k,Number(v)||0])))}>Select all</button>
               <button onClick={()=>setMarchUnits({})}>Clear</button>
-              <button onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Review army</button>
+              <button onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
               <button onClick={()=>setMarchDraft(null)}>← Back to mission types</button>
             </div>
-            <p style={{fontSize:12,color:"#b5c7d9"}}>Actual troop dispatch is not enabled yet. Preparing does not move or consume troops.</p>
+            <p style={{fontSize:12,color:"#b5c7d9"}}>Alien attacks reserve selected troops immediately; survivors return after the battle.</p>
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{marchNotice}</p>}
         </div>
