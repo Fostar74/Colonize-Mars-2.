@@ -118,7 +118,7 @@ function Game() {
         <button onClick={() => setShowCyberKnight(true)}>Cyber Knight</button>
         <button onClick={()=>setShowTalents(true)}>Player Talents</button>
         <button onClick={() => setShowQuests(true)}>Quests</button>
-        <button>Campaign</button>
+        <button onClick={() => (window.location.href = "/#/map?campaign=1")}>Campaign</button>
         <button onClick={() => (window.location.href = "/#/map")}>Map</button>
         <button onClick={()=>setShowAlliance(true)}>Alliance</button>
         <button onClick={()=>setShowRankings(true)}>Rankings</button>

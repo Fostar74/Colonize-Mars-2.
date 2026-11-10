@@ -8,7 +8,8 @@ import ironMineImg from "../images/mine-iron.png";
 import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
 import alienBaseImg from "../images/alien-base.png";
-import unitEconomy from "../shared/unitEconomy";
+import formations from "../shared/formations";
+const {units, marchLimit, defaultFormation}=formations;
 
 function Map() {
   const canvasRef = useRef(null);
@@ -27,7 +28,18 @@ function Map() {
   const [formationRows,setFormationRows]=useState({});
   const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
-  const [marchHistoryOpen, setMarchHistoryOpen] = useState(false);
+  const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
+  const [presetSlot,setPresetSlot]=useState(1);
+  const [presetRows,setPresetRows]=useState(defaultFormation);
+  const [formationMessage,setFormationMessage]=useState("");
+  const [formationBusy,setFormationBusy]=useState(false);
+  const [clock,setClock]=useState(Date.now);
+  useEffect(()=>{
+    if(!marchHistoryOpen)return;
+    setClock(Date.now());
+    const timer=setInterval(()=>setClock(Date.now()),1000);
+    return ()=>clearInterval(timer);
+  },[marchHistoryOpen]);
   const [castles, setCastles] = useState([]);
   const [mapError, setMapError] = useState("");
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
@@ -325,7 +337,7 @@ function Map() {
       const data=await response.json();
       setAvailableArmy(data.gameProgress?.army || {});
       setMarchUnits({});
-      setFormationRows({});
+      setFormationRows(defaultFormation());
       setKnightAdded(false);
       setMarchDraft({type,target,origin});
       } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
@@ -343,6 +355,7 @@ function Map() {
     openMarch(type, selectedTarget, home);
   };
   const prepareMarch = async () => {
+    if(selectedTroops>marchLimit){setMarchNotice("Cyber Knight can command at most 50,000 troops.");return;}
     if(!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
@@ -350,15 +363,36 @@ function Map() {
     try{
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
-      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:Number(formationRows[unit]||(["Railgunner","Pulse Sniper","Drone Operator","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"].includes(unit)?4:1))}));
+      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
       const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded})});
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true}));
+      setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
+        id:data.missionId,level:data.level,arrives_at:data.arrivesAt,units:selected,formation,cyberKnightLevel:old.knightLevel||1
+      },...(old.missions||[]).filter(m=>m.id!==data.missionId)]}));
       setMarchNotice("Mission dispatched! Battle in 60 seconds. Check CAMPAIGNS for results.");
       setMarchDraft(null);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
+  const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+count,0);
+  const presets=campaign.formations?.presets || {};
+  const saveFormation=async payload=>{
+    setFormationBusy(true);
+    setFormationMessage("");
+    try{
+      const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+      const response=await fetch(api+"/alien-campaign/formations",{
+        method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
+        body:JSON.stringify({userId:sessionStorage.getItem("userId"),...payload})
+      });
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.message || "Unable to save formation.");
+      setCampaign(old=>({...old,formations:result}));
+      setFormationMessage("Formation settings saved.");
+    }catch(error){setFormationMessage(error.message);}
+    finally{setFormationBusy(false);}
+  };
+
   const goToCoordinates = () => {
     const x = parseInt(document.getElementById("xCoord").value);
     const y = parseInt(document.getElementById("yCoord").value);
@@ -542,27 +576,49 @@ function Map() {
               {knightAdded ? "Remove Cyber Knight" : "Add Cyber Knight"}
             </button>
             {campaign.knightBusy && <p>Cyber Knight is on a mission and must return before launching another attack.</p>}
-            <p>Select troops from your base army:</p>
-            {!Object.values(unitEconomy.categories).flat().some(unit=>Number(availableArmy[unit]||0)>0) && <p>No trained troops available. Train units at your base before preparing a march.</p>}
+            <p>Select troops from your base army · {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
+            <label>Load formation <select defaultValue="" onChange={event=>{
+              setFormationRows(event.target.value==="default" ? defaultFormation() : presets[event.target.value]);
+              event.target.value="";
+            }}>
+              <option value="" disabled>Choose formation</option>
+              <option value="default">Default Attack</option>
+              {Object.keys(presets).map(slot=><option key={slot} value={slot}>Formation {slot}</option>)}
+            </select></label>
+            <p><label>Save current rows to <select value={presetSlot} onChange={event=>setPresetSlot(Number(event.target.value))}>
+              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>Slot {slot}</option>)}
+            </select></label>{" "}
+            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:formationRows})}>Save Formation</button></p>
+            {formationMessage&&<p role="status">{formationMessage}</p>}
+            {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>No trained troops available. Train units at your base before preparing a march.</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
-              {Object.values(unitEconomy.categories).flat().filter(unit=>Number(availableArmy[unit]||0)>0).map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
+              {units.map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
                 <strong>{unit}</strong>
                 <span>Available: {Number(availableArmy[unit]||0)}</span>
                 <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
                   onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
                 <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>MAX</button>
                 <span>Formation row (1 front / 4 rear)</span>
-                <select value={formationRows[unit]||(["Railgunner","Pulse Sniper","Drone Operator","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"].includes(unit)?4:1)} onChange={e=>setFormationRows(old=>({...old,[unit]:Number(e.target.value)}))}>
+                <select value={formationRows[unit]} onChange={e=>setFormationRows(old=>({...old,[unit]:Number(e.target.value)}))}>
                   {[1,2,3,4].map(row=><option key={row} value={row}>Row {row}</option>)}
                 </select>
               </label>)}
             </div>
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>setMarchUnits(Object.fromEntries(Object.entries(availableArmy).map(([k,v])=>[k,Number(v)||0])))}>Select all</button>
+              <button onClick={()=>{
+                let remaining=marchLimit;
+                const selection={};
+                for(const unit of units){
+                  selection[unit]=Math.min(remaining,Number(availableArmy[unit])||0);
+                  remaining-=selection[unit];
+                }
+                setMarchUnits(selection);
+              }}>Select up to 50,000</button>
               <button onClick={()=>setMarchUnits({})}>Clear</button>
-              <button disabled={marchLoading || campaign.knightBusy || !knightAdded} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
+              <button disabled={marchLoading || campaign.knightBusy || !knightAdded || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
               <button onClick={()=>setMarchDraft(null)}>← Back to mission types</button>
             </div>
+            {selectedTroops>marchLimit && <p role="alert">Cyber Knight can command at most 50,000 troops.</p>}
             <p style={{fontSize:12,color:"#b5c7d9"}}>Alien attacks reserve selected troops immediately; survivors return after the battle.</p>
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{marchNotice}</p>}
@@ -572,10 +628,40 @@ function Map() {
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>🚀 CAMPAIGNS</h2><button onClick={()=>setMarchHistoryOpen(false)}>✕ Close</button></div>
+          <details>
+            <summary onClick={()=>setPresetRows(presets[presetSlot] || defaultFormation())}>Formations</summary>
+            <label>Edit slot <select value={presetSlot} onChange={event=>{
+              const slot=Number(event.target.value);
+              setPresetSlot(slot);setPresetRows(presets[slot] || defaultFormation());
+            }}>
+              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>Formation {slot}{presets[slot]?"":" (empty)"}</option>)}
+            </select></label>{" "}
+            <button onClick={()=>setPresetRows(defaultFormation())}>Load Default Attack</button>{" "}
+            <button onClick={()=>setPresetRows(defaultFormation(true))}>Load Default Defense</button>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8,margin:"12px 0"}}>
+              {units.map(unit=><label key={unit}>{unit}{" "}
+                <select value={presetRows[unit]} onChange={event=>setPresetRows(rows=>({...rows,[unit]:Number(event.target.value)}))}>
+                  {[1,2,3,4].map(row=><option key={row} value={row}>Row {row}</option>)}
+                </select>
+              </label>)}
+            </div>
+            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}>Save Formation</button>
+            <p><label>Active defense formation{" "}
+              <select disabled={formationBusy} value={campaign.formations?.defenseSlot || 0} onChange={event=>saveFormation({defenseSlot:Number(event.target.value)})}>
+                <option value={0}>Default Defense</option>
+                {Object.keys(presets).map(slot=><option key={slot} value={slot}>Formation {slot}</option>)}
+              </select>
+            </label></p>
+            <p>Defense formation is saved for future player battles.</p>
+            {formationMessage&&<p role="status">{formationMessage}</p>}
+          </details>
           <h3>Alien Mission Reports</h3>
         {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
-          <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result?(m.result.victory?"VICTORY":"DEFEAT"):"Travelling / awaiting battle"}</summary>
-          {m.result&&<div>{m.result.cyberKnightLevel && <p>Commander: Cyber Knight Lv {m.result.cyberKnightLevel}</p>}<p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
+          <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result ? (m.result.victory?"VICTORY":"DEFEAT") : "Travelling"}{!m.returned_at && ` · ${m.result ? "Returning" : "Arrival"} in ${Math.max(0,Math.ceil(((m.result ? m.returns_at : m.arrives_at)-clock)/1000))}s` }</summary>
+          {m.cyberKnightLevel && <p>Commander: Cyber Knight Lv {m.cyberKnightLevel}</p>}
+          {m.formation?.length ? <ul>{m.formation.map(({unit,count,row},index)=><li key={index}>{count.toLocaleString()} {unit} · Row {row}</li>)}</ul>
+            : m.units && <p>Dispatched: {Object.entries(m.units).map(([unit,count])=>`${count} ${unit}`).join(", ")}</p>}
+          {m.result&&<div><p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
           <p>Reward: {m.result.reward?.item?.name || (m.result.reward?.type==="crafting" ? `${m.result.reward.amount} Universal Forge points` : m.result.reward?.type==="resources" ? `${m.result.reward.amount} of each resource` : m.result.reward?.type==="army" ? `${m.result.reward.amount} ${m.result.reward.unit}` : "None")}</p>
           <p>Survivors: {Object.entries(m.result.survivors||{}).map(([u,n])=>u+": "+n).join(", ") || "None"}</p>
           {(m.result.report||[]).map(round=><details key={round.round}><summary>Round {round.round}</summary>

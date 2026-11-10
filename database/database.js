@@ -1,3 +1,4 @@
+const {units: formationUnits, marchLimit, defaultFormation} = require("../src/shared/formations");
 const {allianceUpgradeDuration,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
@@ -108,6 +109,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS alien_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, army TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, result TEXT)");
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returns_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returns_at INTEGER");
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returned_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returned_at INTEGER");
+    db.exec("CREATE TABLE IF NOT EXISTS player_formations (user_id INTEGER PRIMARY KEY REFERENCES users(id), presets TEXT NOT NULL, defense_slot INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
     db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
@@ -963,6 +965,35 @@ class DatabaseManager {
     })();
   }
 
+  getFormations(userId) {
+    const row=db.prepare("SELECT presets,defense_slot FROM player_formations WHERE user_id=?").get(userId);
+    return {presets:row ? JSON.parse(row.presets) : {}, defenseSlot:row?.defense_slot || 0};
+  }
+
+  saveFormation(userId, slot, rows, defenseSlot) {
+    return db.transaction(()=>{
+      const settings=this.getFormations(userId);
+      if(rows!==undefined){
+        if(!Number.isInteger(slot)||slot<1||slot>5||!rows||typeof rows!=="object"||Array.isArray(rows)
+          || Object.keys(rows).length!==formationUnits.length
+          || !formationUnits.every(unit=>Number.isInteger(rows[unit])&&rows[unit]>=1&&rows[unit]<=4)){
+          return {error:"Choose formation slot 1–5 and a valid row for every unit."};
+        }
+        settings.presets[slot]=rows;
+      }
+      if(defenseSlot!==undefined){
+        if(!Number.isInteger(defenseSlot)||defenseSlot<0||defenseSlot>5||(defenseSlot!==0&&!settings.presets[defenseSlot])){
+          return {error:"Choose the default defense or a saved formation."};
+        }
+        settings.defenseSlot=defenseSlot;
+      }
+      db.prepare(`INSERT INTO player_formations(user_id,presets,defense_slot) VALUES (?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET presets=excluded.presets,defense_slot=excluded.defense_slot`)
+        .run(userId,JSON.stringify(settings.presets),settings.defenseSlot);
+      return settings;
+    })();
+  }
+
   getAlienCampaign(userId) {
     this.resolveAlienMissions(userId);
     const row=db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
@@ -970,12 +1001,15 @@ class DatabaseManager {
     const nextLevel=Math.min(20,highestDefeated+1);
     const today=new Date().toISOString().slice(0,10);
     const used=db.prepare("SELECT COUNT(*) AS n FROM alien_missions WHERE user_id=? AND launched_at>=? AND launched_at<?").get(userId,Date.parse(today+"T00:00:00Z"),Date.parse(today+"T00:00:00Z")+86400000).n;
-    const missions=db.prepare("SELECT id,level,launched_at,arrives_at,resolved_at,returns_at,returned_at,result FROM alien_missions WHERE user_id=? ORDER BY id DESC LIMIT 15").all(userId).map(m=>({...m,result:m.result?JSON.parse(m.result):null}));
+    const missions=db.prepare("SELECT id,level,launched_at,arrives_at,resolved_at,returns_at,returned_at,result,army FROM alien_missions WHERE user_id=? ORDER BY id DESC LIMIT 15").all(userId).map(({army,result,...m})=>{
+      const march=JSON.parse(army);
+      return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, result:result?JSON.parse(result):null};
+    });
     const knight=db.prepare("SELECT victories,knight_level FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1};
     const scoutedLevels=db.prepare("SELECT level FROM alien_recon WHERE user_id=? ORDER BY level").all(userId).map(r=>r.level);
     const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
     const knightBusy=missions.some(m=>m.returned_at===null);
-    return {knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
+    return {formations:this.getFormations(userId),knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
   attackAlienBase(userId,level,selectedArmy,formation,includeCyberKnight) {
@@ -996,9 +1030,12 @@ class DatabaseManager {
         total+=n;
       }
       if(!total)return {error:"Select at least one unit."};
+      if(total>marchLimit)return {error:"Cyber Knight can command at most 50,000 troops."};
       // Validate formation before reserving any troops.
       // Battle is computed at arrival, using the chosen formation and static garrison.
       const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,n])=>n>0));
+      const rows=defaultFormation();
+      const battleFormation=formation || Object.entries(selected).map(([unit,count])=>({unit,count,row:rows[unit]}));
       if(formation){
         if(!Array.isArray(formation)||formation.length>100)return {error:"Invalid formation."};
         const tally={};
@@ -1020,7 +1057,7 @@ class DatabaseManager {
         attack: current.allianceBonuses.attack + (activeBuffs.some(buff => buff.kind==="attack") ? 10 : 0),
         health: current.allianceBonuses.health + (activeBuffs.some(buff => buff.kind==="health") ? 10 : 0)
       };
-      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:formation||null,cyberKnightLevel:campaign.knightLevel,allianceCombat}),now,arrivesAt);
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat}),now,arrivesAt);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,remaining:campaign.remaining-1};
     })();
   }

@@ -223,6 +223,12 @@ router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
   try { res.json(db.getAlienCampaign(Number(req.params.userId))); }
   catch(error) { console.error(error);res.status(500).json({message:"Campaign unavailable."}); }
 });
+router.post("/alien-campaign/formations",requireSession,(req,res)=>{
+  const result=db.saveFormation(Number(req.body.userId),req.body.slot,req.body.rows,req.body.defenseSlot);
+  if(result.error)return res.status(400).json({message:result.error});
+  res.json(result);
+});
+
 router.post("/alien-campaign/scout",requireSession,(req,res)=>{
   try {
     const result=db.scoutAlienBase(Number(req.body.userId),Number(req.body.level));
