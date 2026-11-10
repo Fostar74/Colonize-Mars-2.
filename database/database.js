@@ -1,4 +1,6 @@
 const craftingCosts = require("../src/shared/craftingCosts");
+const alienBases = require("../src/shared/alienBases");
+const {units: formationUnits, marchLimit, defaultFormation} = require("../src/shared/formations");
 const {allianceUpgradeDuration,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
@@ -109,6 +111,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS alien_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, army TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, result TEXT)");
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returns_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returns_at INTEGER");
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returned_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returned_at INTEGER");
+    db.exec("CREATE TABLE IF NOT EXISTS player_formations (user_id INTEGER PRIMARY KEY REFERENCES users(id), presets TEXT NOT NULL, defense_slot INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
     db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
@@ -118,6 +121,15 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
+    db.exec(`CREATE TABLE IF NOT EXISTS player_messages (
+      id INTEGER PRIMARY KEY, sender_id INTEGER NOT NULL REFERENCES users(id),
+      recipient_id INTEGER REFERENCES users(id), alliance_id INTEGER REFERENCES alliances(id),
+      body TEXT NOT NULL, sent_at INTEGER NOT NULL,
+      CHECK ((recipient_id IS NULL) != (alliance_id IS NULL)));
+      CREATE INDEX IF NOT EXISTS messages_sender ON player_messages(sender_id,id);
+      CREATE INDEX IF NOT EXISTS messages_recipient ON player_messages(recipient_id,id);
+      CREATE INDEX IF NOT EXISTS messages_alliance ON player_messages(alliance_id,id);`);
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_invitations (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), PRIMARY KEY(user_id, alliance_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_applications (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), applied_at INTEGER NOT NULL, PRIMARY KEY(user_id,alliance_id))");
     try { db.exec("ALTER TABLE alliance_members ADD COLUMN role TEXT NOT NULL DEFAULT 'Member'"); } catch(e) { if(!String(e.message).includes("duplicate column"))throw e; }
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help (id INTEGER PRIMARY KEY AUTOINCREMENT, requester_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, requested_at INTEGER NOT NULL, job_ends_at INTEGER NOT NULL)");
@@ -389,6 +401,7 @@ class DatabaseManager {
           const stats=unitUpgrades[job.unit]||{attack:1,defense:1};
           stats[job.stat]=Math.max(Number(stats[job.stat]||1),job.level);
           unitUpgrades[job.unit]=stats;
+          this.awardPlayerXp(userId,job.completionXp);
           upgradeJobs[slot]=null;
           changed=true;
         }
@@ -402,6 +415,7 @@ class DatabaseManager {
         buildingJob, queuedBuildingJob, trainingJob, trainingQueues, barracksReserve, upgradeJobs, unitUpgrades,
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
         allianceBonuses,
+        productionPerHour: Object.fromEntries(Object.entries(rates).map(([key, name]) => [key, Number(structures[name] || 0) * productionMultiplier * 360])),
         productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * productionMultiplier * 10) / 100])),
         serverTime: now
       };
@@ -453,7 +467,6 @@ class DatabaseManager {
       const cost = Object.fromEntries(Object.entries(unitPrice(unit)).map(([resource,value])=>[resource,value*quantity]));
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
-      this.awardPlayerXp(userId,Math.min(1000,quantity*2));
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
       const duration=Math.max(1000,Math.ceil(quantity*30000*(1-trainingBonus)));
       const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
@@ -474,13 +487,17 @@ class DatabaseManager {
       const reserve={...current.barracksReserve};
       const units=unit==="ALL"?Object.keys(reserve):[unit];
       if(unit!=="ALL"&&(!Number.isSafeInteger(amount)||amount<1||amount>Number(reserve[unit]||0)))return {error:"Invalid mobilization quantity."};
+      let trainingXp=0;
       for(const name of units){
         const n=unit==="ALL"?Number(reserve[name]||0):amount;
         if(!Number.isSafeInteger(n)||n<0)return {error:"Invalid reserve quantity."};
         current.army[name]=(Number(current.army[name])||0)+n;
         reserve[name]=(Number(reserve[name])||0)-n;
+        const unitCost=Object.values(unitPrice(name)||{}).reduce((total,cost)=>total+cost,0);
+        trainingXp+=3*n*unitCost;
       }
       db.prepare("UPDATE game_runtime SET army=?,barracks_reserve=? WHERE user_id=?").run(JSON.stringify(current.army),JSON.stringify(reserve),userId);
+      this.awardPlayerXp(userId,trainingXp);
       return {...current,barracksReserve:reserve};
     })();
   }
@@ -499,11 +516,11 @@ class DatabaseManager {
       const price=upgradePrice(level,current.allianceBonuses.discount);
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
-      const job={unit,stat,level:level+1,endsAt:Date.now()+upgradeDuration(level,current.allianceBonuses.speed)};
+      const completionXp=2*Object.values(price).reduce((total,cost)=>total+cost,0);
+      const job={unit,stat,level:level+1,completionXp,endsAt:Date.now()+upgradeDuration(level,current.allianceBonuses.speed)};
       jobs[slot]=job;
       db.prepare("UPDATE game_runtime SET upgrade_jobs=? WHERE user_id=?").run(JSON.stringify(jobs),userId);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
-      this.awardPlayerXp(userId,Math.max(1,Math.floor((price.Gold+price.Iron)/10)));
       return {...current,upgradeJobs:jobs};
     })();
   }
@@ -643,12 +660,69 @@ class DatabaseManager {
     })();
   }
 
+  listMessages(userId, scope){
+    if(!["private","alliance"].includes(scope))return {error:"Unknown message channel."};
+    const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+    if(scope==="alliance"&&!member)return {error:"Join an alliance to view its chat."};
+    const filter=member ? "m.alliance_id=?" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL))";
+    const params=member ? [member.alliance_id] : [userId,userId];
+    const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,
+      sender.username AS sender,recipient.username AS recipient FROM player_messages m
+      JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
+      WHERE ${filter} ORDER BY m.id DESC LIMIT 50`).all(...params);
+    return {messages};
+  }
+
+  sendMessage(userId, scope, recipient, body){
+    if(!["private","alliance"].includes(scope))return {error:"Unknown message channel."};
+    const content=typeof body==="string" ? body.trim() : "";
+    if(!content || content.length>500)return {error:"Enter a message between 1 and 500 characters."};
+    return db.transaction(()=>{
+      const now=Date.now();
+      const latest=db.prepare("SELECT sent_at FROM player_messages WHERE sender_id=? ORDER BY id DESC LIMIT 1").get(userId);
+      if(latest && now-latest.sent_at<1000)return {error:"Wait a moment before sending another message."};
+      const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(scope==="alliance"&&!member)return {error:"Join an alliance to use its chat."};
+      const target=scope==="private" && typeof recipient==="string" && this.findUserByUsername(recipient.trim());
+      if(scope==="private"&&(!target||target.id===userId))return {error:"Choose another existing player."};
+      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
+        .run(userId,target?.id||null,member?.alliance_id||null,content,now);
+      return {message:"Message sent."};
+    })();
+  }
+
   rankings(userId){
-    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.construction_points,0) AS points FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN ranking_points r ON r.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
-    const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.construction_points),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN ranking_points r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
-    const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.xp,0) AS points FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN player_talents r ON r.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
+    const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.xp),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
+    const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
-    return {players,alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};
+    return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};
+  }
+  inviteToAlliance(userId, targetId){
+    if(!Number.isSafeInteger(targetId)||targetId<1||targetId===userId)return {error:"Invalid player."};
+    return db.transaction(()=>{
+      const officer=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      if(!officer||!["Leader","Co-Leader"].includes(officer.role))return {error:"You do not have permission to invite players."};
+      if(!this.findUserById(targetId))return {error:"Player not found."};
+      if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(targetId))return {error:"That player already belongs to an alliance."};
+      const sent=db.prepare("INSERT OR IGNORE INTO alliance_invitations(user_id,alliance_id) VALUES (?,?)").run(targetId,officer.alliance_id);
+      return {message:sent.changes?"Invitation sent.":"Invitation already pending."};
+    })();
+  }
+  respondToAllianceInvite(userId, allianceId, accept){
+    if(!Number.isSafeInteger(allianceId)||allianceId<1||typeof accept!=="boolean")return {error:"Invalid invitation response."};
+    return db.transaction(()=>{
+      const invite=db.prepare("SELECT 1 FROM alliance_invitations WHERE user_id=? AND alliance_id=?").get(userId,allianceId);
+      if(!invite)return {error:"Invitation is no longer available."};
+      if(accept){
+        if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(userId))return {error:"Leave your current alliance first."};
+        this.syncGame(userId);
+        db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Member')").run(userId,allianceId);
+        db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(userId);
+      }
+      db.prepare("DELETE FROM alliance_invitations WHERE user_id=? AND (alliance_id=? OR ?)").run(userId,allianceId,Number(accept));
+      return {message:accept?"Invitation accepted.":"Invitation declined."};
+    })();
   }
   allianceDirectory(userId){
     const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,(SELECT COUNT(*) FROM alliance_members m WHERE m.alliance_id=a.id) AS memberCount FROM alliances a JOIN users u ON u.id=a.leader_id ORDER BY memberCount DESC,a.name COLLATE NOCASE").all();
@@ -782,7 +856,10 @@ class DatabaseManager {
   allianceState(userId){
     this.settleAllianceReinforcements(userId);
     const membership=db.prepare("SELECT a.id,a.name,a.leader_id,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
-    if(!membership)return {alliance:null,requests:[],...this.allianceDirectory(userId)};
+    if(!membership){
+      const invitations=db.prepare("SELECT a.id,a.name FROM alliance_invitations i JOIN alliances a ON a.id=i.alliance_id WHERE i.user_id=? ORDER BY a.name").all(userId);
+      return {alliance:null,requests:[],invitations,...this.allianceDirectory(userId)};
+    }
     const members=db.prepare("SELECT u.id,u.username,m.role FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=? ORDER BY CASE WHEN m.role='Leader' THEN 0 WHEN m.role='Co-Leader' THEN 1 ELSE 2 END,u.username").all(membership.id);
     const applications=db.prepare("SELECT u.id,u.username,a.applied_at FROM alliance_applications a JOIN users u ON u.id=a.user_id WHERE a.alliance_id=? ORDER BY a.applied_at").all(membership.id);
     const requests=db.prepare("SELECT h.id,h.requester_id,h.building_name,h.building_level,h.requested_at,h.job_key,h.job_ends_at,u.username FROM alliance_help h JOIN users u ON u.id=h.requester_id WHERE h.alliance_id=? ORDER BY h.id DESC LIMIT 30").all(membership.id).filter(h=>{
@@ -802,6 +879,7 @@ class DatabaseManager {
       const id=db.prepare("INSERT INTO alliances(name,leader_id) VALUES (?,?)").run(name.trim(),userId).lastInsertRowid;
       db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Leader')").run(userId,id);
       db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(userId);
+      db.prepare("DELETE FROM alliance_invitations WHERE user_id=?").run(userId);
       return this.allianceState(userId);
     })();
   }
@@ -826,6 +904,7 @@ class DatabaseManager {
         this.syncGame(applicantId);
         db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Member')").run(applicantId,officer.alliance_id);
         db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(applicantId);
+        db.prepare("DELETE FROM alliance_invitations WHERE user_id=?").run(applicantId);
       }else db.prepare("DELETE FROM alliance_applications WHERE user_id=? AND alliance_id=?").run(applicantId,officer.alliance_id);
       return this.allianceState(userId);
     })();
@@ -964,6 +1043,35 @@ class DatabaseManager {
     })();
   }
 
+  getFormations(userId) {
+    const row=db.prepare("SELECT presets,defense_slot FROM player_formations WHERE user_id=?").get(userId);
+    return {presets:row ? JSON.parse(row.presets) : {}, defenseSlot:row?.defense_slot || 0};
+  }
+
+  saveFormation(userId, slot, rows, defenseSlot) {
+    return db.transaction(()=>{
+      const settings=this.getFormations(userId);
+      if(rows!==undefined){
+        if(!Number.isInteger(slot)||slot<1||slot>5||!rows||typeof rows!=="object"||Array.isArray(rows)
+          || Object.keys(rows).length!==formationUnits.length
+          || !formationUnits.every(unit=>Number.isInteger(rows[unit])&&rows[unit]>=1&&rows[unit]<=4)){
+          return {error:"Choose formation slot 1–5 and a valid row for every unit."};
+        }
+        settings.presets[slot]=rows;
+      }
+      if(defenseSlot!==undefined){
+        if(!Number.isInteger(defenseSlot)||defenseSlot<0||defenseSlot>5||(defenseSlot!==0&&!settings.presets[defenseSlot])){
+          return {error:"Choose the default defense or a saved formation."};
+        }
+        settings.defenseSlot=defenseSlot;
+      }
+      db.prepare(`INSERT INTO player_formations(user_id,presets,defense_slot) VALUES (?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET presets=excluded.presets,defense_slot=excluded.defense_slot`)
+        .run(userId,JSON.stringify(settings.presets),settings.defenseSlot);
+      return settings;
+    })();
+  }
+
   getAlienCampaign(userId) {
     this.resolveAlienMissions(userId);
     const row=db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
@@ -971,20 +1079,31 @@ class DatabaseManager {
     const nextLevel=Math.min(20,highestDefeated+1);
     const today=new Date().toISOString().slice(0,10);
     const used=db.prepare("SELECT COUNT(*) AS n FROM alien_missions WHERE user_id=? AND launched_at>=? AND launched_at<?").get(userId,Date.parse(today+"T00:00:00Z"),Date.parse(today+"T00:00:00Z")+86400000).n;
-    const missions=db.prepare("SELECT id,level,launched_at,arrives_at,resolved_at,returns_at,returned_at,result FROM alien_missions WHERE user_id=? ORDER BY id DESC LIMIT 15").all(userId).map(m=>({...m,result:m.result?JSON.parse(m.result):null}));
+    const missions=db.prepare("SELECT id,level,launched_at,arrives_at,resolved_at,returns_at,returned_at,result,army FROM alien_missions WHERE user_id=? ORDER BY id DESC LIMIT 15").all(userId).map(({army,result,...m})=>{
+      const march=JSON.parse(army);
+      return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, origin:march.origin, target:march.target, result:result?JSON.parse(result):null};
+    });
     const knight=db.prepare("SELECT victories,knight_level FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1};
     const scoutedLevels=db.prepare("SELECT level FROM alien_recon WHERE user_id=? ORDER BY level").all(userId).map(r=>r.level);
     const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
-    return {scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
+    const knightBusy=missions.some(m=>m.returned_at===null);
+    const supportRoutes=db.prepare(`SELECT r.id,r.launched_at,r.arrives_at,r.recall_at,s.username AS sender,t.username AS recipient
+      FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
+      WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
+        AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
+    return {supportRoutes,formations:this.getFormations(userId),knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
-  attackAlienBase(userId,level,selectedArmy,formation) {
+  attackAlienBase(userId,level,selectedArmy,formation,includeCyberKnight,targetCoords) {
+    if(includeCyberKnight!==true)return {error:"Add Cyber Knight before launching the attack."};
     if(!Number.isInteger(level)||level<1||level>20)return {error:"Invalid alien base level."};
+    const target=targetCoords===undefined ? undefined : alienBases.find(base=>base.level===level&&base.x===targetCoords?.x&&base.y===targetCoords?.y);
+    if(targetCoords!==undefined&&!target)return {error:"Invalid Alien Base coordinates."};
     return db.transaction(()=>{
       const campaign=this.getAlienCampaign(userId);
       if(level>campaign.nextLevel)return {error:"Defeat the previous alien base level first."};
       if(campaign.remaining<=0)return {error:"All 20 daily attacks have been used. Reset is at 00:00 UTC."};
-      if(campaign.missions.some(m=>!m.resolved_at))return {error:"Wait for your current alien mission to arrive."};
+      if(campaign.knightBusy)return {error:"Cyber Knight is on an Alien Base mission. Wait until the Knight returns."};
       if(!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy))return {error:"Choose an army."};
       const current=this.syncGame(userId);
       if(!current)return {error:"Player not found."};
@@ -995,9 +1114,12 @@ class DatabaseManager {
         total+=n;
       }
       if(!total)return {error:"Select at least one unit."};
+      if(total>marchLimit)return {error:"Cyber Knight can command at most 50,000 troops."};
       // Validate formation before reserving any troops.
       // Battle is computed at arrival, using the chosen formation and static garrison.
       const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,n])=>n>0));
+      const rows=defaultFormation();
+      const battleFormation=formation || Object.entries(selected).map(([unit,count])=>({unit,count,row:rows[unit]}));
       if(formation){
         if(!Array.isArray(formation)||formation.length>100)return {error:"Invalid formation."};
         const tally={};
@@ -1019,8 +1141,9 @@ class DatabaseManager {
         attack: current.allianceBonuses.attack + (activeBuffs.some(buff => buff.kind==="attack") ? 10 : 0),
         health: current.allianceBonuses.health + (activeBuffs.some(buff => buff.kind==="health") ? 10 : 0)
       };
-      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:formation||null,allianceCombat}),now,arrivesAt);
-      return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,remaining:campaign.remaining-1};
+      const origin={x:current.castle.x,y:current.castle.y};
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,origin,target}),now,arrivesAt);
+      return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,origin,target,remaining:campaign.remaining-1};
     })();
   }
 
@@ -1050,6 +1173,7 @@ class DatabaseManager {
           revive:this.protocolBonus(userId,"Combat Recovery"),
            leadership:this.protocolBonus(userId,"Battle Command")
         });
+        if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
         if(result.victory){
           this.awardPlayerXp(userId,mission.level*100);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);

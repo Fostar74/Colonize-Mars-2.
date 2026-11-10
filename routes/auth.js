@@ -164,6 +164,16 @@ router.post("/wheel/spin",requireSession,(req,res)=>{
     res.json(result);
   }catch(e){console.error(e);res.status(500).json({message:"Spin unavailable."});}
 });
+router.route("/messages/:scope/:userId")
+  .get(requireSession,(req,res)=>{
+    const result=db.listMessages(Number(req.params.userId),req.params.scope);
+    res.status(result.error?400:200).json(result.error?{message:result.error}:result);
+  })
+  .post(requireSession,(req,res)=>{
+    const result=db.sendMessage(Number(req.params.userId),req.params.scope,req.body.recipient,req.body.body);
+    res.status(result.error?400:201).json(result.error?{message:result.error}:result);
+  });
+
 router.get("/rankings/:userId",requireSession,(req,res)=>{try{res.json(db.rankings(Number(req.params.userId)));}catch(e){console.error("Rankings:",e);res.status(500).json({message:"Rankings unavailable."});}});
 router.get("/alliance/:userId",requireSession,(req,res)=>{
   try{res.json(db.allianceState(Number(req.params.userId)));}catch(e){console.error(e);res.status(500).json({message:"Alliance unavailable."});}
@@ -171,6 +181,21 @@ router.get("/alliance/:userId",requireSession,(req,res)=>{
 router.post("/alliance/create",requireSession,(req,res)=>{
   try{const result=db.createAlliance(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot create alliance."});}
 });
+router.post("/alliance/invite",requireSession,(req,res)=>{
+  try {
+    const result=db.inviteToAlliance(Number(req.body.userId),Number(req.body.targetId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch(error){console.error(error);res.status(500).json({message:"Unable to send invitation."});}
+});
+router.post("/alliance/invite/respond",requireSession,(req,res)=>{
+  try {
+    const result=db.respondToAllianceInvite(Number(req.body.userId),Number(req.body.allianceId),req.body.accept);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch(error){console.error(error);res.status(500).json({message:"Unable to respond to invitation."});}
+});
+
 router.post("/alliance/join",requireSession,(req,res)=>{
   try{const result=db.joinAlliance(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot join alliance."});}
 });
@@ -223,6 +248,12 @@ router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
   try { res.json(db.getAlienCampaign(Number(req.params.userId))); }
   catch(error) { console.error(error);res.status(500).json({message:"Campaign unavailable."}); }
 });
+router.post("/alien-campaign/formations",requireSession,(req,res)=>{
+  const result=db.saveFormation(Number(req.body.userId),req.body.slot,req.body.rows,req.body.defenseSlot);
+  if(result.error)return res.status(400).json({message:result.error});
+  res.json(result);
+});
+
 router.post("/alien-campaign/scout",requireSession,(req,res)=>{
   try {
     const result=db.scoutAlienBase(Number(req.body.userId),Number(req.body.level));
@@ -233,7 +264,7 @@ router.post("/alien-campaign/scout",requireSession,(req,res)=>{
 
 router.post("/alien-campaign/attack",requireSession,(req,res)=>{
   try {
-    const result=db.attackAlienBase(Number(req.body.userId),Number(req.body.level),req.body.army,req.body.formation);
+    const result=db.attackAlienBase(Number(req.body.userId),Number(req.body.level),req.body.army,req.body.formation,req.body.includeCyberKnight,req.body.target);
     if(result.error) return res.status(400).json({message:result.error});
     res.json(result);
   } catch(error) {console.error(error);res.status(500).json({message:"Attack unavailable."});}
