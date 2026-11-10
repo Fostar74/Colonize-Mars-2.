@@ -6,7 +6,7 @@ import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
-const {unitPrice,upgradePrice,unitRequirement,buildingPrice} = unitEconomy;
+const {unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice} = unitEconomy;
 
 const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
@@ -239,7 +239,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
       <div className="upgrade-slots">
         {[0,1].map(slot=>(
           <button key={slot} className="upgrade-slot" onClick={()=>setUpgradeSlot(slot)}>
-            {upgradeSlot===slot ? "Selected Slot "+(slot+1) : "Slot "+(slot+1)}
+            {game.upgradeJobs?.[slot] ? `Slot ${slot+1}: ${game.upgradeJobs[slot].unit} ${game.upgradeJobs[slot].stat} — ${formatTime(remaining(game.upgradeJobs[slot]))}` : upgradeSlot===slot ? "Selected Slot "+(slot+1) : "Slot "+(slot+1)}
           </button>
         ))}
       </div>
@@ -258,9 +258,9 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
                   <p>{stat==="attack"?"Attack":"Health / Defense"} Level: {level}</p>
-                  <p>Next level {Math.min(20,level+1)}: {cost.Gold} Gold + {cost.Iron} Iron</p>
-                  <button disabled={!!busy || level>=20 || !affordable}
-                    onClick={()=>act("/upgrade-unit",{unit,stat},unit+" "+stat)}>
+                  <p>Next level {Math.min(20,level+1)}: {cost.Gold.toLocaleString()} Gold + {cost.Iron.toLocaleString()} Iron · {formatTime(Math.ceil(upgradeDuration(level)/1000))}</p>
+                  <button disabled={!!busy || level>=20 || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
+                    onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>
                     {level>=20?"MAX LEVEL":stat==="attack"?"Upgrade Attack":"Upgrade Health / Defense"}
                   </button>
                 </div>;
