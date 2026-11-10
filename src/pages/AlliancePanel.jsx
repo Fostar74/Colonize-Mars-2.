@@ -20,9 +20,9 @@ export default function AlliancePanel({supportTarget,playerAction,constructionHe
    <button disabled={busy} onClick={()=>action("request-help")}>🤝 Request help for my active construction</button>
    <h3>Construction Help Requests</h3>
    <p>Active requests refresh automatically every 10 seconds. Each member can help each construction once.</p>
-   <button disabled={busy||!(state.requests||[]).some(h=>!h.helped&&String(h.requester_id)!==String(getUserId()))} onClick={helpAll}>🤝 Help All Eligible Requests</button>
-   {!(state.requests||[]).length&&<p>No active help requests.</p>}
-   {(state.requests||[]).map(h=><div key={h.id} style={{padding:12,border:"1px solid #47758e",borderRadius:8,marginBottom:8}}>
+   <button disabled={busy||!(state?.requests||[]).some(h=>!h.helped&&String(h.requester_id)!==String(getUserId()))} onClick={helpAll}>🤝 Help All Eligible Requests</button>
+   {!(state?.requests||[]).length&&<p>No active help requests.</p>}
+   {(state?.requests||[]).map(h=><div key={h.id} style={{padding:12,border:"1px solid #47758e",borderRadius:8,marginBottom:8}}>
     <strong>{playerName({...h,id:h.requester_id,ally:true})}</strong> · {h.building_name} Lv {h.building_level}
     <p>{h.helperCount||0} member(s) helped · Reduce remaining time by 1 minute or 1%, whichever is greater.</p>
     <button disabled={busy||h.helped||String(h.requester_id)===String(getUserId())} onClick={()=>action("help",{requestId:h.id})}>{h.helped?"Already helped":String(h.requester_id)===String(getUserId())?"Your construction":"Help · Earn 1 Token"}</button>
