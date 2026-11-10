@@ -1,3 +1,4 @@
+import { useLanguage } from "../language";
 import React, { useState, useEffect } from "react";
 import "./CyberKnightPanel.css";
 import knightImage from "../images/CYBER-KNIGHT-3.png";
@@ -5,6 +6,7 @@ import craftingCosts from "../shared/craftingCosts";
 import GameProgressManager from "../utils/gameProgress";
 
 function CyberKnightPanel({ onClose }) {
+  const { t , label: localLabel} = useLanguage();
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [equippedItems, setEquippedItems] = useState({});
   const [rarityTab, setRarityTab] = useState("Common");
@@ -104,7 +106,7 @@ function CyberKnightPanel({ onClose }) {
     <div className="cyber-panel-overlay">
       <div className="cyber-panel">
         <div className="cyber-panel-header">
-          <h2>Cyber Knight CONTROL PANEL</h2>
+          <h2>{t("Cyber Knight CONTROL PANEL","УПРАВЛЕНИЕ НА КИБЕРРИЦАРЯ")}</h2>
           <button className="close-button" onClick={onClose}>
             X
           </button>
@@ -112,15 +114,15 @@ function CyberKnightPanel({ onClose }) {
 
         <div className="cyber-panel-body">
           <div className="cyber-image-container">
-            {imageFailed ? <div role="img" aria-label="Cyber Knight" style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",minHeight:280,color:"#00f0ff",fontSize:22}}>CYBER KNIGHT</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
+            {imageFailed ? <div role="img" aria-label="Cyber Knight" style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",minHeight:280,color:"#00f0ff",fontSize:22}}>{t("CYBER KNIGHT","КИБЕРРИЦАР")}</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
           </div>
 
-          <div style={{padding:"10px 14px",color:"#e7f8ff",background:"#142e43",borderRadius:8,marginBottom:12}}><strong>Gear Inventory: {inventory.length} item(s)</strong><div style={{fontSize:12}}>Click a gear slot below. Wheel prizes are Common rarity unless otherwise stated.</div>{inventory.slice(-5).map(item=><div key={item.id||item.name} style={{fontSize:12}}>{item.name} · {item.slot} · {item.rarity}</div>)}</div>
+          <div style={{padding:"10px 14px",color:"#e7f8ff",background:"#142e43",borderRadius:8,marginBottom:12}}><strong>{t("Gear Inventory:","Инвентар за екипировка:")} {inventory.length} {t("item(s)","предмета")}</strong><div style={{fontSize:12}}>{t("Click a gear slot below. Wheel prizes are Common rarity unless otherwise stated.","Избери слот. Наградите от кацане са обикновени, освен ако е посочено друго.")}</div>{inventory.slice(-5).map(item=><div key={item.id||item.name} style={{fontSize:12}}>{item.name} · {item.slot} · {item.rarity}</div>)}</div>
           <div className="equipment-slots">
             {gearSlots.map((slot) => (
               <div key={slot} className="gear-slot-wrapper">
                 <button className="gear-slot" onClick={() => handleSlotClick(slot)}>
-                  {slot}
+                  {localLabel(slot)}
                 </button>
                 {equippedItems[slot] && <div className="equipped-label">{equippedItems[slot].name}</div>}
               </div>
@@ -132,7 +134,7 @@ function CyberKnightPanel({ onClose }) {
       {selectedSlot && (
         <div className="equipment-popup">
           <div className="equipment-header">
-            <h3>View {selectedSlot} Items</h3>
+            <h3>{t("View","Виж")} {localLabel(selectedSlot)} {t("Items","Предмети")}</h3>
             <button onClick={handleCloseAll} className="close-button">
               X
             </button>
@@ -145,17 +147,17 @@ function CyberKnightPanel({ onClose }) {
                 className={rarityTab === rarity ? "active" : ""}
                 onClick={() => setRarityTab(rarity)}
               >
-                {rarity}
+                {localLabel(rarity)}
               </button>
             ))}
           </div>
 
           <div className="item-grid">
-            {!itemsForSlot.length&&<p style={{color:"#d6e7f0"}}>No {rarityTab} items for {selectedSlot}. Try another rarity or check Gear Inventory above.</p>}
+            {!itemsForSlot.length&&<p style={{color:"#d6e7f0"}}>{t("No","Няма")} {rarityTab} {t("items for","предмети за")} {localLabel(selectedSlot)}{t(". Try another rarity or check Gear Inventory above.",". Пробвай друга рядкост или виж инвентара по-горе.")}</p>}
             {itemsForSlot.map((item, index) => (
                 <div key={index} className="item-card">
                   <h4>{item.name}</h4>
-                  <p>Item Level: {item.level}</p>
+                  <p>{t("Item Level:","Ниво на предмета:")} {item.level}</p>
                   <ul>
                     {(item.stats || []).map((s, i) => (
                       <li key={i}>{s}</li>
@@ -168,7 +170,7 @@ function CyberKnightPanel({ onClose }) {
                         setActiveModal("equip");
                       }}
                     >
-                      EQUIP
+                      {t("EQUIP","ЕКИПИРАЙ")}
                     </button>
                     <button
                       onClick={() => {
@@ -176,7 +178,7 @@ function CyberKnightPanel({ onClose }) {
                         setActiveModal("dismantle");
                       }}
                     >
-                      DISMANTLE
+                      {t("DISMANTLE","РАЗГЛОБИ")}
                     </button>
                     <button
                       onClick={() => {
@@ -185,7 +187,7 @@ function CyberKnightPanel({ onClose }) {
                         setActiveModal("craft");
                       }}
                     >
-                      CRAFT
+                      {t("CRAFT","ИЗКОВИ")}
                     </button>
                   </div>
                 </div>
@@ -196,23 +198,23 @@ function CyberKnightPanel({ onClose }) {
 
       {activeModal === "equip" && selectedItem && (
         <div className="modal-window">
-          <h3>Equip {selectedItem.name}?</h3>
+          <h3>{t("Equip","Екипирай")} {selectedItem.name}?</h3>
           <ul>
             {(selectedItem.stats || []).map((s, i) => (
               <li key={i}>{s}</li>
             ))}
           </ul>
-          <button onClick={() => handleEquip(selectedSlot, selectedItem)}>Confirm</button>
-          <button onClick={handleCloseAll}>Cancel</button>
+          <button onClick={() => handleEquip(selectedSlot, selectedItem)}>{t("Confirm","Потвърди")}</button>
+          <button onClick={handleCloseAll}>{t("Cancel","Отказ")}</button>
         </div>
       )}
 
       {activeModal === "dismantle" && selectedItem && (
         <div className="modal-window">
-          <h3>Dismantle {selectedItem.name}?</h3>
-          <p>You will receive 5 {selectedSlot} Crafting Points.</p>
-          <button onClick={handleCloseAll}>Confirm</button>
-          <button onClick={() => setActiveModal(null)}>Cancel</button>
+          <h3>{t("Dismantle","Разглоби")} {selectedItem.name}?</h3>
+          <p>{t("You will receive 5","Ще получиш 5")} {localLabel(selectedSlot)} {t("Crafting Points.","точки за изковаване.")}</p>
+          <button onClick={handleCloseAll}>{t("Confirm","Потвърди")}</button>
+          <button onClick={() => setActiveModal(null)}>{t("Cancel","Отказ")}</button>
         </div>
       )}
 
@@ -220,12 +222,12 @@ function CyberKnightPanel({ onClose }) {
 
       {activeModal === "craft" && selectedItem && (
         <div className="modal-window">
-          <h3>Craft Upgrade</h3>
+          <h3>{t("Craft Upgrade","Подобри предмет")}</h3>
           <div className="craft-columns">
             <div>
-              <h4>Current Item</h4>
+              <h4>{t("Current Item","Текущ предмет")}</h4>
               <p>
-                {selectedItem.name} - Level {itemLevel}
+                {selectedItem.name} {t("- Level","– Ниво")} {itemLevel}
               </p>
               <ul>
                 {(selectedItem.stats || []).map((s, i) => (
@@ -234,9 +236,9 @@ function CyberKnightPanel({ onClose }) {
               </ul>
             </div>
             <div>
-              <h4>Upgraded Item</h4>
+              <h4>{t("Upgraded Item","Подобрен предмет")}</h4>
               <p>
-                {selectedItem.name} - Level {itemLevel + 1}
+                {selectedItem.name} {t("- Level","– Ниво")} {itemLevel + 1}
               </p>
               <ul>
                 {(selectedItem.stats || []).map((s, i) => (
@@ -245,12 +247,12 @@ function CyberKnightPanel({ onClose }) {
               </ul>
             </div>
           </div>
-          <p>Cost: {craftCost ?? "Unavailable"} Crafting Points</p>
-          <p>{selectedSlot}: {slotPoints} · Universal Forge: {universalPoints}</p>
+          <p>{t("Cost:","Цена:")} {craftCost ?? "Unavailable"} {t("Crafting Points","точки за изковаване")}</p>
+          <p>{localLabel(selectedSlot)}: {slotPoints} {t("· Universal Forge:","· Универсални точки:")} {universalPoints}</p>
           <button disabled={crafting || itemLevel >= 50 || !craftCost || slotPoints + universalPoints < craftCost} onClick={handleCraft}>
-            {itemLevel >= 50 ? "Max level" : crafting ? "Crafting…" : "Craft"}
+            {itemLevel >= 50 ? localLabel("Max level") : crafting ? localLabel("Crafting…") : localLabel("Craft")}
           </button>
-          <button onClick={() => setActiveModal(null)}>Cancel</button>
+          <button onClick={() => setActiveModal(null)}>{t("Cancel","Отказ")}</button>
         </div>
       )}
     </div>

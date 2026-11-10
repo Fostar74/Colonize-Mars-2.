@@ -1,8 +1,10 @@
+import { useLanguage } from "../language";
 import React, {useEffect, useState} from "react";
 
 const api = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
 
 export default function MessagePanel({alliance = false, recipient = "", playerAction}) {
+  const { t , label: localLabel} = useLanguage();
   const [body, setBody] = useState("");
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState("");
@@ -60,9 +62,9 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
   };
 
   return <section>
-    <h3>{alliance ? "Alliance Chat" : "Private Messages"}</h3>
-    {error && <p role="alert">{error}</p>}
-    {!messages.length && <p>No messages yet.</p>}
+    <h3>{alliance ? localLabel("Alliance Chat") : localLabel("Private Messages")}</h3>
+    {error && <p role="alert">{localLabel(error)}</p>}
+    {!messages.length && <p>{t("No messages yet.","Все още няма съобщения.")}</p>}
     <div style={{maxHeight:"40vh",overflowY:"auto"}}>
       {messages.map(message => <article key={message.id} style={{padding:8,borderBottom:"1px solid #47758e"}}>
         <strong>{playerAction ? playerAction({id:message.senderId,username:message.sender}) : message.sender}</strong>
@@ -71,11 +73,11 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
         <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{message.body}</div>
       </article>)}
     </div>
-    {!alliance && !recipient && <p>Select a player and choose Message to start a conversation.</p>}
+    {!alliance && !recipient && <p>{t("Select a player and choose Message to start a conversation.","Избери играч и натисни „Съобщение“, за да започнеш разговор.")}</p>}
     {(alliance || recipient) && <form onSubmit={send} style={{display:"grid",gap:8,marginTop:12}}>
-      {!alliance && <p>To <strong>{recipient}</strong></p>}
-      <textarea aria-label="Message" required maxLength={500} value={body} onChange={event=>setBody(event.target.value)} />
-      <button disabled={sending || !body.trim()}>Send</button>
+      {!alliance && <p>{t("To","До")} <strong>{recipient}</strong></p>}
+      <textarea aria-label={localLabel("Message")} required maxLength={500} value={body} onChange={event=>setBody(event.target.value)} />
+      <button disabled={sending || !body.trim()}>{t("Send","Изпрати")}</button>
     </form>}
   </section>;
 }
