@@ -4,6 +4,7 @@ import CyberKnightPanel from "./CyberKnightPanel";
 import Quests from "./Quests";
 import AlliancePanel from "./AlliancePanel";
 import Rankings from "./Rankings";
+import MessagePanel from "./MessagePanel";
 import PlayerTalents from "./PlayerTalents";
 import Inventory from "./Inventory";
 import "./Game.css";
@@ -20,6 +21,49 @@ function Game() {
   const [showRankings,setShowRankings]=useState(false);
   const [showTalents,setShowTalents]=useState(false);
   const [showInventory, setShowInventory] = useState(false);
+  const [messageRecipient,setMessageRecipient]=useState(null);
+  const [supportTarget,setSupportTarget]=useState(null);
+  const [playerMenu,setPlayerMenu]=useState(null);
+  const [playerNotice,setPlayerNotice]=useState("");
+  const [inviting,setInviting]=useState(false);
+
+  const api=(process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
+  const playerAction=player=><button type="button" onClick={async ()=>{
+    setPlayerMenu(player);
+    setPlayerNotice("");
+    const id=sessionStorage.getItem("userId");
+    try{
+      const response=await fetch(api+"/rankings/"+encodeURIComponent(id),{
+        headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"
+      });
+      if(!response.ok)return;
+      const data=await response.json();
+      const selected=data.players.find(entry=>entry.username===player.username);
+      const own=data.players.find(entry=>String(entry.id)===id);
+      if(selected)setPlayerMenu(current=>current===player ? {
+        ...selected,
+        ally:!!own?.alliance && selected.alliance===own.alliance,
+        canInvite:data.canInvite && !selected.alliance && String(selected.id)!==id
+      } : current);
+    }catch(_){}
+  }}>{player.username}</button>;
+
+  const showPlayerBase=()=>{
+    sessionStorage.setItem("mapPlayerTarget",playerMenu.username);
+    window.location.href="/#/map";
+  };
+
+  const invitePlayer=async()=>{
+    setInviting(true);
+    try{
+      const response=await fetch(api+"/alliance/invite",{method:"POST",headers:{
+        "Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")
+      },body:JSON.stringify({userId:sessionStorage.getItem("userId"),targetId:playerMenu.id})});
+      const result=await response.json();
+      setPlayerNotice(result.message);
+    }catch(error){setPlayerNotice(error.message);}finally{setInviting(false);}
+  };
+
   const onProgressChange = data => setResources(data.resources);
 
   useEffect(() => {
@@ -118,11 +162,11 @@ function Game() {
         <button onClick={() => setShowCyberKnight(true)}>Cyber Knight</button>
         <button onClick={()=>setShowTalents(true)}>Player Talents</button>
         <button onClick={() => setShowQuests(true)}>Quests</button>
-        <button>Campaign</button>
+        <button onClick={() => (window.location.href = "/#/map?campaign=1")}>Campaign</button>
         <button onClick={() => (window.location.href = "/#/map")}>Map</button>
-        <button onClick={()=>setShowAlliance(true)}>Alliance</button>
+        <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>Alliance</button>
         <button onClick={()=>setShowRankings(true)}>Rankings</button>
-        <button>Messages</button>
+        <button onClick={()=>setMessageRecipient("")}>Messages</button>
         <button onClick={() => setShowInventory(true)}>Inventory</button>
         <button onClick={() => setOptionsVisible(!optionsVisible)}>Options</button>
       </div>
@@ -142,6 +186,7 @@ function Game() {
             </button>
           </div>
           <div className="popup-content">
+            <AlliancePanel constructionHelpOnly />
             <StructurePanel onProgressChange={onProgressChange} />
           </div>
         </div>
@@ -159,8 +204,24 @@ function Game() {
       )}
 
       {showTalents&&<div className="popup"><div className="popup-header"><span>PLAYER TALENTS</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
-      {showAlliance&&<div className="popup"><div className="popup-header"><span>ALLIANCE</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel/></div></div>}
-      {showRankings&&<div className="popup"><div className="popup-header"><span>RANKINGS</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings/></div></div>}
+      {showAlliance&&<div className="popup"><div className="popup-header"><span>ALLIANCE</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction}/></div></div>}
+      {showRankings&&<div className="popup"><div className="popup-header"><span>RANKINGS</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings playerAction={playerAction}/></div></div>}
+      {messageRecipient!==null&&<div className="popup" style={{zIndex:90}}>
+        <div className="popup-header"><span>MESSAGES</span><button className="close-button" onClick={()=>setMessageRecipient(null)}>X</button></div>
+        <div className="popup-content"><MessagePanel key={messageRecipient} recipient={messageRecipient} playerAction={playerAction}/></div>
+      </div>}
+      {playerMenu&&<div className="popup" style={{zIndex:100}}>
+        <div className="popup-header"><span>{playerMenu.username}</span><button className="close-button" onClick={()=>setPlayerMenu(null)}>X</button></div>
+        <div className="popup-content" style={{display:"flex",flexWrap:"wrap",gap:8,alignContent:"flex-start"}}>
+          <button onClick={showPlayerBase}>View Base</button>
+          <button disabled={playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setMessageRecipient(playerMenu.username);setPlayerMenu(null);}}>Message</button>
+          <button disabled={!playerMenu.ally || playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setSupportTarget(playerMenu);setShowRankings(false);setShowAlliance(true);setPlayerMenu(null);}}>Support</button>
+          <button disabled title={playerMenu.ally?"You cannot attack an ally.":"Player battles are not enabled yet."}>Attack</button>
+          <button disabled={!playerMenu.canInvite || inviting} onClick={invitePlayer}>Invite to Alliance</button>
+          {playerNotice&&<p role="status">{playerNotice}</p>}
+        </div>
+      </div>}
+
       {showQuests && (
         <div className="popup">
           <div className="popup-header">

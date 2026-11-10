@@ -8,7 +8,9 @@ import ironMineImg from "../images/mine-iron.png";
 import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
 import alienBaseImg from "../images/alien-base.png";
-import unitEconomy from "../shared/unitEconomy";
+import formations from "../shared/formations";
+import alienBases from "../shared/alienBases";
+const {units, marchLimit, defaultFormation}=formations;
 
 function Map() {
   const canvasRef = useRef(null);
@@ -23,14 +25,26 @@ function Map() {
   const [marchDraft, setMarchDraft] = useState(null);
   const [availableArmy, setAvailableArmy] = useState({});
   const [marchUnits, setMarchUnits] = useState({});
+  const [knightAdded,setKnightAdded]=useState(false);
   const [formationRows,setFormationRows]=useState({});
   const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
-  const [marchType, setMarchType] = useState("All");
-  const [marchHistoryOpen, setMarchHistoryOpen] = useState(false);
+  const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
+  const [presetSlot,setPresetSlot]=useState(1);
+  const [presetRows,setPresetRows]=useState(defaultFormation);
+  const [formationMessage,setFormationMessage]=useState("");
+  const [formationBusy,setFormationBusy]=useState(false);
+  const [clock,setClock]=useState(Date.now);
+  const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
+  const hasRoutes=(campaign.missions||[]).some(m=>m.target&&!m.returned_at) || !!campaign.supportRoutes?.length;
+  useEffect(()=>{
+    if(!marchHistoryOpen&&!hasRoutes)return;
+    setClock(Date.now());
+    const timer=setInterval(()=>setClock(Date.now()),250);
+    return ()=>clearInterval(timer);
+  },[marchHistoryOpen,hasRoutes]);
   const [castles, setCastles] = useState([]);
   const [mapError, setMapError] = useState("");
-  const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
   const [selectedAlien, setSelectedAlien] = useState(null);
   const [viewCenter, setViewCenter] = useState({x:50,y:50});
   const [viewport, setViewport] = useState({width:1200,height:800});
@@ -59,28 +73,30 @@ function Map() {
     const timer = setInterval(()=>{loadBases();fetch((process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"")+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d&&!cancelled)setCampaign(d)}).catch(()=>{});},10000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
+  const mapPlayerTarget = useRef(sessionStorage.getItem("mapPlayerTarget"));
+  useEffect(() => {
+    const username = mapPlayerTarget.current;
+    const base = castles.find(c => c.username === username);
+    if (base) {
+      if (!sessionStorage.getItem("mapPlayerTarget")) return;
+      sessionStorage.removeItem("mapPlayerTarget");
+      setViewCenter({x:base.x,y:base.y});
+    }
+  }, [castles]);
   const [hqIcon, setHqIcon] = useState(null);
   const [hoveredTitle, setHoveredTitle] = useState("");
   const [cursorCoord, setCursorCoord] = useState(null);
   const [mineIcons, setMineIcons] = useState({});
   const [alienIcon, setAlienIcon] = useState(null);
+  const [mapMenuOpen, setMapMenuOpen] = useState(true);
+  const [alienSearchLevel, setAlienSearchLevel] = useState("");
 
   // World coordinates are 1–100; each tile has a stable geographic location.
   const mineData = [
     ...["gold","iron","solar","water"].flatMap((type,row)=>
       Array.from({length:9},(_,i)=>({x:5+i*10,y:10+row*22,type})))
   ];
-  // Exactly 69 alien bases, with stronger levels closer to the center.
-  const alienBases = Array.from({length:20},(_,index)=>{
-    const level=index+1;
-    const count=level===20?1:level>=16?2:level>=11?3:level>=6?4:5;
-    const radius=level===20?0:3+(20-level)*2.25;
-    return Array.from({length:count},(_,j)=>{
-      const angle=2*Math.PI*(j/count+(level*0.61803398875)%1);
-      return {x:Math.max(1,Math.min(100,Math.round(50+radius*Math.cos(angle)))),
-              y:Math.max(1,Math.min(100,Math.round(50+radius*Math.sin(angle)))),level};
-    });
-  }).flat();
+
 
   useEffect(() => {
     const gold = new Image();
@@ -135,7 +151,7 @@ function Map() {
 
       setCastles(previous => previous.length ? previous : [savedCastle]);
 
-      if (hqIcon) {
+      if (hqIcon && !mapPlayerTarget.current) {
         centerMapOn(savedCastle.x, savedCastle.y);
       }
     } catch {
@@ -323,7 +339,8 @@ function Map() {
       const data=await response.json();
       setAvailableArmy(data.gameProgress?.army || {});
       setMarchUnits({});
-      setFormationRows({});
+      setFormationRows(defaultFormation());
+      setKnightAdded(false);
       setMarchDraft({type,target,origin});
       } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
   };
@@ -340,36 +357,43 @@ function Map() {
     openMarch(type, selectedTarget, home);
   };
   const prepareMarch = async () => {
+    if(selectedTroops>marchLimit){setMarchNotice("Cyber Knight can command at most 50,000 troops.");return;}
+    if(!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
     if(marchDraft?.target?.type!=="alien"){setMarchNotice("Player marches are not yet enabled.");return;}
     try{
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
-      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:Number(formationRows[unit]||(["Railgunner","Pulse Sniper","Drone Operator","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"].includes(unit)?4:1))}));
-      const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation})});
+      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
+      const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}})});
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      setCampaign(old=>({...old,remaining:data.remaining}));
-      setMarchNotice("Mission dispatched! Battle in 60 seconds. Check CAMPAIGNS for results.");
+      setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
+        id:data.missionId,level:data.level,arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,cyberKnightLevel:old.knightLevel||1
+      },...(old.missions||[]).filter(m=>m.id!==data.missionId)]}));
+      setSelectedTarget(null);
+      setMapError("Mission dispatched. Check CAMPAIGNS for results.");
       setMarchDraft(null);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
-  const attackAlien = async () => {
-    if (!selectedAlien) return;
-    try {
-      const base=(process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"");
-      const response=await fetch(base+"/alien-campaign/attack",{
+  const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+count,0);
+  const presets=campaign.formations?.presets || {};
+  const saveFormation=async payload=>{
+    setFormationBusy(true);
+    setFormationMessage("");
+    try{
+      const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+      const response=await fetch(api+"/alien-campaign/formations",{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
-        body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:selectedAlien.level})
+        body:JSON.stringify({userId:sessionStorage.getItem("userId"),...payload})
       });
-      const data=await response.json();
-      if(!response.ok) throw new Error(data.message || "Attack failed");
-      setCampaign(previous=>({...previous,highestDefeated:data.highestDefeated,nextLevel:data.nextLevel,defenders:data.nextDefenders}));
-      sessionStorage.setItem("resources",JSON.stringify(data.resources));
-      window.dispatchEvent(new Event("game-progress-updated"));
-      setMapError("Alien base level "+data.level+" defeated. Reward: "+data.reward+" of each resource.");
-    } catch(error) {setMapError(error.message);}
+      const result=await response.json();
+      if(!response.ok)throw new Error(result.message || "Unable to save formation.");
+      setCampaign(old=>({...old,formations:result}));
+      setFormationMessage("Formation settings saved.");
+    }catch(error){setFormationMessage(error.message);}
+    finally{setFormationBusy(false);}
   };
 
   const goToCoordinates = () => {
@@ -396,6 +420,26 @@ function Map() {
       alert("Player not found.");
     }
   };
+
+  const attackRoutes=(campaign.missions||[]).filter(m=>m.target&&m.origin&&!m.returned_at).map(m=>({
+    id:"attack-"+m.id,color:"#ff5252",from:m.result?m.target:m.origin,to:m.result?m.origin:m.target,
+    start:m.result?m.resolved_at:m.launched_at,end:m.result?m.returns_at:m.arrives_at,
+  }));
+  const supportRoutes=(campaign.supportRoutes||[]).flatMap(m=>{
+    const sender=castles.find(base=>base.username===m.sender);
+    const recipient=castles.find(base=>base.username===m.recipient);
+    if(!sender||!recipient)return [];
+    const duration=m.arrives_at-m.launched_at;
+    const recallStart=m.recall_at-duration;
+    if(m.recall_at){
+      const fraction=Math.max(0,Math.min(1,(recallStart-m.launched_at)/duration));
+      return [{id:"support-"+m.id,color:"#54b8ff",from:{x:sender.x+(recipient.x-sender.x)*fraction,y:sender.y+(recipient.y-sender.y)*fraction},
+        to:sender,start:recallStart,end:m.recall_at}];
+    }
+    return [{id:"support-"+m.id,color:"#54b8ff",from:sender,to:recipient,start:m.launched_at,end:m.arrives_at}];
+  });
+  const routes=[...attackRoutes,...supportRoutes].filter(route=>route.end>clock);
+  const screenPoint=point=>({x:(point.x-.5)*tileSize+offset.x,y:(point.y-.5)*tileSize+offset.y});
 
   return (
     <div
@@ -425,11 +469,28 @@ function Map() {
         title={hoveredTitle}
       />
 
+      {!!routes.length && <svg aria-hidden="true" width="100%" height="100%" viewBox={`0 0 ${viewport.width} ${viewport.height}`}
+        preserveAspectRatio="none" style={{position:"absolute",inset:0,pointerEvents:"none"}}>
+        {routes.map(route=>{
+          const from=screenPoint(route.from),to=screenPoint(route.to);
+          const progress=Math.max(0,Math.min(1,(clock-route.start)/Math.max(1,route.end-route.start)));
+          const x=from.x+(to.x-from.x)*progress,y=from.y+(to.y-from.y)*progress;
+          return <g key={route.id}>
+            <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={route.color} strokeWidth="3"/>
+            <circle cx={x} cy={y} r="6" fill={route.color} stroke="white" strokeWidth="2"/>
+          </g>;
+        })}
+      </svg>}
+
       <div
         style={{
           position: "absolute",
           top: 20,
           left: 20,
+          maxWidth: "calc(100% - 40px)",
+          boxSizing: "border-box",
+          maxHeight: "75%",
+          overflowY: "auto",
           backgroundColor: "rgba(0,0,0,0.7)",
           padding: 12,
           borderRadius: 8,
@@ -437,6 +498,27 @@ function Map() {
           zIndex: 10,
         }}
       >
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:mapMenuOpen?8:0}}>
+          <button type="button" aria-label={mapMenuOpen?"Hide map menu":"Show map menu"} aria-expanded={mapMenuOpen}
+            aria-controls="map-menu-controls" onClick={()=>setMapMenuOpen(open=>!open)} style={{minWidth:44,minHeight:44}}>
+            {mapMenuOpen ? "▲" : "▼"}
+          </button>
+      <button
+        onClick={() => (window.location.href = "/#/game")}
+        style={{
+          padding: "10px 14px",
+          backgroundColor: "#444",
+          color: "white",
+          fontWeight: "bold",
+          border: "none",
+          borderRadius: "5px",
+          cursor: "pointer",
+        }}
+      >
+        GO BACK
+      </button>
+        </div>
+        <div id="map-menu-controls" hidden={!mapMenuOpen}>
         <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel} · Attacks left: {campaign.remaining??"—"}/20 · Cyber Knight Lv {campaign.knightLevel||1}</div>
         <div style={{fontSize:12}}>Mission travel: 60 seconds · Daily reset: 00:00 UTC</div>
         {(campaign.sideQuests||[]).filter(q=>q.completed&&!q.claimed).map(q=><button key={q.level} onClick={async()=>{
@@ -454,6 +536,22 @@ function Map() {
           <input type="number" id="xCoord" placeholder="X (1–100)" style={{width:90}} />
           <input type="number" id="yCoord" placeholder="Y (1–100)" style={{width:90}} />
           <button onClick={goToCoordinates}>Go to Coordinates</button>
+        </div>
+        <div style={{marginTop:6}}>
+          <label>Alien Base level{" "}
+            <select value={alienSearchLevel} onChange={event=>setAlienSearchLevel(event.target.value)}>
+              <option value="">Select level</option>
+              {Array.from({length:20},(_,index)=>index+1).map(level=><option key={level} value={level}>{level}</option>)}
+            </select>
+          </label>
+          {alienSearchLevel && <div>
+            {alienBases.filter(base=>base.level===Number(alienSearchLevel)).map(({x,y})=>(
+              <button key={`${x}:${y}`} onClick={()=>centerMapOn(x,y)} aria-label={`Go to Alien Base level ${alienSearchLevel} at ${x}:${y}`}>
+                {x}:{y}
+              </button>
+            ))}
+          </div>}
+        </div>
         </div>
       </div>
       {(selectedTarget || marchDraft) && <div style={{position:"absolute",inset:0,zIndex:25,background:"rgba(3,8,19,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -509,73 +607,106 @@ function Map() {
           {marchLoading && <p>Loading your army...</p>}
           {marchDraft && <div>
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
-            <p>Select troops from your base army:</p>
-            {!Object.values(unitEconomy.categories).flat().some(unit=>Number(availableArmy[unit]||0)>0) && <p>No trained troops available. Train units at your base before preparing a march.</p>}
+            <p>Commander: Cyber Knight Lv {campaign.knightLevel || 1} (required)</p>
+            <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
+              {knightAdded ? "Remove Cyber Knight" : "Add Cyber Knight"}
+            </button>
+            {campaign.knightBusy && <p>Cyber Knight is on a mission and must return before launching another attack.</p>}
+            <p>Select troops from your base army · {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
+            <label>Load formation <select defaultValue="" onChange={event=>{
+              setFormationRows(event.target.value==="default" ? defaultFormation() : presets[event.target.value]);
+              event.target.value="";
+            }}>
+              <option value="" disabled>Choose formation</option>
+              <option value="default">Default Attack</option>
+              {Object.keys(presets).map(slot=><option key={slot} value={slot}>Formation {slot}</option>)}
+            </select></label>
+            <p><label>Save current rows to <select value={presetSlot} onChange={event=>setPresetSlot(Number(event.target.value))}>
+              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>Slot {slot}</option>)}
+            </select></label>{" "}
+            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:formationRows})}>Save Formation</button></p>
+            {formationMessage&&<p role="status">{formationMessage}</p>}
+            {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>No trained troops available. Train units at your base before preparing a march.</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
-              {Object.values(unitEconomy.categories).flat().filter(unit=>Number(availableArmy[unit]||0)>0).map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
+              {units.map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
                 <strong>{unit}</strong>
                 <span>Available: {Number(availableArmy[unit]||0)}</span>
                 <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
                   onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
                 <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>MAX</button>
                 <span>Formation row (1 front / 4 rear)</span>
-                <select value={formationRows[unit]||(["Railgunner","Pulse Sniper","Drone Operator","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"].includes(unit)?4:1)} onChange={e=>setFormationRows(old=>({...old,[unit]:Number(e.target.value)}))}>
+                <select value={formationRows[unit]} onChange={e=>setFormationRows(old=>({...old,[unit]:Number(e.target.value)}))}>
                   {[1,2,3,4].map(row=><option key={row} value={row}>Row {row}</option>)}
                 </select>
               </label>)}
             </div>
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>setMarchUnits(Object.fromEntries(Object.entries(availableArmy).map(([k,v])=>[k,Number(v)||0])))}>Select all</button>
+              <button onClick={()=>{
+                let remaining=marchLimit;
+                const selection={};
+                for(const unit of units){
+                  selection[unit]=Math.min(remaining,Number(availableArmy[unit])||0);
+                  remaining-=selection[unit];
+                }
+                setMarchUnits(selection);
+              }}>Select up to 50,000</button>
               <button onClick={()=>setMarchUnits({})}>Clear</button>
-              <button onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
+              <button disabled={marchLoading || campaign.knightBusy || !knightAdded || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
               <button onClick={()=>setMarchDraft(null)}>← Back to mission types</button>
             </div>
+            {selectedTroops>marchLimit && <p role="alert">Cyber Knight can command at most 50,000 troops.</p>}
             <p style={{fontSize:12,color:"#b5c7d9"}}>Alien attacks reserve selected troops immediately; survivors return after the battle.</p>
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{marchNotice}</p>}
         </div>
       </div>}
-      {marchHistoryOpen&&<div style={{position:"absolute",right:18,bottom:78,zIndex:30,background:"#132538",border:"1px solid #5989aa",padding:16,borderRadius:10,color:"white",width:"min(600px,90vw)",maxHeight:"65vh",overflowY:"auto"}}>
-        <button onClick={()=>setMarchHistoryOpen(false)}>Close</button><h3>Alien Mission Reports</h3>
-        {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
-          <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result?(m.result.victory?"VICTORY":"DEFEAT"):"Travelling / awaiting battle"}</summary>
-          {m.result&&<div><p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
-          <p>Reward: {m.result.reward?JSON.stringify(m.result.reward):"None"}</p>
-          <p>Survivors: {Object.entries(m.result.survivors||{}).map(([u,n])=>u+": "+n).join(", ")}</p>
-          {(m.result.report||[]).map(round=><details key={round.round}><summary>Round {round.round}</summary>
-            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.attacker}: {e.units} {e.unit} → {e.target} · {e.damage} damage</p>)}
-          </details>)}</div>}
-        </details>)}
-        {!(campaign.missions||[]).length&&<p>No alien missions yet.</p>}
-      </div>}
       <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>🚀 CAMPAIGNS</button>
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>🚀 CAMPAIGNS</h2><button onClick={()=>setMarchHistoryOpen(false)}>✕ Close</button></div>
-          <p>Mission types</p>
-          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{["All","Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(t=><button key={t} onClick={()=>{setMarchType(t);if(t!=="All"&&selectedTarget){setMarchHistoryOpen(false);chooseAction(t);}}} style={{background:marchType===t?"#377d9f":"#24394b",color:"white",padding:"9px 12px",border:"1px solid #56758b",borderRadius:6}}>{t}</button>)}</div>
-          <h3>Active movements · {marchType}</h3>
-          <p>No active movements. Dispatch, travel times, returning armies and reports require the server-side march system.</p>
+          <details>
+            <summary onClick={()=>setPresetRows(presets[presetSlot] || defaultFormation())}>Formations</summary>
+            <label>Edit slot <select value={presetSlot} onChange={event=>{
+              const slot=Number(event.target.value);
+              setPresetSlot(slot);setPresetRows(presets[slot] || defaultFormation());
+            }}>
+              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>Formation {slot}{presets[slot]?"":" (empty)"}</option>)}
+            </select></label>{" "}
+            <button onClick={()=>setPresetRows(defaultFormation())}>Load Default Attack</button>{" "}
+            <button onClick={()=>setPresetRows(defaultFormation(true))}>Load Default Defense</button>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8,margin:"12px 0"}}>
+              {units.map(unit=><label key={unit}>{unit}{" "}
+                <select value={presetRows[unit]} onChange={event=>setPresetRows(rows=>({...rows,[unit]:Number(event.target.value)}))}>
+                  {[1,2,3,4].map(row=><option key={row} value={row}>Row {row}</option>)}
+                </select>
+              </label>)}
+            </div>
+            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}>Save Formation</button>
+            <p><label>Active defense formation{" "}
+              <select disabled={formationBusy} value={campaign.formations?.defenseSlot || 0} onChange={event=>saveFormation({defenseSlot:Number(event.target.value)})}>
+                <option value={0}>Default Defense</option>
+                {Object.keys(presets).map(slot=><option key={slot} value={slot}>Formation {slot}</option>)}
+              </select>
+            </label></p>
+            <p>Defense formation is saved for future player battles.</p>
+            {formationMessage&&<p role="status">{formationMessage}</p>}
+          </details>
+          <h3>Alien Mission Reports</h3>
+        {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
+          <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result ? (m.result.victory?"VICTORY":"DEFEAT") : "Travelling"}{!m.returned_at && ` · ${m.result ? "Returning" : "Arrival"} in ${Math.max(0,Math.ceil(((m.result ? m.returns_at : m.arrives_at)-clock)/1000))}s` }</summary>
+          {m.cyberKnightLevel && <p>Commander: Cyber Knight Lv {m.cyberKnightLevel}</p>}
+          {m.formation?.length ? <ul>{m.formation.map(({unit,count,row},index)=><li key={index}>{count.toLocaleString()} {unit} · Row {row}</li>)}</ul>
+            : m.units && <p>Dispatched: {Object.entries(m.units).map(([unit,count])=>`${count} ${unit}`).join(", ")}</p>}
+          {m.result&&<div><p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
+          <p>Reward: {m.result.reward?.item?.name || (m.result.reward?.type==="crafting" ? `${m.result.reward.amount} Universal Forge points` : m.result.reward?.type==="resources" ? `${m.result.reward.amount} of each resource` : m.result.reward?.type==="army" ? `${m.result.reward.amount} ${m.result.reward.unit}` : "None")}</p>
+          <p>Survivors: {Object.entries(m.result.survivors||{}).map(([u,n])=>u+": "+n).join(", ") || "None"}</p>
+          {(m.result.report||[]).map(round=><details key={round.round}><summary>Round {round.round}</summary>
+            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${e.unit} restored` : <>{e.attacker}: {e.units} {e.unit} → {e.target} · {e.damage} damage{Number.isInteger(e.kills) ? ` · ${e.kills} defeated` : ""}{e.dodged ? " · Evaded" : ""}</>}</p>)}
+          </details>)}</div>}
+        </details>)}
+        {!(campaign.missions||[]).length&&<p>No alien missions yet.</p>}
         </div>
       </div>}
-      <button
-        onClick={() => (window.location.href = "/#/game")}
-        style={{
-          position: "absolute",
-          top: 20,
-          right: 20,
-          padding: "10px 14px",
-          backgroundColor: "#444",
-          color: "white",
-          fontWeight: "bold",
-          border: "none",
-          borderRadius: "5px",
-          cursor: "pointer",
-          zIndex: 10,
-        }}
-      >
-        GO BACK
-      </button>
     </div>
   );
 }
