@@ -102,7 +102,7 @@
 
 .login-calendar {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(80px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(135px, 1fr));
   gap: 10px;
   margin-top: 20px;
 }
@@ -115,4 +115,9 @@
   border-radius: 6px;
   border: 1px solid #444;
   font-size: 12px;
+}
+
+.login-day-final {
+  border-color: #f0be65;
+  color: #ffe2a8;
 }

@@ -107,6 +107,9 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS tutorial_claims (user_id INTEGER NOT NULL REFERENCES users(id), mission_id INTEGER NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, mission_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alien_campaign (user_id INTEGER PRIMARY KEY REFERENCES users(id), highest_defeated INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS daily_login_claims (user_id INTEGER NOT NULL REFERENCES users(id), day INTEGER NOT NULL CHECK(day BETWEEN 1 AND 30), claimed_date TEXT NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, day), UNIQUE(user_id, claimed_date))");
+    if (!db.prepare("PRAGMA table_info(daily_login_claims)").all().some(column=>column.name==="reward")) {
+      db.exec("ALTER TABLE daily_login_claims ADD COLUMN reward TEXT");
+    }
     db.exec("CREATE TABLE IF NOT EXISTS inventory_reserves (user_id INTEGER PRIMARY KEY REFERENCES users(id), resources TEXT NOT NULL, army TEXT NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, army TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, result TEXT)");
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returns_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returns_at INTEGER");
@@ -1272,7 +1275,8 @@ class DatabaseManager {
     })();
   }
 
-  dailyLoginReward(day) {
+  dailyLoginReward(day, claimedDate) {
+    if (day === 30 && !claimedDate) return {type:"tokens",label:"Mars Landing Tokens",amount:500};
     if (day % 7 === 0) return {type:"equipment",label:"Cyber Knight Armor",item:{id:"login-armor-"+day,name:"Cyber Knight Armor",slot:"ARMOR",rarity:"Rare",level:1,stats:["+5 Defense"]}};
     if (day % 5 === 0) return {type:"army",label:"Explorer Trooper",amount:5+day};
     return {type:"resources",label:"Gold, Iron, Water, Solar",amount:250+day*100};
@@ -1280,11 +1284,17 @@ class DatabaseManager {
 
   getDailyLogin(userId) {
     if (!this.findUserById(userId)) return null;
-    const rows=db.prepare("SELECT day,claimed_date FROM daily_login_claims WHERE user_id=? ORDER BY day").all(userId);
+    const rows=db.prepare("SELECT day,claimed_date,reward FROM daily_login_claims WHERE user_id=? ORDER BY day").all(userId);
     const today=new Date().toISOString().slice(0,10);
     const nextDay=rows.length+1;
-    return {today,nextDay,claimedToday:rows.some(row=>row.claimed_date===today),
-      days:Array.from({length:30},(_,i)=>({day:i+1,reward:this.dailyLoginReward(i+1),claimed:rows.some(row=>row.day===i+1)}))};
+    const claims=new Map(rows.map(row=>[row.day,row]));
+    const days=Array.from({length:30},(_,index)=>{
+      const day=index+1;
+      const claim=claims.get(day);
+      const reward=claim?.reward ? JSON.parse(claim.reward) : this.dailyLoginReward(day,claim?.claimed_date);
+      return {day,reward,claimed:!!claim};
+    });
+    return {today,nextDay,claimedToday:rows.some(row=>row.claimed_date===today),days};
   }
 
   claimDailyLogin(userId) {
@@ -1297,11 +1307,13 @@ class DatabaseManager {
       if (!progress) return {error:"Player progress not found."};
       const day=state.nextDay, reward=this.dailyLoginReward(day);
       const today=new Date().toISOString().slice(0,10);
-      db.prepare("INSERT INTO daily_login_claims(user_id,day,claimed_date) VALUES (?,?,?)").run(userId,day,today);
+      db.prepare("INSERT INTO daily_login_claims(user_id,day,claimed_date,reward) VALUES (?,?,?,?)").run(userId,day,today,JSON.stringify(reward));
       if (reward.type==="resources") {
         for(const key of ["Gold","Iron","Water","Solar"]) this.addInventoryReward(userId,"resources",key,reward.amount);
       } else if(reward.type==="army") {
         this.addInventoryReward(userId,"army",reward.label,reward.amount);
+      } else if(reward.type==="tokens") {
+        this.creditTokens(userId,reward.amount);
       } else {
         const existing=this.getUserEquipment(userId);
         const inventory=existing?.gearInventory||[];
