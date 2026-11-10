@@ -195,6 +195,12 @@ router.post("/alliance/recall",requireSession,(req,res)=>{
     if(result.error)return res.status(400).json({message:result.error});res.json(result);
   }catch(e){console.error(e);res.status(500).json({message:"Reinforcement recall failed."});}
 });
+for(const [path,method,key] of [["donate","donateAlliance","resource"],["market/buy","buyAllianceMarket","item"],["bonus/upgrade","upgradeAllianceBonus","kind"]]){
+  router.post("/alliance/"+path,requireSession,(req,res)=>{
+    try{const result=db[method](Number(req.body.userId),req.body[key]);if(result.error)return res.status(400).json({message:result.error});res.json(result);}
+    catch(e){console.error(e);res.status(500).json({message:"Alliance economy action failed."});}
+  });
+}
 router.post("/alliance/request-help",requireSession,(req,res)=>{
   try{const result=db.requestAllianceHelp(Number(req.body.userId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
 });
