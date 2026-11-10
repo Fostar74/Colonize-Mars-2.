@@ -1,3 +1,4 @@
+const alienBases = require("../src/shared/alienBases");
 const {units: formationUnits, marchLimit, defaultFormation} = require("../src/shared/formations");
 const {allianceUpgradeDuration,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
@@ -1003,18 +1004,24 @@ class DatabaseManager {
     const used=db.prepare("SELECT COUNT(*) AS n FROM alien_missions WHERE user_id=? AND launched_at>=? AND launched_at<?").get(userId,Date.parse(today+"T00:00:00Z"),Date.parse(today+"T00:00:00Z")+86400000).n;
     const missions=db.prepare("SELECT id,level,launched_at,arrives_at,resolved_at,returns_at,returned_at,result,army FROM alien_missions WHERE user_id=? ORDER BY id DESC LIMIT 15").all(userId).map(({army,result,...m})=>{
       const march=JSON.parse(army);
-      return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, result:result?JSON.parse(result):null};
+      return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, origin:march.origin, target:march.target, result:result?JSON.parse(result):null};
     });
     const knight=db.prepare("SELECT victories,knight_level FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1};
     const scoutedLevels=db.prepare("SELECT level FROM alien_recon WHERE user_id=? ORDER BY level").all(userId).map(r=>r.level);
     const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
     const knightBusy=missions.some(m=>m.returned_at===null);
-    return {formations:this.getFormations(userId),knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
+    const supportRoutes=db.prepare(`SELECT r.id,r.launched_at,r.arrives_at,r.recall_at,s.username AS sender,t.username AS recipient
+      FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
+      WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
+        AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
+    return {supportRoutes,formations:this.getFormations(userId),knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
-  attackAlienBase(userId,level,selectedArmy,formation,includeCyberKnight) {
+  attackAlienBase(userId,level,selectedArmy,formation,includeCyberKnight,targetCoords) {
     if(includeCyberKnight!==true)return {error:"Add Cyber Knight before launching the attack."};
     if(!Number.isInteger(level)||level<1||level>20)return {error:"Invalid alien base level."};
+    const target=targetCoords===undefined ? undefined : alienBases.find(base=>base.level===level&&base.x===targetCoords?.x&&base.y===targetCoords?.y);
+    if(targetCoords!==undefined&&!target)return {error:"Invalid Alien Base coordinates."};
     return db.transaction(()=>{
       const campaign=this.getAlienCampaign(userId);
       if(level>campaign.nextLevel)return {error:"Defeat the previous alien base level first."};
@@ -1057,8 +1064,9 @@ class DatabaseManager {
         attack: current.allianceBonuses.attack + (activeBuffs.some(buff => buff.kind==="attack") ? 10 : 0),
         health: current.allianceBonuses.health + (activeBuffs.some(buff => buff.kind==="health") ? 10 : 0)
       };
-      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat}),now,arrivesAt);
-      return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,remaining:campaign.remaining-1};
+      const origin={x:current.castle.x,y:current.castle.y};
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,origin,target}),now,arrivesAt);
+      return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,origin,target,remaining:campaign.remaining-1};
     })();
   }
 

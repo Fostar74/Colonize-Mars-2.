@@ -239,7 +239,7 @@ router.post("/alien-campaign/scout",requireSession,(req,res)=>{
 
 router.post("/alien-campaign/attack",requireSession,(req,res)=>{
   try {
-    const result=db.attackAlienBase(Number(req.body.userId),Number(req.body.level),req.body.army,req.body.formation,req.body.includeCyberKnight);
+    const result=db.attackAlienBase(Number(req.body.userId),Number(req.body.level),req.body.army,req.body.formation,req.body.includeCyberKnight,req.body.target);
     if(result.error) return res.status(400).json({message:result.error});
     res.json(result);
   } catch(error) {console.error(error);res.status(500).json({message:"Attack unavailable."});}

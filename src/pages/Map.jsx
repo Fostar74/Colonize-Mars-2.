@@ -9,6 +9,7 @@ import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
 import alienBaseImg from "../images/alien-base.png";
 import formations from "../shared/formations";
+import alienBases from "../shared/alienBases";
 const {units, marchLimit, defaultFormation}=formations;
 
 function Map() {
@@ -34,15 +35,16 @@ function Map() {
   const [formationMessage,setFormationMessage]=useState("");
   const [formationBusy,setFormationBusy]=useState(false);
   const [clock,setClock]=useState(Date.now);
+  const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
+  const hasRoutes=(campaign.missions||[]).some(m=>m.target&&!m.returned_at) || !!campaign.supportRoutes?.length;
   useEffect(()=>{
-    if(!marchHistoryOpen)return;
+    if(!marchHistoryOpen&&!hasRoutes)return;
     setClock(Date.now());
-    const timer=setInterval(()=>setClock(Date.now()),1000);
+    const timer=setInterval(()=>setClock(Date.now()),250);
     return ()=>clearInterval(timer);
-  },[marchHistoryOpen]);
+  },[marchHistoryOpen,hasRoutes]);
   const [castles, setCastles] = useState([]);
   const [mapError, setMapError] = useState("");
-  const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
   const [selectedAlien, setSelectedAlien] = useState(null);
   const [viewCenter, setViewCenter] = useState({x:50,y:50});
   const [viewport, setViewport] = useState({width:1200,height:800});
@@ -84,17 +86,7 @@ function Map() {
     ...["gold","iron","solar","water"].flatMap((type,row)=>
       Array.from({length:9},(_,i)=>({x:5+i*10,y:10+row*22,type})))
   ];
-  // Exactly 69 alien bases, with stronger levels closer to the center.
-  const alienBases = Array.from({length:20},(_,index)=>{
-    const level=index+1;
-    const count=level===20?1:level>=16?2:level>=11?3:level>=6?4:5;
-    const radius=level===20?0:3+(20-level)*2.25;
-    return Array.from({length:count},(_,j)=>{
-      const angle=2*Math.PI*(j/count+(level*0.61803398875)%1);
-      return {x:Math.max(1,Math.min(100,Math.round(50+radius*Math.cos(angle)))),
-              y:Math.max(1,Math.min(100,Math.round(50+radius*Math.sin(angle)))),level};
-    });
-  }).flat();
+
 
   useEffect(() => {
     const gold = new Image();
@@ -364,13 +356,14 @@ function Map() {
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
-      const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded})});
+      const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}})});
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
       setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
-        id:data.missionId,level:data.level,arrives_at:data.arrivesAt,units:selected,formation,cyberKnightLevel:old.knightLevel||1
+        id:data.missionId,level:data.level,arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,cyberKnightLevel:old.knightLevel||1
       },...(old.missions||[]).filter(m=>m.id!==data.missionId)]}));
-      setMarchNotice("Mission dispatched! Battle in 60 seconds. Check CAMPAIGNS for results.");
+      setSelectedTarget(null);
+      setMapError("Mission dispatched. Check CAMPAIGNS for results.");
       setMarchDraft(null);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
@@ -418,6 +411,26 @@ function Map() {
     }
   };
 
+  const attackRoutes=(campaign.missions||[]).filter(m=>m.target&&m.origin&&!m.returned_at).map(m=>({
+    id:"attack-"+m.id,color:"#ff5252",from:m.result?m.target:m.origin,to:m.result?m.origin:m.target,
+    start:m.result?m.resolved_at:m.launched_at,end:m.result?m.returns_at:m.arrives_at,
+  }));
+  const supportRoutes=(campaign.supportRoutes||[]).flatMap(m=>{
+    const sender=castles.find(base=>base.username===m.sender);
+    const recipient=castles.find(base=>base.username===m.recipient);
+    if(!sender||!recipient)return [];
+    const duration=m.arrives_at-m.launched_at;
+    const recallStart=m.recall_at-duration;
+    if(m.recall_at){
+      const fraction=Math.max(0,Math.min(1,(recallStart-m.launched_at)/duration));
+      return [{id:"support-"+m.id,color:"#54b8ff",from:{x:sender.x+(recipient.x-sender.x)*fraction,y:sender.y+(recipient.y-sender.y)*fraction},
+        to:sender,start:recallStart,end:m.recall_at}];
+    }
+    return [{id:"support-"+m.id,color:"#54b8ff",from:sender,to:recipient,start:m.launched_at,end:m.arrives_at}];
+  });
+  const routes=[...attackRoutes,...supportRoutes].filter(route=>route.end>clock);
+  const screenPoint=point=>({x:(point.x-.5)*tileSize+offset.x,y:(point.y-.5)*tileSize+offset.y});
+
   return (
     <div
       style={{
@@ -445,6 +458,19 @@ function Map() {
         onMouseMove={handleMouseMove}
         title={hoveredTitle}
       />
+
+      {!!routes.length && <svg aria-hidden="true" width="100%" height="100%" viewBox={`0 0 ${viewport.width} ${viewport.height}`}
+        preserveAspectRatio="none" style={{position:"absolute",inset:0,pointerEvents:"none"}}>
+        {routes.map(route=>{
+          const from=screenPoint(route.from),to=screenPoint(route.to);
+          const progress=Math.max(0,Math.min(1,(clock-route.start)/Math.max(1,route.end-route.start)));
+          const x=from.x+(to.x-from.x)*progress,y=from.y+(to.y-from.y)*progress;
+          return <g key={route.id}>
+            <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={route.color} strokeWidth="3"/>
+            <circle cx={x} cy={y} r="6" fill={route.color} stroke="white" strokeWidth="2"/>
+          </g>;
+        })}
+      </svg>}
 
       <div
         style={{
