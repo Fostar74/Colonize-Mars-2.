@@ -143,7 +143,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
             {buildings.map(name => {
               const level = Number(structures[name] || 0);
               const next = level + (game.buildingJob?.name === name ? 1 : 0) + 1;
-              const cost = buildingPrice(name, next) || {Gold:0,Iron:0,Water:0,Solar:0};
+              const cost = buildingPrice(name, next, game.allianceBonuses?.discount) || {Gold:0,Iron:0,Water:0,Solar:0};
               const affordable = Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
               return <div key={name} className="building" style={{padding:14}}>
                 {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}
@@ -254,11 +254,11 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
               <h4>{unit}</h4>
               {["attack","defense"].map(stat=>{
                 const level=Number(game.unitUpgrades?.[unit]?.[stat] ?? 1);
-                const cost=upgradePrice(level);
+                const cost=upgradePrice(level, game.allianceBonuses?.discount);
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
                   <p>{stat==="attack"?"Attack":"Health / Defense"} Level: {level}</p>
-                  <p>Next level {Math.min(20,level+1)}: {cost.Gold.toLocaleString()} Gold + {cost.Iron.toLocaleString()} Iron · {formatTime(Math.ceil(upgradeDuration(level)/1000))}</p>
+                  <p>Next level {Math.min(20,level+1)}: {cost.Gold.toLocaleString()} Gold + {cost.Iron.toLocaleString()} Iron · {formatTime(Math.ceil(upgradeDuration(level, game.allianceBonuses?.speed)/1000))}</p>
                   <button disabled={!!busy || level>=20 || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
                     onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>
                     {level>=20?"MAX LEVEL":stat==="attack"?"Upgrade Attack":"Upgrade Health / Defense"}
