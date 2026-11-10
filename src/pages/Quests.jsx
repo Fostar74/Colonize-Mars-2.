@@ -150,13 +150,20 @@ const Quests = () => {
 
   const renderActivityRewards = () => <ActivityWheel />;
 
+  const describeLoginReward = reward => {
+    if(reward.type==="resources")return `${reward.amount.toLocaleString()} each of Gold, Iron, Water and Solar → Inventory / Resources`;
+    if(reward.type==="army")return `${reward.amount} ${reward.label} → Inventory / Army`;
+    if(reward.type==="tokens")return `${reward.amount} ${reward.label} → Activity Rewards`;
+    return `${reward.label} (${reward.item.rarity}) → Cyber Knight / Gear Inventory`;
+  };
+
   const claimLoginReward = async () => {
     setLoginBusy(true); setLoginMessage("");
     try {
       const response=await fetch(base+"/daily-login/claim",{method:"POST",headers:headers(),body:JSON.stringify({userId})});
       const data=await response.json();
       if(!response.ok) throw new Error(data.message||"Could not claim reward");
-      setLoginMessage("Day "+data.day+" reward collected!");
+      setLoginMessage(`Day ${data.day} collected · ${describeLoginReward(data.reward)}`);
       window.dispatchEvent(new Event("game-progress-updated"));
       await refresh();
     } catch(error) {setLoginMessage(error.message);}
@@ -169,11 +176,13 @@ const Quests = () => {
       {loginMessage && <p role="status">{loginMessage}</p>}
       {!loginRewards ? <p>Loading daily rewards...</p> : <>
         <p>{loginRewards.claimedToday?"Today's reward collected. Come back tomorrow!":loginRewards.nextDay<=30?"Day "+loginRewards.nextDay+" is ready to claim.":"All 30 rewards collected!"}</p>
+        {loginRewards.nextDay>1 && <p><strong>Last collected · Day {loginRewards.nextDay-1}</strong><br />
+          {describeLoginReward(loginRewards.days[loginRewards.nextDay-2].reward)}</p>}
         <div className="login-calendar">
           {loginRewards.days.map(d=>(
-            <div key={d.day} className="login-day" style={{opacity:d.claimed?0.6:1,padding:10}}>
+            <div key={d.day} className={d.day===30?"login-day login-day-final":"login-day"}>
               <strong>Day {d.day}</strong>
-              <div>{d.reward.type==="resources"?d.reward.amount+" each: Gold, Iron, Water, Solar":d.reward.type==="army"?d.reward.amount+" "+d.reward.label:d.reward.label+" (Rare)"}</div>
+              <div>{describeLoginReward(d.reward)}</div>
               <div>{d.claimed?"✓ Collected":d.day===loginRewards.nextDay&&!loginRewards.claimedToday?"Available":"Locked"}</div>
               {d.day===loginRewards.nextDay&&!loginRewards.claimedToday&&<button disabled={loginBusy} onClick={claimLoginReward}>{loginBusy?"Claiming...":"Claim reward"}</button>}
             </div>
