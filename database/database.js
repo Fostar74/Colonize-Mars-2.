@@ -123,6 +123,9 @@ function initializeDatabase() {
     if (!db.prepare("PRAGMA table_info(alliance_help)").all().some(c=>c.name==="job_key")) db.exec("ALTER TABLE alliance_help ADD COLUMN job_key TEXT");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_clicks (request_id INTEGER NOT NULL REFERENCES alliance_help(id), helper_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY(request_id,helper_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_reinforcements (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), sender_id INTEGER NOT NULL REFERENCES users(id), recipient_id INTEGER NOT NULL REFERENCES users(id), units TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, recall_at INTEGER, returned_at INTEGER)");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_treasury (alliance_id INTEGER PRIMARY KEY REFERENCES alliances(id), resources TEXT NOT NULL DEFAULT '{}', bonuses TEXT NOT NULL DEFAULT '{}')");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_wallets (user_id INTEGER PRIMARY KEY REFERENCES users(id), points INTEGER NOT NULL DEFAULT 0, donations_today INTEGER NOT NULL DEFAULT 0, donation_date TEXT NOT NULL DEFAULT '')");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_market_buffs (user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(user_id,kind))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_history (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), requester_id INTEGER NOT NULL REFERENCES users(id), helper_id INTEGER NOT NULL REFERENCES users(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, reduction_ms INTEGER NOT NULL, helped_at INTEGER NOT NULL)");
     console.log("Database initialized successfully");
   } catch (error) {
@@ -693,6 +696,73 @@ class DatabaseManager {
       return {missionId,returnsAt:now+travelMs};
     })();
   }
+  allianceEconomy(userId,allianceId){
+    db.prepare("INSERT OR IGNORE INTO alliance_treasury(alliance_id,resources,bonuses) VALUES (?,?,?)").run(allianceId,JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),"{}");
+    db.prepare("INSERT OR IGNORE INTO alliance_wallets(user_id) VALUES (?)").run(userId);
+    const wallet=db.prepare("SELECT points,donations_today,donation_date FROM alliance_wallets WHERE user_id=?").get(userId);
+    const today=new Date().toISOString().slice(0,10);
+    const treasury=db.prepare("SELECT resources,bonuses FROM alliance_treasury WHERE alliance_id=?").get(allianceId);
+    const buffs=db.prepare("SELECT kind,expires_at FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,Date.now());
+    return {points:wallet.points,donationsRemaining:20-(wallet.donation_date===today?wallet.donations_today:0),treasury:JSON.parse(treasury.resources),bonuses:JSON.parse(treasury.bonuses),buffs};
+  }
+  donateAlliance(userId,resource){
+    if(!["Gold","Iron","Water","Solar"].includes(resource))return {error:"Invalid donation resource."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance first."};
+      const economy=this.allianceEconomy(userId,member.alliance_id);
+      if(economy.donationsRemaining<=0)return {error:"Daily donation limit reached (20)."};
+      const amount=100;
+      const progress=this.syncGame(userId);
+      if(!progress||Number(progress.resources[resource]||0)<amount)return {error:"Not enough resources for donation."};
+      progress.resources[resource]-=amount;
+      economy.treasury[resource]=(economy.treasury[resource]||0)+amount;
+      const today=new Date().toISOString().slice(0,10);
+      db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
+      db.prepare("UPDATE alliance_treasury SET resources=? WHERE alliance_id=?").run(JSON.stringify(economy.treasury),member.alliance_id);
+      db.prepare("UPDATE alliance_wallets SET points=points+10,donations_today=CASE WHEN donation_date=? THEN donations_today+1 ELSE 1 END,donation_date=? WHERE user_id=?").run(today,today,userId);
+      return {pointsEarned:10,resource,amount,economy:this.allianceEconomy(userId,member.alliance_id)};
+    })();
+  }
+  allianceBonusCatalog(){
+    return {attack:{label:"Army Attack",resource:"Gold"},growth:{label:"Development",resource:"Water"},health:{label:"Army Health",resource:"Iron"},speed:{label:"Faster Upgrades",resource:"Solar"},discount:{label:"Cheaper Upgrades",resource:"Gold"},wallHealth:{label:"Wall Health",resource:"Iron"},wallAttack:{label:"Wall Attack",resource:"Solar"}};
+  }
+  upgradeAllianceBonus(userId,kind){
+    const item=this.allianceBonusCatalog()[kind];
+    if(!item)return {error:"Unknown alliance bonus."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member||!["Leader","Co-Leader"].includes(member.role))return {error:"Alliance leadership required."};
+      const e=this.allianceEconomy(userId,member.alliance_id),level=Number(e.bonuses[kind]||0);
+      if(level>=10)return {error:"Maximum alliance bonus level."};
+      const price=1000*(level+1);
+      if(Number(e.treasury[item.resource]||0)<price)return {error:"Alliance treasury lacks resources."};
+      e.treasury[item.resource]-=price;e.bonuses[kind]=level+1;
+      db.prepare("UPDATE alliance_treasury SET resources=?,bonuses=? WHERE alliance_id=?").run(JSON.stringify(e.treasury),JSON.stringify(e.bonuses),member.alliance_id);
+      return {economy:this.allianceEconomy(userId,member.alliance_id)};
+    })();
+  }
+  buyAllianceMarket(userId,item){
+    const catalog={gold:{cost:30},iron:{cost:30},water:{cost:30},solar:{cost:30},landing:{cost:100},attack:{cost:80},health:{cost:80},protection:{cost:150}};
+    const product=catalog[item];if(!product)return {error:"Unknown market item."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance first."};
+      const e=this.allianceEconomy(userId,member.alliance_id);
+      if(e.points<product.cost)return {error:"Not enough alliance points."};
+      if(["gold","iron","water","solar"].includes(item)){
+        const resource=item[0].toUpperCase()+item.slice(1);
+        const progress=this.syncGame(userId);if(!progress)return {error:"Player not found."};
+        progress.resources[resource]=(progress.resources[resource]||0)+500;
+        db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
+      }else if(item==="landing"){this.creditTokens(userId,1);}
+      else{
+        db.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,?,?) ON CONFLICT(user_id,kind) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at)").run(userId,item,Date.now()+3600000);
+      }
+      db.prepare("UPDATE alliance_wallets SET points=points-? WHERE user_id=?").run(product.cost,userId);
+      return {item,economy:this.allianceEconomy(userId,member.alliance_id)};
+    })();
+  }
   allianceState(userId){
     this.settleAllianceReinforcements(userId);
     const membership=db.prepare("SELECT a.id,a.name,a.leader_id,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
@@ -706,7 +776,7 @@ class DatabaseManager {
     const helpHistory=db.prepare("SELECT h.id,h.building_name,h.building_level,h.reduction_ms,h.helped_at,requester.username AS requester,helper.username AS helper FROM alliance_help_history h JOIN users requester ON requester.id=h.requester_id JOIN users helper ON helper.id=h.helper_id WHERE h.alliance_id=? ORDER BY h.helped_at DESC,h.id DESC LIMIT 50").all(membership.id);
     const helpStats=db.prepare("SELECT COUNT(*) AS totalHelps,COALESCE(SUM(reduction_ms),0) AS totalTimeSavedMs FROM alliance_help_history WHERE alliance_id=?").get(membership.id);
     const reinforcements=db.prepare("SELECT r.id,r.sender_id,r.recipient_id,r.units,r.launched_at,r.arrives_at,r.recall_at,r.returned_at,s.username AS sender,t.username AS recipient FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id WHERE r.alliance_id=? AND r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?) ORDER BY r.id DESC LIMIT 100").all(membership.id,userId,userId).map(r=>({...r,units:JSON.parse(r.units)}));
-    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,...this.allianceDirectory(userId)};
+    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,economy:this.allianceEconomy(userId,membership.id),...this.allianceDirectory(userId)};
   }
   createAlliance(userId,name){
     if(typeof name!=="string"||name.trim().length<3||name.trim().length>32)return {error:"Alliance name must be 3–32 characters."};
