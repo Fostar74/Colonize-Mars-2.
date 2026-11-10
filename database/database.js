@@ -485,7 +485,7 @@ class DatabaseManager {
       ["Rapid Deployment",[15,35,60],"% army speed"],["Resource Management",[10,25,45],"% economy"],
       ["Mining Operations",[20,50,100],"% mine production"],["Precision Fire",[15,35,60],"% ranged attack"],
       ["Reinforced Armor",[10,25,45],"% unit HP"],["Infantry Command",[10,25,45],"% infantry attack and HP"],
-      ["Battle Command",[6,16,30],"% leadership"],["Advanced Recon",[10,30,50],"% spy discount"],
+      ["Battle Command",[6,16,30],"% army attack (leadership)"],["Advanced Recon",[10,30,50],"% spy discount"],
       ["Evasion Protocol",[3,8,15],"% evade"],["Combat Recovery",[3,8,15],"% revive"],
       ["Mobile Warfare",[10,25,45],"% mobile attack"],["Heavy Artillery",[10,25,45],"% siege attack"],
       ["Advanced Research",[10,25,45],"% XP"],["Accelerated Training",[10,25,45],"% training speed"],
@@ -508,7 +508,7 @@ class DatabaseManager {
     db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
   }
   upgradePlayerTalent(userId,name){
-    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery", "Mining Operations"]);
+    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery", "Mining Operations", "Battle Command"]);
     if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
     if(!activeProtocols.has(name))return {error:"This protocol is not active yet. Protocol Points have not been spent."};
     return db.transaction(()=>{
@@ -828,7 +828,8 @@ class DatabaseManager {
           mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
           artilleryAttack:this.protocolBonus(userId,"Heavy Artillery"),
           dodge:this.protocolBonus(userId,"Evasion Protocol"),
-          revive:this.protocolBonus(userId,"Combat Recovery")
+          revive:this.protocolBonus(userId,"Combat Recovery"),
+           leadership:this.protocolBonus(userId,"Battle Command")
         });
         if(result.victory){
           this.awardPlayerXp(userId,mission.level*100);
