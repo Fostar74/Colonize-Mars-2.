@@ -107,6 +107,7 @@ function initializeDatabase() {
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returned_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returned_at INTEGER");
     db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
+    db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
     db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
     db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
@@ -485,7 +486,7 @@ class DatabaseManager {
       ["Rapid Deployment",[15,35,60],"% army speed"],["Resource Management",[10,25,45],"% economy"],
       ["Mining Operations",[20,50,100],"% mine production"],["Precision Fire",[15,35,60],"% ranged attack"],
       ["Reinforced Armor",[10,25,45],"% unit HP"],["Infantry Command",[10,25,45],"% infantry attack and HP"],
-      ["Battle Command",[6,16,30],"% army attack (leadership)"],["Advanced Recon",[10,30,50],"% spy discount"],
+      ["Battle Command",[6,16,30],"% army attack (leadership)"],["Advanced Recon",[10,30,50],"% reconnaissance resource discount"],
       ["Evasion Protocol",[3,8,15],"% evade"],["Combat Recovery",[3,8,15],"% revive"],
       ["Mobile Warfare",[10,25,45],"% mobile attack"],["Heavy Artillery",[10,25,45],"% siege attack"],
       ["Advanced Research",[10,25,45],"% XP"],["Accelerated Training",[10,25,45],"% training speed"],
@@ -508,7 +509,7 @@ class DatabaseManager {
     db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
   }
   upgradePlayerTalent(userId,name){
-    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery", "Mining Operations", "Battle Command"]);
+    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery", "Mining Operations", "Battle Command", "Advanced Recon"]);
     if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
     if(!activeProtocols.has(name))return {error:"This protocol is not active yet. Protocol Points have not been spent."};
     return db.transaction(()=>{
@@ -751,6 +752,22 @@ class DatabaseManager {
     return army;
   }
 
+  scoutAlienBase(userId,level) {
+    if(!Number.isInteger(level)||level<1||level>20)return {error:"Invalid alien base level."};
+    return db.transaction(()=>{
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      if(Number(current.army["Rover Scout"]||0)<1)return {error:"Train at least one Rover Scout before reconnaissance."};
+      const discount=this.protocolBonus(userId,"Advanced Recon")/100;
+      const cost=Math.ceil(1000*(1-discount));
+      if(Number(current.resources.Solar||0)<cost)return {error:"Not enough Solar for reconnaissance."};
+      current.resources.Solar-=cost;
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE id=(SELECT id FROM game_progress WHERE user_id=? ORDER BY id DESC LIMIT 1)").run(JSON.stringify(current.resources),userId);
+      db.prepare("INSERT INTO alien_recon(user_id,level,scouted_at) VALUES (?,?,?) ON CONFLICT(user_id,level) DO UPDATE SET scouted_at=excluded.scouted_at").run(userId,level,Date.now());
+      return {level,scoutedAt:Date.now(),cost,resources:current.resources,garrison:this.getAlienArmy(level)};
+    })();
+  }
+
   getAlienCampaign(userId) {
     this.resolveAlienMissions(userId);
     const row=db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
@@ -760,8 +777,9 @@ class DatabaseManager {
     const used=db.prepare("SELECT COUNT(*) AS n FROM alien_missions WHERE user_id=? AND launched_at>=? AND launched_at<?").get(userId,Date.parse(today+"T00:00:00Z"),Date.parse(today+"T00:00:00Z")+86400000).n;
     const missions=db.prepare("SELECT id,level,launched_at,arrives_at,resolved_at,returns_at,returned_at,result FROM alien_missions WHERE user_id=? ORDER BY id DESC LIMIT 15").all(userId).map(m=>({...m,result:m.result?JSON.parse(m.result):null}));
     const knight=db.prepare("SELECT victories,knight_level FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1};
+    const scoutedLevels=db.prepare("SELECT level FROM alien_recon WHERE user_id=? ORDER BY level").all(userId).map(r=>r.level);
     const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
-    return {highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
+    return {scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
   attackAlienBase(userId,level,selectedArmy,formation) {
@@ -895,6 +913,7 @@ class DatabaseManager {
       else if (m.kind === "building") { progress = Math.min(level(m.target),m.level); target = m.level; }
       else if (m.kind === "army") { progress = level("Training Center") >= 1 ? Math.min(10,Object.values(current.army).reduce((a,b)=>a+Number(b||0),0)) : 0; target=10; }
       else if (m.kind === "units") { progress = Math.min(25,Number(current.army["Explorer Trooper"]||0)) + Math.min(25,Number(current.army["Plasma Bladesman"]||0)) + Math.min(25,Number(current.army["Railgunner"]||0)); target=75; }
+      else if (m.kind === "recon") { progress = db.prepare("SELECT 1 FROM alien_recon WHERE user_id=? LIMIT 1").get(userId)?1:0; target=1; }
       else if (m.kind === "final") { progress = [...Array(22)].filter((_,i)=>claimed.has(i+1)).length; target=22; }
       const completed = progress >= target && m.kind !== "future";
       const unlocked = m.id === 1 || claimed.has(m.id-1);

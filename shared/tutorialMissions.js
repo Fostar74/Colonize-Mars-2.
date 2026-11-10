@@ -59,7 +59,7 @@ const missions = [
     "title": "Разузнаване на Марс",
     "description": "Изпрати Rover Scout да разузнае извънземна база от картата.",
     "reward": 4500,
-    "kind": "future",
+    "kind": "recon",
     "target": null,
     "level": null
   },

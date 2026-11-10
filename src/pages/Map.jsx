@@ -470,6 +470,21 @@ function Map() {
               <div style={{gridColumn:"1 / -1",marginTop:6,fontWeight:"bold"}}>Total defenders: {Object.values(campaign.garrisons[selectedTarget.level]).reduce((sum,n)=>sum+n,0).toLocaleString()}</div>
             </div> : <p>Loading fixed garrison data...</p>}
             <p style={{fontSize:12}}>Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.</p>
+            <p style={{fontSize:12}}>Rover Scout reconnaissance costs 1000 Solar before Quantum Intelligence discounts (10% / 30% / 50%). At least one available Rover Scout is required; it is not consumed.</p>
+            <button onClick={async()=>{
+              try{
+                const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+                const userId=sessionStorage.getItem("userId");
+                const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
+                const response=await fetch(base+"/alien-campaign/scout",{method:"POST",headers,body:JSON.stringify({userId,level:selectedTarget.level})});
+                const data=await response.json();
+                if(!response.ok)throw Error(data.message||"Reconnaissance failed.");
+                setMapError("Rover Scout reconnaissance complete at alien level "+data.level+". Solar spent: "+data.cost+". Mission 7 progress updated.");
+                const updated=await fetch(base+"/alien-campaign/"+userId,{headers});
+                if(updated.ok)setCampaign(await updated.json());
+              }catch(e){setMapError(e.message);}
+            }}>◈ Send Rover Scout</button>
+            {(campaign.scoutedLevels||[]).includes(selectedTarget.level)&&<p style={{color:"#9be8b7"}}>Reconnaissance completed for this stronghold.</p>}
           </div>}
           {!marchDraft && <div>
             <p>Choose mission type:</p>
@@ -489,7 +504,7 @@ function Map() {
               })}
             </div>
             {targetIsOwn && <p>This is your own base. Choose another destination.</p>}
-            {selectedTarget?.type==="alien" ? <p style={{fontSize:12,color:"#b2c8d8"}}>Alien bases can only be attacked. Their fixed defenders are visible above; espionage is unnecessary.</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.</p>}
+            {selectedTarget?.type==="alien" ? <p style={{fontSize:12,color:"#b2c8d8"}}>Use Send Rover Scout above to complete reconnaissance, or Attack to launch a combat mission.</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.</p>}
           </div>}
           {marchLoading && <p>Loading your army...</p>}
           {marchDraft && <div>
