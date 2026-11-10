@@ -739,11 +739,14 @@ class DatabaseManager {
       if(db.prepare("SELECT 1 FROM alliance_help_clicks WHERE request_id=? AND helper_id=?").get(requestId,userId))return {error:"Already helped this construction."};
       const job=this.syncGame(h.requester_id)?.buildingJob;
       if(!this.allianceRequestMatches(h,job))return {error:"Construction already finished."};
-      const reduction=Math.max(60000,Math.ceil((job.endsAt-Date.now())*.01));
-      job.endsAt=Math.max(Date.now(),job.endsAt-reduction);
+      const now = Date.now();
+      const remaining = job.endsAt - now;
+      if (remaining <= 0) return {error:"Construction already finished."};
+      const reduction = Math.min(remaining, Math.max(60000, Math.ceil(remaining * .01)));
+      job.endsAt -= reduction;
       db.prepare("UPDATE game_runtime SET building_job=? WHERE user_id=?").run(JSON.stringify(job),h.requester_id);
       db.prepare("INSERT INTO alliance_help_clicks(request_id,helper_id) VALUES (?,?)").run(requestId,userId);
-      db.prepare("INSERT INTO alliance_help_history(alliance_id,requester_id,helper_id,building_name,building_level,reduction_ms,helped_at) VALUES (?,?,?,?,?,?,?)").run(h.alliance_id,h.requester_id,userId,h.building_name,h.building_level,reduction,Date.now());
+      db.prepare("INSERT INTO alliance_help_history(alliance_id,requester_id,helper_id,building_name,building_level,reduction_ms,helped_at) VALUES (?,?,?,?,?,?,?)").run(h.alliance_id,h.requester_id,userId,h.building_name,h.building_level,reduction,now);
       this.creditTokens(userId,1);
       return {reductionMs:reduction,tokens:this.getTokens(userId).balance};
     })();
