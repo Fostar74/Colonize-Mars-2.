@@ -121,6 +121,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help (id INTEGER PRIMARY KEY AUTOINCREMENT, requester_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, requested_at INTEGER NOT NULL, job_ends_at INTEGER NOT NULL)");
     if (!db.prepare("PRAGMA table_info(alliance_help)").all().some(c=>c.name==="job_key")) db.exec("ALTER TABLE alliance_help ADD COLUMN job_key TEXT");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_clicks (request_id INTEGER NOT NULL REFERENCES alliance_help(id), helper_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY(request_id,helper_id))");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_reinforcements (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), sender_id INTEGER NOT NULL REFERENCES users(id), recipient_id INTEGER NOT NULL REFERENCES users(id), units TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, recall_at INTEGER, returned_at INTEGER)");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_history (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), requester_id INTEGER NOT NULL REFERENCES users(id), helper_id INTEGER NOT NULL REFERENCES users(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, reduction_ms INTEGER NOT NULL, helped_at INTEGER NOT NULL)");
     console.log("Database initialized successfully");
   } catch (error) {
@@ -633,7 +634,51 @@ class DatabaseManager {
   }
   allianceJobKey(job){return job?String(job.startedAt??(job.endsAt-job.duration)):null;}
   allianceRequestMatches(h,job){return !!(job&&job.name===h.building_name&&job.level===h.building_level&&job.endsAt>Date.now()&&String(h.job_key??(h.job_ends_at-(job.duration||0)))===this.allianceJobKey(job));}
+  settleAllianceReinforcements(userId){
+    const now=Date.now();
+    const returning=db.prepare("SELECT id,sender_id,units FROM alliance_reinforcements WHERE sender_id=? AND recall_at IS NOT NULL AND returned_at IS NULL AND recall_at<=?").all(userId,now);
+    for(const mission of returning){
+      const progress=this.syncGame(mission.sender_id);
+      if(!progress)continue;
+      for(const [unit,n] of Object.entries(JSON.parse(mission.units)))progress.army[unit]=(Number(progress.army[unit])||0)+n;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),mission.sender_id);
+      db.prepare("UPDATE alliance_reinforcements SET returned_at=? WHERE id=? AND returned_at IS NULL").run(now,mission.id);
+    }
+  }
+  sendAllianceReinforcement(userId,recipientId,units){
+    if(!Number.isSafeInteger(recipientId)||recipientId<1||recipientId===userId)return {error:"Choose another alliance member."};
+    if(!units||typeof units!=="object"||Array.isArray(units))return {error:"Invalid troop selection."};
+    return db.transaction(()=>{
+      const members=db.prepare("SELECT user_id,alliance_id FROM alliance_members WHERE user_id IN (?,?)").all(userId,recipientId);
+      if(members.length!==2||members[0].alliance_id!==members[1].alliance_id)return {error:"Recipient must be in your alliance."};
+      const progress=this.syncGame(userId);
+      if(!progress)return {error:"Player not found."};
+      const {playerTypes}=require("../shared/combatEngine");
+      let total=0;
+      for(const [unit,n] of Object.entries(units)){
+        if(!playerTypes[unit]||!Number.isSafeInteger(n)||n<1||n>Number(progress.army[unit]||0))return {error:"Invalid troop count."};
+        total+=n;
+      }
+      if(!total)return {error:"Select troops to send."};
+      for(const [unit,n] of Object.entries(units))progress.army[unit]-=n;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),userId);
+      const now=Date.now(),travelMs=Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100)));
+      const result=db.prepare("INSERT INTO alliance_reinforcements(alliance_id,sender_id,recipient_id,units,launched_at,arrives_at) VALUES (?,?,?,?,?,?)").run(members[0].alliance_id,userId,recipientId,JSON.stringify(units),now,now+travelMs);
+      return {missionId:Number(result.lastInsertRowid),arrivesAt:now+travelMs};
+    })();
+  }
+  recallAllianceReinforcement(userId,missionId){
+    if(!Number.isSafeInteger(missionId)||missionId<1)return {error:"Invalid reinforcement."};
+    return db.transaction(()=>{
+      const mission=db.prepare("SELECT * FROM alliance_reinforcements WHERE id=? AND sender_id=? AND recall_at IS NULL AND returned_at IS NULL").get(missionId,userId);
+      if(!mission)return {error:"Reinforcement unavailable for recall."};
+      const now=Date.now(),travelMs=Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100)));
+      db.prepare("UPDATE alliance_reinforcements SET recall_at=? WHERE id=?").run(now+travelMs,missionId);
+      return {missionId,returnsAt:now+travelMs};
+    })();
+  }
   allianceState(userId){
+    this.settleAllianceReinforcements(userId);
     const membership=db.prepare("SELECT a.id,a.name,a.leader_id,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
     if(!membership)return {alliance:null,requests:[],...this.allianceDirectory(userId)};
     const members=db.prepare("SELECT u.id,u.username,m.role FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=? ORDER BY CASE WHEN m.role='Leader' THEN 0 WHEN m.role='Co-Leader' THEN 1 ELSE 2 END,u.username").all(membership.id);
@@ -644,7 +689,8 @@ class DatabaseManager {
     }).map(h=>({...h,helped:!!db.prepare("SELECT 1 FROM alliance_help_clicks WHERE request_id=? AND helper_id=?").get(h.id,userId),helperCount:db.prepare("SELECT COUNT(*) AS n FROM alliance_help_clicks WHERE request_id=?").get(h.id).n}));
     const helpHistory=db.prepare("SELECT h.id,h.building_name,h.building_level,h.reduction_ms,h.helped_at,requester.username AS requester,helper.username AS helper FROM alliance_help_history h JOIN users requester ON requester.id=h.requester_id JOIN users helper ON helper.id=h.helper_id WHERE h.alliance_id=? ORDER BY h.helped_at DESC,h.id DESC LIMIT 50").all(membership.id);
     const helpStats=db.prepare("SELECT COUNT(*) AS totalHelps,COALESCE(SUM(reduction_ms),0) AS totalTimeSavedMs FROM alliance_help_history WHERE alliance_id=?").get(membership.id);
-    return {alliance:membership,members,applications,requests,helpHistory,helpStats,...this.allianceDirectory(userId)};
+    const reinforcements=db.prepare("SELECT r.id,r.sender_id,r.recipient_id,r.units,r.launched_at,r.arrives_at,r.recall_at,r.returned_at,s.username AS sender,t.username AS recipient FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id WHERE r.alliance_id=? AND r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?) ORDER BY r.id DESC LIMIT 100").all(membership.id,userId,userId).map(r=>({...r,units:JSON.parse(r.units)}));
+    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,...this.allianceDirectory(userId)};
   }
   createAlliance(userId,name){
     if(typeof name!=="string"||name.trim().length<3||name.trim().length>32)return {error:"Alliance name must be 3–32 characters."};

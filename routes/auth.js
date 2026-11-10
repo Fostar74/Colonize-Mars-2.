@@ -185,6 +185,16 @@ for(const [route,method] of [["application","allianceApplication"],["role","alli
     }catch(e){console.error(e);res.status(500).json({message:"Alliance action failed."});}
   });
 }
+router.post("/alliance/reinforce",requireSession,(req,res)=>{
+  try{const result=db.sendAllianceReinforcement(Number(req.body.userId),Number(req.body.recipientId),req.body.units);
+    if(result.error)return res.status(400).json({message:result.error});res.json(result);
+  }catch(e){console.error(e);res.status(500).json({message:"Reinforcement dispatch failed."});}
+});
+router.post("/alliance/recall",requireSession,(req,res)=>{
+  try{const result=db.recallAllianceReinforcement(Number(req.body.userId),Number(req.body.missionId));
+    if(result.error)return res.status(400).json({message:result.error});res.json(result);
+  }catch(e){console.error(e);res.status(500).json({message:"Reinforcement recall failed."});}
+});
 router.post("/alliance/request-help",requireSession,(req,res)=>{
   try{const result=db.requestAllianceHelp(Number(req.body.userId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
 });

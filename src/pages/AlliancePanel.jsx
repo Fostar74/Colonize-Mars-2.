@@ -3,6 +3,7 @@ const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost
 const getUserId=()=>sessionStorage.getItem("userId");
 const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 export default function AlliancePanel(){
+ const [reinforceRecipient,setReinforceRecipient]=useState(""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
  const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[tab,setTab]=useState("members");
  const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
@@ -21,7 +22,7 @@ export default function AlliancePanel(){
   </div>:<div>
    <h3>🛡 {state.alliance.name}</h3>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-    {["members","applications","help","history"].map(t=><button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{t==="members"?"Members":t==="applications"?"Applications":t==="help"?"Construction Help":"Help History"}</button>)}
+    {["members","applications","help","history","reinforcements"].map(t=><button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{t==="members"?"Members":t==="applications"?"Applications":t==="help"?"Construction Help":t==="history"?"Help History":"Reinforcements"}</button>)}
    </div>
    {tab==="members"&&<div>
     <h3>Alliance Members ({(state.members||[]).length})</h3>
@@ -40,6 +41,26 @@ export default function AlliancePanel(){
      </tr>)}</tbody>
     </table></div>
     {state.alliance.role==="Leader"&&<p style={{fontSize:12}}>Transfer leadership before leaving. One player per officer role.</p>}
+   </div>}
+   {tab==="reinforcements"&&<div>
+    <h3>Alliance Reinforcements</h3>
+    <p>Dispatch troops to an ally, then recall them when ready. Troops are reserved from your active army until they return.</p>
+    <label>Recipient <select value={reinforceRecipient} onChange={e=>setReinforceRecipient(e.target.value)}>
+      <option value="">Choose member</option>
+      {(state.members||[]).filter(m=>String(m.id)!==String(getUserId())).map(m=><option key={m.id} value={m.id}>{m.username}</option>)}
+    </select></label>
+    <label> Unit <select value={reinforceUnit} onChange={e=>setReinforceUnit(e.target.value)}>
+      {["Explorer Trooper","Exo-Soldier","Plasma Bladesman","Nano Shieldman","Railgunner","Pulse Sniper","Drone Operator","Rover Scout","Hoverbike Rider","Mech Walker","Hover Drone Rider","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon","Martian Noble","AI General","Gene Warrior"].map(u=><option key={u}>{u}</option>)}
+    </select></label>
+    <label> Count <input type="number" min="1" step="1" value={reinforceCount} onChange={e=>setReinforceCount(Number(e.target.value))} style={{width:95}}/></label>
+    <button disabled={busy||!reinforceRecipient||!Number.isSafeInteger(reinforceCount)||reinforceCount<1} onClick={()=>action("reinforce",{recipientId:Number(reinforceRecipient),units:{[reinforceUnit]:reinforceCount}})}>Send Reinforcements</button>
+    <p style={{fontSize:12}}>Travel is approximately one minute each way, modified by Hyperdrive. Defensive battle participation is not yet enabled.</p>
+    {(state.reinforcements||[]).map(m=><div key={m.id} style={{padding:10,border:"1px solid #47758e",margin:"8px 0",borderRadius:6}}>
+      <strong>{m.sender} → {m.recipient}</strong> · {Object.entries(m.units).map(([u,n])=>n+" "+u).join(", ")}
+      <p>{m.recall_at?"Returning":Date.now()<m.arrives_at?"Travelling":"Stationed"} · Arrival {new Date(m.arrives_at).toLocaleString()}</p>
+      {String(m.sender_id)===String(getUserId())&&!m.recall_at&&<button disabled={busy} onClick={()=>action("recall",{missionId:m.id})}>Recall Troops</button>}
+    </div>)}
+    {!(state.reinforcements||[]).length&&<p>No active reinforcements.</p>}
    </div>}
    {tab==="history"&&<div>
     <h3>Alliance Construction Help History</h3>
