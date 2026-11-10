@@ -762,7 +762,7 @@ class DatabaseManager {
       const cost=Math.ceil(1000*(1-discount));
       if(Number(current.resources.Solar||0)<cost)return {error:"Not enough Solar for reconnaissance."};
       current.resources.Solar-=cost;
-      db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(current.resources),userId);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE id=(SELECT id FROM game_progress WHERE user_id=? ORDER BY id DESC LIMIT 1)").run(JSON.stringify(current.resources),userId);
       db.prepare("INSERT INTO alien_recon(user_id,level,scouted_at) VALUES (?,?,?) ON CONFLICT(user_id,level) DO UPDATE SET scouted_at=excluded.scouted_at").run(userId,level,Date.now());
       return {level,scoutedAt:Date.now(),cost,resources:current.resources,garrison:this.getAlienArmy(level)};
     })();
