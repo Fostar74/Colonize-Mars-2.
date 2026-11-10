@@ -1,4 +1,4 @@
-const {unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
+const {allianceUpgradeDuration,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -123,6 +123,9 @@ function initializeDatabase() {
     if (!db.prepare("PRAGMA table_info(alliance_help)").all().some(c=>c.name==="job_key")) db.exec("ALTER TABLE alliance_help ADD COLUMN job_key TEXT");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_clicks (request_id INTEGER NOT NULL REFERENCES alliance_help(id), helper_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY(request_id,helper_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_reinforcements (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), sender_id INTEGER NOT NULL REFERENCES users(id), recipient_id INTEGER NOT NULL REFERENCES users(id), units TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, recall_at INTEGER, returned_at INTEGER)");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_treasury (alliance_id INTEGER PRIMARY KEY REFERENCES alliances(id), resources TEXT NOT NULL DEFAULT '{}', bonuses TEXT NOT NULL DEFAULT '{}')");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_wallets (user_id INTEGER PRIMARY KEY REFERENCES users(id), points INTEGER NOT NULL DEFAULT 0, donations_today INTEGER NOT NULL DEFAULT 0, donation_date TEXT NOT NULL DEFAULT '')");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_market_buffs (user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(user_id,kind))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_history (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), requester_id INTEGER NOT NULL REFERENCES users(id), helper_id INTEGER NOT NULL REFERENCES users(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, reduction_ms INTEGER NOT NULL, helped_at INTEGER NOT NULL)");
     console.log("Database initialized successfully");
   } catch (error) {
@@ -343,15 +346,17 @@ class DatabaseManager {
       // Resource production is calculated from server time, including while logged out.
       const elapsedTicks = Math.floor(Math.max(0, now - state.production_at) / 10000);
       const economyBonus = this.protocolBonus(userId, "Resource Management") / 100;
+      const allianceBonuses = this.activeAllianceBonuses(userId);
       const miningBonus = this.protocolBonus(userId, "Mining Operations") / 100;
       const productionCarry = JSON.parse(state.production_carry || "{}");
+      const productionMultiplier = (1 + economyBonus) * (1 + miningBonus) * (1 + allianceBonuses.growth / 100);
       const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
       for (const [resource, name] of Object.entries(rates)) {
         const level = Number(structures[name] || 0);
         if (level > 0 && elapsedTicks > 0) {
           // Preserve sub-unit production between 10-second ticks; otherwise frequent polling
           // silently discards most of the Resource Management protocol bonus.
-          const produced = level * elapsedTicks * (1 + economyBonus) * (1 + miningBonus) + (Number(productionCarry[resource]) || 0);
+          const produced = level * elapsedTicks * productionMultiplier + (Number(productionCarry[resource]) || 0);
           const whole = Math.floor(produced + 1e-9);
           productionCarry[resource] = Math.max(0, Math.round((produced - whole) * 1000000) / 1000000);
           resources[resource] = (Number(resources[resource]) || 0) + whole;
@@ -395,7 +400,8 @@ class DatabaseManager {
         castle: JSON.parse(row.castle_data), resources, structures, army,
         buildingJob, queuedBuildingJob, trainingJob, trainingQueues, barracksReserve, upgradeJobs, unitUpgrades,
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
-        productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * (1 + economyBonus) * 10) / 100])),
+        allianceBonuses,
+        productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * productionMultiplier * 10) / 100])),
         serverTime: now
       };
     })();
@@ -410,10 +416,10 @@ class DatabaseManager {
       if (current.queuedBuildingJob) return { error: "Construction queue is full (2 slots)." };
       const level = Number(current.structures[name] || 0) + (current.buildingJob?.name === name ? 1 : 0);
       if (level >= 20) return { error: "Maximum building level reached." };
-      const cost = buildingPrice(name, level + 1);
+      const cost = buildingPrice(name, level + 1, current.allianceBonuses.discount);
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
-      const duration = 15 * (level + 1) * 1000;
+      const duration = allianceUpgradeDuration(15000 * (level + 1), current.allianceBonuses.speed);
       const startedAt=Date.now();
       const job = { name, level: level + 1, duration, startedAt, endsAt: startedAt + duration };
       if (current.buildingJob) {
@@ -489,10 +495,10 @@ class DatabaseManager {
       if(jobs.some(j=>j&&j.unit===unit&&j.stat===stat))return {error:"This unit stat is already upgrading."};
       const level=Number(current.unitUpgrades[unit]?.[stat]||1);
       if(level>=20)return {error:"Maximum upgrade level."};
-      const price=upgradePrice(level);
+      const price=upgradePrice(level,current.allianceBonuses.discount);
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
-      const job={unit,stat,level:level+1,endsAt:Date.now()+upgradeDuration(level)};
+      const job={unit,stat,level:level+1,endsAt:Date.now()+upgradeDuration(level,current.allianceBonuses.speed)};
       jobs[slot]=job;
       db.prepare("UPDATE game_runtime SET upgrade_jobs=? WHERE user_id=?").run(JSON.stringify(jobs),userId);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
@@ -693,6 +699,85 @@ class DatabaseManager {
       return {missionId,returnsAt:now+travelMs};
     })();
   }
+  activeAllianceBonuses(userId){
+    const treasury = db.prepare(`SELECT t.bonuses FROM alliance_members m
+      JOIN alliance_treasury t ON t.alliance_id=m.alliance_id WHERE m.user_id=?`).get(userId);
+    const levels = treasury ? JSON.parse(treasury.bonuses) : {};
+    return Object.fromEntries(["attack","health","growth","speed","discount"].map(kind => [kind, 2 * (levels[kind] || 0)]));
+  }
+  allianceEconomy(userId,allianceId){
+    db.prepare("INSERT OR IGNORE INTO alliance_treasury(alliance_id,resources,bonuses) VALUES (?,?,?)").run(allianceId,JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),"{}");
+    db.prepare("INSERT OR IGNORE INTO alliance_wallets(user_id) VALUES (?)").run(userId);
+    const wallet=db.prepare("SELECT points,donations_today,donation_date FROM alliance_wallets WHERE user_id=?").get(userId);
+    const today=new Date().toISOString().slice(0,10);
+    const treasury=db.prepare("SELECT resources,bonuses FROM alliance_treasury WHERE alliance_id=?").get(allianceId);
+    const buffs=db.prepare("SELECT kind,expires_at FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,Date.now());
+    return {points:wallet.points,donationsRemaining:20-(wallet.donation_date===today?wallet.donations_today:0),treasury:JSON.parse(treasury.resources),bonuses:JSON.parse(treasury.bonuses),buffs};
+  }
+  donateAlliance(userId,resource){
+    if(!["Gold","Iron","Water","Solar"].includes(resource))return {error:"Invalid donation resource."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance first."};
+      const economy=this.allianceEconomy(userId,member.alliance_id);
+      if(economy.donationsRemaining<=0)return {error:"Daily donation limit reached (20)."};
+      const amount=100;
+      const progress=this.syncGame(userId);
+      if(!progress||Number(progress.resources[resource]||0)<amount)return {error:"Not enough resources for donation."};
+      progress.resources[resource]-=amount;
+      economy.treasury[resource]=(economy.treasury[resource]||0)+amount;
+      const today=new Date().toISOString().slice(0,10);
+      db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
+      db.prepare("UPDATE alliance_treasury SET resources=? WHERE alliance_id=?").run(JSON.stringify(economy.treasury),member.alliance_id);
+      db.prepare("UPDATE alliance_wallets SET points=points+10,donations_today=CASE WHEN donation_date=? THEN donations_today+1 ELSE 1 END,donation_date=? WHERE user_id=?").run(today,today,userId);
+      return {pointsEarned:10,resource,amount,economy:this.allianceEconomy(userId,member.alliance_id)};
+    })();
+  }
+  allianceBonusCatalog(){
+    return {attack:{label:"Army Attack",resource:"Gold"},growth:{label:"Development",resource:"Water"},health:{label:"Army Health",resource:"Iron"},speed:{label:"Faster Upgrades",resource:"Solar"},discount:{label:"Cheaper Upgrades",resource:"Gold"},wallHealth:{label:"Wall Health",resource:"Iron"},wallAttack:{label:"Wall Attack",resource:"Solar"}};
+  }
+  upgradeAllianceBonus(userId,kind){
+    const item=this.allianceBonusCatalog()[kind];
+    if(!Object.hasOwn(this.allianceBonusCatalog(),kind))return {error:"Unknown alliance bonus."};
+    if(kind==="wallHealth"||kind==="wallAttack")return {error:"Wall combat is not available yet."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member||!["Leader","Co-Leader"].includes(member.role))return {error:"Alliance leadership required."};
+      const e=this.allianceEconomy(userId,member.alliance_id),level=Number(e.bonuses[kind]||0);
+      if(level>=10)return {error:"Maximum alliance bonus level."};
+      const price=1000*(level+1);
+      if(Number(e.treasury[item.resource]||0)<price)return {error:"Alliance treasury lacks resources."};
+      if(kind==="growth"){
+        const members = db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=?").all(member.alliance_id);
+        for(const {user_id} of members) this.syncGame(user_id);
+      }
+      e.treasury[item.resource]-=price;e.bonuses[kind]=level+1;
+      db.prepare("UPDATE alliance_treasury SET resources=?,bonuses=? WHERE alliance_id=?").run(JSON.stringify(e.treasury),JSON.stringify(e.bonuses),member.alliance_id);
+      return {economy:this.allianceEconomy(userId,member.alliance_id)};
+    })();
+  }
+  buyAllianceMarket(userId,item){
+    const catalog={gold:{cost:30},iron:{cost:30},water:{cost:30},solar:{cost:30},landing:{cost:100},attack:{cost:80},health:{cost:80},protection:{cost:150}};
+    const product=catalog[item];if(!Object.hasOwn(catalog,item))return {error:"Unknown market item."};
+    if(item==="protection")return {error:"PvP protection is not available yet."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance first."};
+      const e=this.allianceEconomy(userId,member.alliance_id);
+      if(e.points<product.cost)return {error:"Not enough alliance points."};
+      if(["gold","iron","water","solar"].includes(item)){
+        const resource=item[0].toUpperCase()+item.slice(1);
+        const progress=this.syncGame(userId);if(!progress)return {error:"Player not found."};
+        progress.resources[resource]=(progress.resources[resource]||0)+500;
+        db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
+      }else if(item==="landing"){this.creditTokens(userId,1);}
+      else{
+        db.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,?,?) ON CONFLICT(user_id,kind) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at-3600000)+3600000").run(userId,item,Date.now()+3600000);
+      }
+      db.prepare("UPDATE alliance_wallets SET points=points-? WHERE user_id=?").run(product.cost,userId);
+      return {item,economy:this.allianceEconomy(userId,member.alliance_id)};
+    })();
+  }
   allianceState(userId){
     this.settleAllianceReinforcements(userId);
     const membership=db.prepare("SELECT a.id,a.name,a.leader_id,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
@@ -706,7 +791,7 @@ class DatabaseManager {
     const helpHistory=db.prepare("SELECT h.id,h.building_name,h.building_level,h.reduction_ms,h.helped_at,requester.username AS requester,helper.username AS helper FROM alliance_help_history h JOIN users requester ON requester.id=h.requester_id JOIN users helper ON helper.id=h.helper_id WHERE h.alliance_id=? ORDER BY h.helped_at DESC,h.id DESC LIMIT 50").all(membership.id);
     const helpStats=db.prepare("SELECT COUNT(*) AS totalHelps,COALESCE(SUM(reduction_ms),0) AS totalTimeSavedMs FROM alliance_help_history WHERE alliance_id=?").get(membership.id);
     const reinforcements=db.prepare("SELECT r.id,r.sender_id,r.recipient_id,r.units,r.launched_at,r.arrives_at,r.recall_at,r.returned_at,s.username AS sender,t.username AS recipient FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id WHERE r.alliance_id=? AND r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?) ORDER BY r.id DESC LIMIT 100").all(membership.id,userId,userId).map(r=>({...r,units:JSON.parse(r.units)}));
-    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,...this.allianceDirectory(userId)};
+    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,economy:this.allianceEconomy(userId,membership.id),...this.allianceDirectory(userId)};
   }
   createAlliance(userId,name){
     if(typeof name!=="string"||name.trim().length<3||name.trim().length>32)return {error:"Alliance name must be 3–32 characters."};
@@ -737,6 +822,7 @@ class DatabaseManager {
       if(!application)return {error:"Application not found."};
       if(accept){
         if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(applicantId))return {error:"Applicant is already in an alliance."};
+        this.syncGame(applicantId);
         db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Member')").run(applicantId,officer.alliance_id);
         db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(applicantId);
       }else db.prepare("DELETE FROM alliance_applications WHERE user_id=? AND alliance_id=?").run(applicantId,officer.alliance_id);
@@ -763,6 +849,7 @@ class DatabaseManager {
       if(userId!==targetId&&!["Leader","Co-Leader"].includes(actor.role))return {error:"Insufficient permission to remove member."};
       if(target.role==="Leader")return {error:"Transfer leadership before the leader can leave."};
       if(target.role==="Co-Leader"&&actor.role!=="Leader"&&userId!==targetId)return {error:"Only leader can remove co-leader."};
+      this.syncGame(targetId);
       db.prepare("DELETE FROM alliance_members WHERE user_id=?").run(targetId);
       return {success:true};
     })();
@@ -907,7 +994,6 @@ class DatabaseManager {
         total+=n;
       }
       if(!total)return {error:"Select at least one unit."};
-      const {fight}=require("../shared/combatEngine");
       // Validate formation before reserving any troops.
       // Battle is computed at arrival, using the chosen formation and static garrison.
       const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,n])=>n>0));
@@ -927,7 +1013,12 @@ class DatabaseManager {
       const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
       const travelMs=Math.max(1000,Math.ceil(60000/(1+speedBonus)));
       const arrivesAt=now+travelMs;
-      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:formation||null}),now,arrivesAt);
+      const activeBuffs = db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,now);
+      const allianceCombat = {
+        attack: current.allianceBonuses.attack + (activeBuffs.some(buff => buff.kind==="attack") ? 10 : 0),
+        health: current.allianceBonuses.health + (activeBuffs.some(buff => buff.kind==="health") ? 10 : 0)
+      };
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:formation||null,allianceCombat}),now,arrivesAt);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,remaining:campaign.remaining-1};
     })();
   }
@@ -948,7 +1039,8 @@ class DatabaseManager {
         const {fight}=require("../shared/combatEngine");
         const result=fight(armyData.units,this.getAlienArmy(mission.level),armyData.formation,{
           rangedAttack:this.protocolBonus(userId,"Precision Fire"),
-          allHealth:this.protocolBonus(userId,"Reinforced Armor"),
+          allHealth:this.protocolBonus(userId,"Reinforced Armor") + (armyData.allianceCombat?.health || 0),
+          allAttack:armyData.allianceCombat?.attack || 0,
           infantryAttack:this.protocolBonus(userId,"Infantry Command"),
           infantryHealth:this.protocolBonus(userId,"Infantry Command"),
           mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),

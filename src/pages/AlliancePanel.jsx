@@ -22,7 +22,7 @@ export default function AlliancePanel(){
   </div>:<div>
    <h3>🛡 {state.alliance.name}</h3>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-    {["members","applications","help","history","reinforcements"].map(t=><button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{t==="members"?"Members":t==="applications"?"Applications":t==="help"?"Construction Help":t==="history"?"Help History":"Reinforcements"}</button>)}
+    {["members","applications","help","history","reinforcements","market"].map(t=><button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{t==="members"?"Members":t==="applications"?"Applications":t==="help"?"Construction Help":t==="history"?"Help History":t==="reinforcements"?"Reinforcements":"Donation & Market"}</button>)}
    </div>
    {tab==="members"&&<div>
     <h3>Alliance Members ({(state.members||[]).length})</h3>
@@ -41,6 +41,30 @@ export default function AlliancePanel(){
      </tr>)}</tbody>
     </table></div>
     {state.alliance.role==="Leader"&&<p style={{fontSize:12}}>Transfer leadership before leaving. One player per officer role.</p>}
+   </div>}
+   {tab==="market"&&<div>
+    <h3>Alliance Donation & Market</h3>
+    <p>Alliance Points: <strong>{state.economy?.points||0}</strong> · Donations left today (resets at 00:00 UTC): {state.economy?.donationsRemaining??20}/20</p>
+    <h4>Donate 100 resources (+10 Alliance Points)</h4>
+    {["Gold","Iron","Water","Solar"].map(resource=><button key={resource} disabled={busy||!state.economy?.donationsRemaining} style={{margin:4}} onClick={()=>action("donate",{resource})}>Donate 100 {resource}</button>)}
+    <h4>Alliance Treasury</h4>
+    <p>{Object.entries(state.economy?.treasury||{}).map(([k,n])=>k+": "+n).join(" · ")}</p>
+    <h4>Alliance Research (Leader / Co-Leader)</h4>
+    {Object.entries({attack:["Army Attack","Gold"],growth:["Development","Water"],health:["Army Health","Iron"],speed:["Faster Upgrades","Solar"],discount:["Cheaper Upgrades","Gold"],wallHealth:["Wall Health","Iron"],wallAttack:["Wall Attack","Solar"]}).map(([kind,[label,resource]])=>{
+      const level=state.economy?.bonuses?.[kind]||0;
+      const available=kind!=="wallHealth"&&kind!=="wallAttack";
+      return <div key={kind} style={{marginBottom:7}}>{label}: Lv {level}/10 · {available ? level===10 ? "Max level" : `+2% per level · Next: ${1000*(level+1)} ${resource}` : "Available when wall combat launches"}
+        <button disabled={busy||!available||level>=10||!["Leader","Co-Leader"].includes(state.alliance.role)} onClick={()=>action("bonus/upgrade",{kind})}>Research</button>
+      </div>;
+    })}
+    <h4>Alliance Market</h4>
+    {Object.entries({gold:["500 Gold",30],iron:["500 Iron",30],water:["500 Water",30],solar:["500 Solar",30],landing:["1 Mars Landing Token",100],attack:["+10% Army Attack (1h)",80],health:["+10% Army Health (1h)",80],protection:["Protection (1h)",150]}).map(([item,[label,cost]])=><div key={item} style={{marginBottom:8}}>
+      {label} — {cost} AP <button disabled={busy||item==="protection"||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{item==="protection"?"Requires PvP":"Buy"}</button>
+    </div>)}
+    <p style={{fontSize:12}}>Army bonuses apply to Alien Base missions launched while active. Buying a boost again adds one hour.</p>
+    {(state.economy?.buffs||[]).filter(buff=>buff.kind==="attack"||buff.kind==="health").map(buff=><p key={buff.kind}>
+      {buff.kind==="attack"?"Attack Boost":"Health Boost"} active until {new Date(buff.expires_at).toLocaleString()}
+    </p>)}
    </div>}
    {tab==="reinforcements"&&<div>
     <h3>Alliance Reinforcements</h3>

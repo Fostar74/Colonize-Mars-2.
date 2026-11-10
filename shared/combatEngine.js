@@ -35,11 +35,11 @@ function createGroups(army,types,formation){
 }
 function fight(attackerArmy,defenderArmy,formation,bonuses={}){
   const sides=[createGroups(attackerArmy,playerTypes,formation),createGroups(defenderArmy,alienTypes)];
-  // Player-only Commander Protocol bonuses; alien garrisons keep their base stats.
+  // Player-only Commander Protocol and alliance bonuses; alien garrisons keep their base stats.
   for(const group of sides[0]){
     const categoryBonus=group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
     // Neural Command improves coordinated offensive effectiveness for all deployed units.
-    group.attack*=1+((Number(categoryBonus)||0)+(Number(bonuses.leadership)||0))/100;
+    group.attack*=1+((Number(categoryBonus)||0)+(Number(bonuses.leadership)||0)+(Number(bonuses.allAttack)||0))/100;
     group.hp*=1+((Number(bonuses.allHealth)||0)+(group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
   }
   const dodgeChance=Math.max(0,Math.min(0.15,(Number(bonuses.dodge)||0)/100));

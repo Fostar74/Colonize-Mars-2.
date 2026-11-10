@@ -35,11 +35,14 @@ function unitRequirement(unit) {
   const [category,units]=entry;
   return {building:unlockBuildings[category],level:unlockLevels[category][units.indexOf(unit)]};
 }
-function upgradeDuration(level) {
-  return Math.min(24*3600000,Math.ceil(60000*Math.pow(level+1,1.7)));
+function allianceUpgradeDuration(duration, speed = 0) {
+  return Math.ceil(duration * (100 - speed) / 100);
 }
-function upgradePrice(level) {
-  const amount=200*Math.pow(level+1,2);
+function upgradeDuration(level, speed = 0) {
+  return allianceUpgradeDuration(Math.min(24*3600000,Math.ceil(60000*Math.pow(level+1,1.7))), speed);
+}
+function upgradePrice(level, discount = 0) {
+  const amount=Math.ceil(2 * Math.pow(level+1,2) * (100 - discount));
   return {Gold:amount,Iron:amount};
 }
 
@@ -58,10 +61,10 @@ const buildingBaseCosts = {
   "Vehicle Bay": {Gold:130,Iron:190,Water:70,Solar:110},
   "Drone Factory": {Gold:170,Iron:210,Water:100,Solar:170}
 };
-function buildingPrice(name,nextLevel) {
+function buildingPrice(name,nextLevel,discount = 0) {
   const base=buildingBaseCosts[name];
   if (!base || !Number.isInteger(nextLevel) || nextLevel<1 || nextLevel>20) return null;
-  return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,amount*nextLevel]));
+  return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * nextLevel * (100 - discount) / 100)]));
 }
 
-module.exports={categories,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice};
+module.exports={allianceUpgradeDuration,categories,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice};
