@@ -59,6 +59,16 @@ function Map() {
     const timer = setInterval(()=>{loadBases();fetch((process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"")+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d&&!cancelled)setCampaign(d)}).catch(()=>{});},10000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
+  const mapPlayerTarget = useRef(sessionStorage.getItem("mapPlayerTarget"));
+  useEffect(() => {
+    const username = mapPlayerTarget.current;
+    const base = castles.find(c => c.username === username);
+    if (base) {
+      if (!sessionStorage.getItem("mapPlayerTarget")) return;
+      sessionStorage.removeItem("mapPlayerTarget");
+      setViewCenter({x:base.x,y:base.y});
+    }
+  }, [castles]);
   const [hqIcon, setHqIcon] = useState(null);
   const [hoveredTitle, setHoveredTitle] = useState("");
   const [cursorCoord, setCursorCoord] = useState(null);
@@ -135,7 +145,7 @@ function Map() {
 
       setCastles(previous => previous.length ? previous : [savedCastle]);
 
-      if (hqIcon) {
+      if (hqIcon && !mapPlayerTarget.current) {
         centerMapOn(savedCastle.x, savedCastle.y);
       }
     } catch {

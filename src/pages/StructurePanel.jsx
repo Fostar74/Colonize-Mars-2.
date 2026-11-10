@@ -125,7 +125,11 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
       <h2 style={{ textAlign: "center" }}>Structures</h2>
       {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
       <p style={{textAlign:"center",opacity:.8}}>Build your resource facilities first. Upgrade all four to level 3.</p>
-      <p style={{textAlign:"center"}}>Production per 10 sec: Gold {game.productionRates?.Gold ? game.productionRates.Gold*10 : 0} · Iron {game.productionRates?.Iron ? game.productionRates.Iron*10 : 0} · Water {game.productionRates?.Water ? game.productionRates.Water*10 : 0} · Solar {game.productionRates?.Solar ? game.productionRates.Solar*10 : 0}</p>
+      <p style={{textAlign:"center"}}>
+        Production per hour: {["Gold", "Iron", "Water", "Solar"].map(resource =>
+          `${resource} ${(game.productionPerHour?.[resource] ?? 0).toLocaleString("en-US", {maximumFractionDigits: 1})}`
+        ).join(" · ")}
+      </p>
       <p>Construction: {game.buildingJob ? game.buildingJob.name + " (" + formatTime(remaining(game.buildingJob)) + ")" : "Idle"} · Queue: {game.queuedBuildingJob ? game.queuedBuildingJob.name + " (level " + game.queuedBuildingJob.level + ")" : "Empty"}</p>
       {game.buildingJob&&<div style={{padding:12,margin:"12px 0",border:"1px solid #4b96ac",borderRadius:8,background:"#183449"}}>
         <strong>🤝 Alliance Construction Help</strong>

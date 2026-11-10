@@ -117,6 +117,14 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
+    db.exec(`CREATE TABLE IF NOT EXISTS player_messages (
+      id INTEGER PRIMARY KEY, sender_id INTEGER NOT NULL REFERENCES users(id),
+      recipient_id INTEGER REFERENCES users(id), alliance_id INTEGER REFERENCES alliances(id),
+      body TEXT NOT NULL, sent_at INTEGER NOT NULL,
+      CHECK ((recipient_id IS NULL) != (alliance_id IS NULL)));
+      CREATE INDEX IF NOT EXISTS messages_sender ON player_messages(sender_id,id);
+      CREATE INDEX IF NOT EXISTS messages_recipient ON player_messages(recipient_id,id);
+      CREATE INDEX IF NOT EXISTS messages_alliance ON player_messages(alliance_id,id);`);
     db.exec("CREATE TABLE IF NOT EXISTS alliance_invitations (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), PRIMARY KEY(user_id, alliance_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_applications (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), applied_at INTEGER NOT NULL, PRIMARY KEY(user_id,alliance_id))");
     try { db.exec("ALTER TABLE alliance_members ADD COLUMN role TEXT NOT NULL DEFAULT 'Member'"); } catch(e) { if(!String(e.message).includes("duplicate column"))throw e; }
@@ -389,6 +397,7 @@ class DatabaseManager {
           const stats=unitUpgrades[job.unit]||{attack:1,defense:1};
           stats[job.stat]=Math.max(Number(stats[job.stat]||1),job.level);
           unitUpgrades[job.unit]=stats;
+          this.awardPlayerXp(userId,job.completionXp);
           upgradeJobs[slot]=null;
           changed=true;
         }
@@ -402,6 +411,7 @@ class DatabaseManager {
         buildingJob, queuedBuildingJob, trainingJob, trainingQueues, barracksReserve, upgradeJobs, unitUpgrades,
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
         allianceBonuses,
+        productionPerHour: Object.fromEntries(Object.entries(rates).map(([key, name]) => [key, Number(structures[name] || 0) * productionMultiplier * 360])),
         productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * productionMultiplier * 10) / 100])),
         serverTime: now
       };
@@ -453,7 +463,6 @@ class DatabaseManager {
       const cost = Object.fromEntries(Object.entries(unitPrice(unit)).map(([resource,value])=>[resource,value*quantity]));
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
-      this.awardPlayerXp(userId,Math.min(1000,quantity*2));
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
       const duration=Math.max(1000,Math.ceil(quantity*30000*(1-trainingBonus)));
       const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
@@ -474,13 +483,17 @@ class DatabaseManager {
       const reserve={...current.barracksReserve};
       const units=unit==="ALL"?Object.keys(reserve):[unit];
       if(unit!=="ALL"&&(!Number.isSafeInteger(amount)||amount<1||amount>Number(reserve[unit]||0)))return {error:"Invalid mobilization quantity."};
+      let trainingXp=0;
       for(const name of units){
         const n=unit==="ALL"?Number(reserve[name]||0):amount;
         if(!Number.isSafeInteger(n)||n<0)return {error:"Invalid reserve quantity."};
         current.army[name]=(Number(current.army[name])||0)+n;
         reserve[name]=(Number(reserve[name])||0)-n;
+        const unitCost=Object.values(unitPrice(name)||{}).reduce((total,cost)=>total+cost,0);
+        trainingXp+=3*n*unitCost;
       }
       db.prepare("UPDATE game_runtime SET army=?,barracks_reserve=? WHERE user_id=?").run(JSON.stringify(current.army),JSON.stringify(reserve),userId);
+      this.awardPlayerXp(userId,trainingXp);
       return {...current,barracksReserve:reserve};
     })();
   }
@@ -499,11 +512,11 @@ class DatabaseManager {
       const price=upgradePrice(level,current.allianceBonuses.discount);
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
-      const job={unit,stat,level:level+1,endsAt:Date.now()+upgradeDuration(level,current.allianceBonuses.speed)};
+      const completionXp=2*Object.values(price).reduce((total,cost)=>total+cost,0);
+      const job={unit,stat,level:level+1,completionXp,endsAt:Date.now()+upgradeDuration(level,current.allianceBonuses.speed)};
       jobs[slot]=job;
       db.prepare("UPDATE game_runtime SET upgrade_jobs=? WHERE user_id=?").run(JSON.stringify(jobs),userId);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
-      this.awardPlayerXp(userId,Math.max(1,Math.floor((price.Gold+price.Iron)/10)));
       return {...current,upgradeJobs:jobs};
     })();
   }
@@ -643,9 +656,40 @@ class DatabaseManager {
     })();
   }
 
+  listMessages(userId, scope){
+    if(!["private","alliance"].includes(scope))return {error:"Unknown message channel."};
+    const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+    if(scope==="alliance"&&!member)return {error:"Join an alliance to view its chat."};
+    const filter=member ? "m.alliance_id=?" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL))";
+    const params=member ? [member.alliance_id] : [userId,userId];
+    const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,
+      sender.username AS sender,recipient.username AS recipient FROM player_messages m
+      JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
+      WHERE ${filter} ORDER BY m.id DESC LIMIT 50`).all(...params);
+    return {messages};
+  }
+
+  sendMessage(userId, scope, recipient, body){
+    if(!["private","alliance"].includes(scope))return {error:"Unknown message channel."};
+    const content=typeof body==="string" ? body.trim() : "";
+    if(!content || content.length>500)return {error:"Enter a message between 1 and 500 characters."};
+    return db.transaction(()=>{
+      const now=Date.now();
+      const latest=db.prepare("SELECT sent_at FROM player_messages WHERE sender_id=? ORDER BY id DESC LIMIT 1").get(userId);
+      if(latest && now-latest.sent_at<1000)return {error:"Wait a moment before sending another message."};
+      const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(scope==="alliance"&&!member)return {error:"Join an alliance to use its chat."};
+      const target=scope==="private" && typeof recipient==="string" && this.findUserByUsername(recipient.trim());
+      if(scope==="private"&&(!target||target.id===userId))return {error:"Choose another existing player."};
+      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
+        .run(userId,target?.id||null,member?.alliance_id||null,content,now);
+      return {message:"Message sent."};
+    })();
+  }
+
   rankings(userId){
-    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.construction_points,0) AS points FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN ranking_points r ON r.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
-    const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.construction_points),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN ranking_points r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
+    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.xp,0) AS points FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN player_talents r ON r.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
+    const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.xp),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
     const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
     return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};
