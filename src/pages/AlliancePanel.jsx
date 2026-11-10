@@ -21,7 +21,7 @@ export default function AlliancePanel(){
   </div>:<div>
    <h3>🛡 {state.alliance.name}</h3>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-    {["members","applications","help"].map(t=><button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{t==="members"?"Members":t==="applications"?"Applications":"Construction Help"}</button>)}
+    {["members","applications","help","history"].map(t=><button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{t==="members"?"Members":t==="applications"?"Applications":t==="help"?"Construction Help":"Help History"}</button>)}
    </div>
    {tab==="members"&&<div>
     <h3>Alliance Members ({(state.members||[]).length})</h3>
@@ -40,6 +40,16 @@ export default function AlliancePanel(){
      </tr>)}</tbody>
     </table></div>
     {state.alliance.role==="Leader"&&<p style={{fontSize:12}}>Transfer leadership before leaving. One player per officer role.</p>}
+   </div>}
+   {tab==="history"&&<div>
+    <h3>Alliance Construction Help History</h3>
+    <p>Recorded helps: {state.helpStats?.totalHelps||0} · Total construction time saved: {Math.floor((state.helpStats?.totalTimeSavedMs||0)/60000)} minutes</p>
+    <p>Shows the 50 most recent successful assists since this feature was enabled.</p>
+    {!(state.helpHistory||[]).length&&<p>No recorded assists yet.</p>}
+    {(state.helpHistory||[]).map(h=><div key={h.id} style={{padding:10,marginBottom:8,border:"1px solid #47758e",borderRadius:6}}>
+      <strong>{h.helper}</strong> helped <strong>{h.requester}</strong> with {h.building_name} level {h.building_level}
+      <div>Time saved: {Math.ceil(h.reduction_ms/1000)} seconds · {new Date(h.helped_at).toLocaleString()}</div>
+    </div>)}
    </div>}
    {tab==="applications"&&<div><h3>Membership Applications</h3>
     {!(state.applications||[]).length&&<p>No pending applications.</p>}
