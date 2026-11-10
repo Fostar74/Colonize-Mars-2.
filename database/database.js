@@ -95,6 +95,7 @@ function initializeDatabase() {
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "queued_building_job")) {
       db.exec("ALTER TABLE game_runtime ADD COLUMN queued_building_job TEXT");
     }
+    if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "barracks_reserve")) db.exec("ALTER TABLE game_runtime ADD COLUMN barracks_reserve TEXT NOT NULL DEFAULT '{}'");
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "production_carry")) {
       db.exec("ALTER TABLE game_runtime ADD COLUMN production_carry TEXT NOT NULL DEFAULT '{}'");
     }
@@ -323,6 +324,7 @@ class DatabaseManager {
       const resources = JSON.parse(row.resources);
       const structures = JSON.parse(row.structures);
       const army = JSON.parse(state.army);
+      const barracksReserve = JSON.parse(state.barracks_reserve || "{}");
       let buildingJob = state.building_job ? JSON.parse(state.building_job) : null;
       let trainingJob = state.training_job ? JSON.parse(state.training_job) : null;
       let queuedBuildingJob = state.queued_building_job ? JSON.parse(state.queued_building_job) : null;
@@ -355,17 +357,17 @@ class DatabaseManager {
         changed = true;
       }
       if (trainingJob && trainingJob.endsAt <= now) {
-        army[trainingJob.unit] = (Number(army[trainingJob.unit]) || 0) + trainingJob.quantity;
+        barracksReserve[trainingJob.unit] = (Number(barracksReserve[trainingJob.unit]) || 0) + trainingJob.quantity;
         trainingJob = null;
         changed = true;
       }
-      db.prepare("UPDATE game_runtime SET production_at=?, production_carry=?, building_job=?, queued_building_job=?, training_job=?, army=? WHERE user_id=?")
-        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), userId);
+      db.prepare("UPDATE game_runtime SET production_at=?, production_carry=?, building_job=?, queued_building_job=?, training_job=?, army=?, barracks_reserve=? WHERE user_id=?")
+        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), JSON.stringify(barracksReserve), userId);
       if (changed) db.prepare("UPDATE game_progress SET resources=?, structures=?, last_saved=CURRENT_TIMESTAMP WHERE id=?")
         .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
       return {
         castle: JSON.parse(row.castle_data), resources, structures, army,
-        buildingJob, queuedBuildingJob, trainingJob, unitUpgrades: JSON.parse(state.unit_upgrades),
+        buildingJob, queuedBuildingJob, trainingJob, barracksReserve, unitUpgrades: JSON.parse(state.unit_upgrades),
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
         productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * (1 + economyBonus) * 10) / 100])),
         serverTime: now
@@ -421,6 +423,25 @@ class DatabaseManager {
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
       return { ...current, trainingJob: job };
+    })();
+  }
+
+  mobilizeBarracks(userId,unit,amount) {
+    if(typeof unit!=="string" || (unit!=="ALL"&&!unitPrice(unit)))return {error:"Invalid unit."};
+    return db.transaction(()=>{
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      const reserve={...current.barracksReserve};
+      const units=unit==="ALL"?Object.keys(reserve):[unit];
+      if(unit!=="ALL"&&(!Number.isSafeInteger(amount)||amount<1||amount>Number(reserve[unit]||0)))return {error:"Invalid mobilization quantity."};
+      for(const name of units){
+        const n=unit==="ALL"?Number(reserve[name]||0):amount;
+        if(!Number.isSafeInteger(n)||n<0)return {error:"Invalid reserve quantity."};
+        current.army[name]=(Number(current.army[name])||0)+n;
+        reserve[name]=(Number(reserve[name])||0)-n;
+      }
+      db.prepare("UPDATE game_runtime SET army=?,barracks_reserve=? WHERE user_id=?").run(JSON.stringify(current.army),JSON.stringify(reserve),userId);
+      return {...current,barracksReserve:reserve};
     })();
   }
 

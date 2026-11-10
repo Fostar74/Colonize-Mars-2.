@@ -166,6 +166,16 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
   const renderUnits = () => (
     <>
       <h2 style={{ textAlign: "center" }}>Army Units</h2>
+      <section style={{padding:12,marginBottom:14,border:"1px solid #478da4",borderRadius:8}}>
+        <strong>Barracks Reserve — trained troops awaiting mobilization</strong>
+        <p>Completed training goes to reserve, not directly into your active army.</p>
+        {Object.entries(game.barracksReserve||{}).filter(([,n])=>Number(n)>0).map(([unit,n])=><div key={unit} style={{display:"flex",gap:12,alignItems:"center",margin:"6px 0"}}>
+          <span>{unit}: {n}</span>
+          <button disabled={!!busy} onClick={()=>act("/barracks/mobilize",{unit,amount:n},"mobilize-"+unit)}>Mobilize</button>
+        </div>)}
+        {!Object.values(game.barracksReserve||{}).some(n=>Number(n)>0)&&<p>Reserve empty.</p>}
+        <button disabled={!!busy||!Object.values(game.barracksReserve||{}).some(n=>Number(n)>0)} onClick={()=>act("/barracks/mobilize",{unit:"ALL"},"mobilize-all")}>Mobilize All</button>
+      </section>
       {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
       <div className="subtab-buttons">
         {Object.keys(unitCategories).map((cat) => (
