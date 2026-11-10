@@ -117,6 +117,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_invitations (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), PRIMARY KEY(user_id, alliance_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_applications (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), applied_at INTEGER NOT NULL, PRIMARY KEY(user_id,alliance_id))");
     try { db.exec("ALTER TABLE alliance_members ADD COLUMN role TEXT NOT NULL DEFAULT 'Member'"); } catch(e) { if(!String(e.message).includes("duplicate column"))throw e; }
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help (id INTEGER PRIMARY KEY AUTOINCREMENT, requester_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, requested_at INTEGER NOT NULL, job_ends_at INTEGER NOT NULL)");
@@ -645,9 +646,35 @@ class DatabaseManager {
   rankings(userId){
     const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.construction_points,0) AS points FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN ranking_points r ON r.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
     const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.construction_points),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN ranking_points r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
-    const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+    const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
-    return {players,alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};
+    return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};
+  }
+  inviteToAlliance(userId, targetId){
+    if(!Number.isSafeInteger(targetId)||targetId<1||targetId===userId)return {error:"Invalid player."};
+    return db.transaction(()=>{
+      const officer=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      if(!officer||!["Leader","Co-Leader"].includes(officer.role))return {error:"You do not have permission to invite players."};
+      if(!this.findUserById(targetId))return {error:"Player not found."};
+      if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(targetId))return {error:"That player already belongs to an alliance."};
+      const sent=db.prepare("INSERT OR IGNORE INTO alliance_invitations(user_id,alliance_id) VALUES (?,?)").run(targetId,officer.alliance_id);
+      return {message:sent.changes?"Invitation sent.":"Invitation already pending."};
+    })();
+  }
+  respondToAllianceInvite(userId, allianceId, accept){
+    if(!Number.isSafeInteger(allianceId)||allianceId<1||typeof accept!=="boolean")return {error:"Invalid invitation response."};
+    return db.transaction(()=>{
+      const invite=db.prepare("SELECT 1 FROM alliance_invitations WHERE user_id=? AND alliance_id=?").get(userId,allianceId);
+      if(!invite)return {error:"Invitation is no longer available."};
+      if(accept){
+        if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(userId))return {error:"Leave your current alliance first."};
+        this.syncGame(userId);
+        db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Member')").run(userId,allianceId);
+        db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(userId);
+      }
+      db.prepare("DELETE FROM alliance_invitations WHERE user_id=? AND (alliance_id=? OR ?)").run(userId,allianceId,Number(accept));
+      return {message:accept?"Invitation accepted.":"Invitation declined."};
+    })();
   }
   allianceDirectory(userId){
     const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,(SELECT COUNT(*) FROM alliance_members m WHERE m.alliance_id=a.id) AS memberCount FROM alliances a JOIN users u ON u.id=a.leader_id ORDER BY memberCount DESC,a.name COLLATE NOCASE").all();
@@ -781,7 +808,10 @@ class DatabaseManager {
   allianceState(userId){
     this.settleAllianceReinforcements(userId);
     const membership=db.prepare("SELECT a.id,a.name,a.leader_id,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
-    if(!membership)return {alliance:null,requests:[],...this.allianceDirectory(userId)};
+    if(!membership){
+      const invitations=db.prepare("SELECT a.id,a.name FROM alliance_invitations i JOIN alliances a ON a.id=i.alliance_id WHERE i.user_id=? ORDER BY a.name").all(userId);
+      return {alliance:null,requests:[],invitations,...this.allianceDirectory(userId)};
+    }
     const members=db.prepare("SELECT u.id,u.username,m.role FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=? ORDER BY CASE WHEN m.role='Leader' THEN 0 WHEN m.role='Co-Leader' THEN 1 ELSE 2 END,u.username").all(membership.id);
     const applications=db.prepare("SELECT u.id,u.username,a.applied_at FROM alliance_applications a JOIN users u ON u.id=a.user_id WHERE a.alliance_id=? ORDER BY a.applied_at").all(membership.id);
     const requests=db.prepare("SELECT h.id,h.requester_id,h.building_name,h.building_level,h.requested_at,h.job_key,h.job_ends_at,u.username FROM alliance_help h JOIN users u ON u.id=h.requester_id WHERE h.alliance_id=? ORDER BY h.id DESC LIMIT 30").all(membership.id).filter(h=>{
@@ -801,6 +831,7 @@ class DatabaseManager {
       const id=db.prepare("INSERT INTO alliances(name,leader_id) VALUES (?,?)").run(name.trim(),userId).lastInsertRowid;
       db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Leader')").run(userId,id);
       db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(userId);
+      db.prepare("DELETE FROM alliance_invitations WHERE user_id=?").run(userId);
       return this.allianceState(userId);
     })();
   }
@@ -825,6 +856,7 @@ class DatabaseManager {
         this.syncGame(applicantId);
         db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Member')").run(applicantId,officer.alliance_id);
         db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(applicantId);
+        db.prepare("DELETE FROM alliance_invitations WHERE user_id=?").run(applicantId);
       }else db.prepare("DELETE FROM alliance_applications WHERE user_id=? AND alliance_id=?").run(applicantId,officer.alliance_id);
       return this.allianceState(userId);
     })();

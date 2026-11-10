@@ -14,6 +14,14 @@ export default function AlliancePanel(){
   {message&&<p role="status">{message}</p>}
   {loadError&&<div role="alert" style={{padding:12,background:"#49332d",borderRadius:8}}>{loadError} <button onClick={refresh}>Retry</button></div>}
   {!state?<p>{loadError?"Alliance data could not be loaded.":"Loading…"}</p>:!state.alliance?<div>
+   {!!state.invitations?.length && <section>
+    <h3>Alliance Invitations</h3>
+    {state.invitations.map(invite=><p key={invite.id}>
+      <strong>{invite.name}</strong>{" "}
+      <button disabled={busy} onClick={()=>action("invite/respond",{allianceId:invite.id,accept:true})}>Accept</button>{" "}
+      <button disabled={busy} onClick={()=>action("invite/respond",{allianceId:invite.id,accept:false})}>Decline</button>
+    </p>)}
+   </section>}
    <h3>Create Alliance</h3>
    <p>Choose a unique name for your new alliance.</p>
    <input aria-label="New alliance name" placeholder="New alliance name" maxLength={32} value={name} onChange={e=>setName(e.target.value)} style={{padding:9,maxWidth:"100%"}}/>

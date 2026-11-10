@@ -171,6 +171,21 @@ router.get("/alliance/:userId",requireSession,(req,res)=>{
 router.post("/alliance/create",requireSession,(req,res)=>{
   try{const result=db.createAlliance(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot create alliance."});}
 });
+router.post("/alliance/invite",requireSession,(req,res)=>{
+  try {
+    const result=db.inviteToAlliance(Number(req.body.userId),Number(req.body.targetId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch(error){console.error(error);res.status(500).json({message:"Unable to send invitation."});}
+});
+router.post("/alliance/invite/respond",requireSession,(req,res)=>{
+  try {
+    const result=db.respondToAllianceInvite(Number(req.body.userId),Number(req.body.allianceId),req.body.accept);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch(error){console.error(error);res.status(500).json({message:"Unable to respond to invitation."});}
+});
+
 router.post("/alliance/join",requireSession,(req,res)=>{
   try{const result=db.joinAlliance(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot join alliance."});}
 });
