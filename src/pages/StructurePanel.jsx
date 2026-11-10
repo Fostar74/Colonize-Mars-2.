@@ -182,6 +182,14 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
           <button key={cat} onClick={() => setUnitTab(cat)}>{cat}</button>
         ))}
       </div>
+      <section style={{padding:10,border:"1px solid #587c91",borderRadius:8,marginBottom:12}}>
+        <strong>{unitTab} training groups: {(game.trainingQueues?.[unitTab]||[]).length}/5</strong>
+        {(game.trainingQueues?.[unitTab]||[]).map((job,index)=><div key={index}>
+          {index+1}. {job.quantity} × {job.unit} — {index===0?"Training":"Queued"} · {index===0?formatTime(remaining(job)):"Starts "+new Date(job.startsAt).toLocaleTimeString()}
+        </div>)}
+        {!(game.trainingQueues?.[unitTab]||[]).length&&<p>No training groups in this category.</p>}
+        <p>Each category runs independently. Up to five groups are trained sequentially per category.</p>
+      </section>
       <div className="unit-grid">
         {unitCategories[unitTab].map((unit) => {
           const qty = Number(trainAmounts[unit]) || 0;
@@ -206,7 +214,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
               </div>
               <label>Quantity: <input type="number" disabled={!unlocked} min="0" max="10000" value={qty} onChange={e => setTrainAmounts(prev => ({...prev, [unit]:Math.max(0,Math.min(10000,Math.floor(Number(e.target.value)||0)))}))} style={{width:90,color:"#111"}} /></label>
               <p>Train Time: {timeDisplay}</p>
-              {game.trainingJob?.unit === unit && <p>Training {game.trainingJob.quantity}: {formatTime(remaining(game.trainingJob))}</p>}
+              {(game.trainingQueues?.[unitTab]||[]).filter(job=>job.unit===unit).length>0 && <p>Groups queued: {(game.trainingQueues?.[unitTab]||[]).filter(job=>job.unit===unit).length}</p>}
               <p>Owned: {Number(game.army?.[unit] || 0)}</p>
               <div className="resource-row">
                 <div className="resource-cost"><img src={goldIcon} alt="Gold" /><span>{price.Gold}</span></div>
@@ -214,8 +222,8 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
                 <div className="resource-cost"><img src={waterIcon} alt="Water" /><span>{price.Water}</span></div>
                 <div className="resource-cost"><img src={solarIcon} alt="Solar" /><span>{price.Solar}</span></div>
               </div>
-              <button style={{ marginTop: 10 }} disabled={!unlocked || !qty || qty > calculateMaxTrainable(unit) || !!busy || !!game.trainingJob} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
-                {!unlocked ? "Locked" : game.trainingJob ? "Training queue busy" : "Train"}
+              <button style={{ marginTop: 10 }} disabled={!unlocked || !qty || qty > calculateMaxTrainable(unit) || !!busy || (game.trainingQueues?.[unitTab]||[]).length>=5} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
+                {!unlocked ? "Locked" : (game.trainingQueues?.[unitTab]||[]).length>=5 ? "Category queue full" : "Train"}
               </button>
             </div>
           );
