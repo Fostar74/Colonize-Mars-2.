@@ -26,7 +26,6 @@ function Map() {
   const [formationRows,setFormationRows]=useState({});
   const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
-  const [marchType, setMarchType] = useState("All");
   const [marchHistoryOpen, setMarchHistoryOpen] = useState(false);
   const [castles, setCastles] = useState([]);
   const [mapError, setMapError] = useState("");
@@ -551,27 +550,21 @@ function Map() {
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{marchNotice}</p>}
         </div>
       </div>}
-      {marchHistoryOpen&&<div style={{position:"absolute",right:18,bottom:78,zIndex:30,background:"#132538",border:"1px solid #5989aa",padding:16,borderRadius:10,color:"white",width:"min(600px,90vw)",maxHeight:"65vh",overflowY:"auto"}}>
-        <button onClick={()=>setMarchHistoryOpen(false)}>Close</button><h3>Alien Mission Reports</h3>
-        {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
-          <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result?(m.result.victory?"VICTORY":"DEFEAT"):"Travelling / awaiting battle"}</summary>
-          {m.result&&<div><p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
-          <p>Reward: {m.result.reward?JSON.stringify(m.result.reward):"None"}</p>
-          <p>Survivors: {Object.entries(m.result.survivors||{}).map(([u,n])=>u+": "+n).join(", ")}</p>
-          {(m.result.report||[]).map(round=><details key={round.round}><summary>Round {round.round}</summary>
-            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.attacker}: {e.units} {e.unit} → {e.target} · {e.damage} damage</p>)}
-          </details>)}</div>}
-        </details>)}
-        {!(campaign.missions||[]).length&&<p>No alien missions yet.</p>}
-      </div>}
       <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>🚀 CAMPAIGNS</button>
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>🚀 CAMPAIGNS</h2><button onClick={()=>setMarchHistoryOpen(false)}>✕ Close</button></div>
-          <p>Mission types</p>
-          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>{["All","Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"].map(t=><button key={t} onClick={()=>{setMarchType(t);if(t!=="All"&&selectedTarget){setMarchHistoryOpen(false);chooseAction(t);}}} style={{background:marchType===t?"#377d9f":"#24394b",color:"white",padding:"9px 12px",border:"1px solid #56758b",borderRadius:6}}>{t}</button>)}</div>
-          <h3>Active movements · {marchType}</h3>
-          <p>No active movements. Dispatch, travel times, returning armies and reports require the server-side march system.</p>
+          <h3>Alien Mission Reports</h3>
+        {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
+          <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result?(m.result.victory?"VICTORY":"DEFEAT"):"Travelling / awaiting battle"}</summary>
+          {m.result&&<div><p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
+          <p>Reward: {m.result.reward?.item?.name || (m.result.reward?.type==="crafting" ? `${m.result.reward.amount} Universal Forge points` : m.result.reward?.type==="resources" ? `${m.result.reward.amount} of each resource` : m.result.reward?.type==="army" ? `${m.result.reward.amount} ${m.result.reward.unit}` : "None")}</p>
+          <p>Survivors: {Object.entries(m.result.survivors||{}).map(([u,n])=>u+": "+n).join(", ") || "None"}</p>
+          {(m.result.report||[]).map(round=><details key={round.round}><summary>Round {round.round}</summary>
+            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${e.unit} restored` : <>{e.attacker}: {e.units} {e.unit} → {e.target} · {e.damage} damage{Number.isInteger(e.kills) ? ` · ${e.kills} defeated` : ""}{e.dodged ? " · Evaded" : ""}</>}</p>)}
+          </details>)}</div>}
+        </details>)}
+        {!(campaign.missions||[]).length&&<p>No alien missions yet.</p>}
         </div>
       </div>}
       <button
