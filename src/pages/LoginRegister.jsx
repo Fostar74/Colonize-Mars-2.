@@ -1,3 +1,4 @@
+import { useLanguage } from "../language";
 import React, { useState } from "react";
 import "./LoginRegister.css";
 import background from "../images/mars-background.jpg"; // ✅ Correct image path
@@ -5,6 +6,7 @@ import background from "../images/mars-background.jpg"; // ✅ Correct image pat
 const API_BASE = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
 
 function LoginRegister() {
+  const { t } = useLanguage();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -88,7 +90,7 @@ function LoginRegister() {
         boxSizing: "border-box",
       }}
     >
-      <h1>{isRegister ? "Create Account" : "Log In"}</h1>
+      <h1>{isRegister ? t("Create Account","Създай акаунт") : t("Log In","Вход")}</h1>
 
       <form
         onSubmit={handleSubmit}
@@ -107,7 +109,7 @@ function LoginRegister() {
           <>
             <input
               type="email"
-              placeholder="Email"
+              placeholder={t("Email","Имейл")}
               value={email}
               required
               onChange={(e) => setEmail(e.target.value)}
@@ -120,7 +122,7 @@ function LoginRegister() {
             />
             <input
               type="text"
-              placeholder="Username"
+              placeholder={t("Username","Потребителско име")}
               value={username}
               required
               onChange={(e) => setUsername(e.target.value)}
@@ -137,7 +139,7 @@ function LoginRegister() {
         {!isRegister && (
           <input
             type="text"
-            placeholder="Username"
+            placeholder={t("Username","Потребителско име")}
             value={username}
             required
             onChange={(e) => setUsername(e.target.value)}
@@ -154,7 +156,7 @@ function LoginRegister() {
           type="password"
           minLength={isRegister ? 8 : undefined}
           autoComplete={isRegister ? "new-password" : "current-password"}
-          placeholder={isRegister ? "Password (at least 8 characters)" : "Password"}
+          placeholder={isRegister ? t("Password (at least 8 characters)","Парола (поне 8 знака)") : t("Password","Парола")}
           value={password}
           required
           onChange={(e) => setPassword(e.target.value)}
@@ -177,7 +179,7 @@ function LoginRegister() {
             cursor: "pointer",
           }}
         >
-          {isRegister ? "Register" : "Login"}
+          {isRegister ? t("Register","Регистрация") : t("Login","Вход")}
         </button>
         <button
           type="button"

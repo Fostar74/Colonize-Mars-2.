@@ -1,3 +1,4 @@
+import { useLanguage } from "../language";
 import React, { useState, useEffect } from "react";
 import "./Quests.css";
 import ActivityWheel from "./ActivityWheel";
@@ -7,6 +8,7 @@ import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
 const Quests = () => {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("main");
   const [loginRewards, setLoginRewards] = useState(null);
   const [loginBusy, setLoginBusy] = useState(false);
@@ -96,25 +98,25 @@ const Quests = () => {
 
   const renderMainQuests = () => (
     <div className="quest-section">
-      <h3>Colonize Mars — Tutorial Missions ({tutorial.filter(m=>m.claimed).length}/{tutorial.length})</h3>
+      <h3>{t("Tutorial Missions","Обучителни мисии")} ({tutorial.filter(m=>m.claimed).length}/{tutorial.length})</h3>
       {claimError && <p role="alert">{claimError}</p>}
       {tutorial.map(m => (
         <div className="quest-box" key={m.id} style={{opacity:m.unlocked?1:0.55}}>
-          <div className="quest-title">{m.id}. {m.title}</div>
-          <p>{m.description}</p>
-          <div className="quest-progress">{m.claimed ? "Completed — reward claimed" :
-            !m.unlocked ? "Locked — complete previous mission" :
-            !m.available ? "Feature under development" :
-            m.completed ? "Completed — collect your reward" :
+          <div className="quest-title">{m.id}. {t(m.titleEn,m.title)}</div>
+          <p>{t(m.descriptionEn,m.description)}</p>
+          <div className="quest-progress">{m.claimed ? t("Completed — reward claimed","Завършена · наградата е взета") :
+            !m.unlocked ? t("Locked — complete previous mission","Заключена · завърши предишната мисия") :
+            !m.available ? t("Feature under development","В разработка") :
+            m.completed ? t("Completed — collect your reward","Завършена · вземи наградата") :
             m.progress + " / " + m.target}</div>
           {m.kind==="mines" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
             {productionBuildings.map(name => {const level=Number(structures[name]?.level ?? structures[name] ?? 0);return <div key={name}>{level>=m.target?"✓ ":"○ "}{name}: Level {level} / {m.target}</div>;})}
           </div>}
-          <div className="quest-rewards">Reward: {m.reward.toLocaleString()} each — Gold, Iron, Water, Solar + 100 Wheel Tokens</div>
-          {m.claimed ? <button disabled>Reward claimed</button> :
-            !m.unlocked || !m.available ? <button disabled>{m.unlocked?"Coming soon":"Locked"}</button> :
-            m.completed ? <button disabled={claimBusy} onClick={()=>claimTutorial(m.id)}>Claim reward</button> :
-            <button onClick={handleMainQuest}>Show Me</button>}
+          <div className="quest-rewards">{t("Reward","Награда")}: {m.reward.toLocaleString()} {t("each of Gold, Iron, Water and Solar + 100 Wheel Tokens","от всеки ресурс: злато, желязо, вода и слънчева енергия + 100 жетона")}</div>
+          {m.claimed ? <button disabled>{t("Reward claimed","Наградата е взета")}</button> :
+            !m.unlocked || !m.available ? <button disabled>{m.unlocked?t("Coming soon","Очаквайте скоро"):t("Locked","Заключена")}</button> :
+            m.completed ? <button disabled={claimBusy} onClick={()=>claimTutorial(m.id)}>{t("Claim reward","Вземи наградата")}</button> :
+            <button onClick={handleMainQuest}>{t("Show Me","Покажи ми")}</button>}
         </div>
       ))}
     </div>
@@ -122,7 +124,7 @@ const Quests = () => {
 
   const renderSideQuests = () => (
     <div className="quest-section">
-      <h3>Side Quests</h3>
+      <h3>{t("Side Quests","Странични мисии")}</h3>
 
       <div className="quest-box">
         <div className="quest-title">Level up your Cyber Knight to level 2</div>
@@ -133,7 +135,7 @@ const Quests = () => {
           Armor x25
           Boots x25
         </div>
-        <button onClick={handleLevelUpKnight}>Show Me</button>
+        <button onClick={handleLevelUpKnight}>{t("Show Me","Покажи ми")}</button>
       </div>
 
       <div className="quest-box">
@@ -143,7 +145,7 @@ const Quests = () => {
           Boost x1 (2h)
           Forge Token x50
         </div>
-        <button onClick={handleGatherMine}>Show Me</button>
+        <button onClick={handleGatherMine}>{t("Show Me","Покажи ми")}</button>
       </div>
     </div>
   );
@@ -174,7 +176,7 @@ const Quests = () => {
             <div key={d.day} className="login-day" style={{opacity:d.claimed?0.6:1,padding:10}}>
               <strong>Day {d.day}</strong>
               <div>{d.reward.type==="resources"?d.reward.amount+" each: Gold, Iron, Water, Solar":d.reward.type==="army"?d.reward.amount+" "+d.reward.label:d.reward.label+" (Rare)"}</div>
-              <div>{d.claimed?"✓ Collected":d.day===loginRewards.nextDay&&!loginRewards.claimedToday?"Available":"Locked"}</div>
+              <div>{d.claimed?"✓ Collected":d.day===loginRewards.nextDay&&!loginRewards.claimedToday?"Available":t("Locked","Заключена")}</div>
               {d.day===loginRewards.nextDay&&!loginRewards.claimedToday&&<button disabled={loginBusy} onClick={claimLoginReward}>{loginBusy?"Claiming...":"Claim reward"}</button>}
             </div>
           ))}
@@ -187,10 +189,10 @@ const Quests = () => {
     <div className="quests-container">
       <h2>Quests</h2>
       <div className="quest-tabs">
-        <button onClick={() => setActiveTab("main")}>Main Quests</button>
-        <button onClick={() => setActiveTab("side")}>Side Quests</button>
-        <button onClick={() => setActiveTab("activity")}>Activity Rewards</button>
-        <button onClick={() => setActiveTab("login")}>Login Rewards</button>
+        <button onClick={() => setActiveTab("main")}>{t("Main Quests","Основни мисии")}</button>
+        <button onClick={() => setActiveTab("side")}>{t("Side Quests","Странични мисии")}</button>
+        <button onClick={() => setActiveTab("activity")}>{t("Activity Rewards","Награди за активност")}</button>
+        <button onClick={() => setActiveTab("login")}>{t("Login Rewards","Дневни награди")}</button>
       </div>
 
       {activeTab === "main" && renderMainQuests()}

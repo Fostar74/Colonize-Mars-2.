@@ -1,3 +1,4 @@
+import { useLanguage } from "../language";
 import React, { useEffect, useState } from "react";
 import StructurePanel from "./StructurePanel";
 import CyberKnightPanel from "./CyberKnightPanel";
@@ -11,6 +12,7 @@ import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
 
 function Game() {
+  const {language, choose, t} = useLanguage();
   const [showPopup, setShowPopup] = useState(false);
   const [castleName, setCastleName] = useState("Headquarter");
   const [resources, setResources] = useState(null);
@@ -146,10 +148,10 @@ function Game() {
       }}
     >
       <div className="top-resource-bar">
-        <div>Gold: {resources?.Gold ?? resources?.gold ?? "—"}</div>
-        <div>Iron: {resources?.Iron ?? resources?.iron ?? "—"}</div>
-        <div>Water: {resources?.Water ?? resources?.water ?? "—"}</div>
-        <div>Solar: {resources?.Solar ?? resources?.solar ?? "—"}</div>
+        <div>{t("Gold","Злато")}: {resources?.Gold ?? resources?.gold ?? "—"}</div>
+        <div>{t("Iron","Желязо")}: {resources?.Iron ?? resources?.iron ?? "—"}</div>
+        <div>{t("Water","Вода")}: {resources?.Water ?? resources?.water ?? "—"}</div>
+        <div>{t("Solar","Слънчева енергия")}: {resources?.Solar ?? resources?.solar ?? "—"}</div>
       </div>
 
       <div className="castle-top-bar">
@@ -159,28 +161,34 @@ function Game() {
       </div>
 
       <div className="bottom-bar">
-        <button onClick={() => setShowCyberKnight(true)}>Cyber Knight</button>
-        <button onClick={()=>setShowTalents(true)}>Player Talents</button>
-        <button onClick={() => setShowQuests(true)}>Quests</button>
-        <button onClick={() => (window.location.href = "/#/map?campaign=1")}>Campaign</button>
-        <button onClick={() => (window.location.href = "/#/map")}>Map</button>
-        <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>Alliance</button>
-        <button onClick={()=>setShowRankings(true)}>Rankings</button>
-        <button onClick={()=>setMessageRecipient("")}>Messages</button>
-        <button onClick={() => setShowInventory(true)}>Inventory</button>
-        <button onClick={() => setOptionsVisible(!optionsVisible)}>Options</button>
+        <button onClick={() => setShowCyberKnight(true)}>{t("Cyber Knight","Киберрицар")}</button>
+        <button onClick={()=>setShowTalents(true)}>{t("Player Talents","Таланти")}</button>
+        <button onClick={() => setShowQuests(true)}>{t("Quests","Мисии")}</button>
+        <button onClick={() => (window.location.href = "/#/map?campaign=1")}>{t("Campaign","Кампании")}</button>
+        <button onClick={() => (window.location.href = "/#/map")}>{t("Map","Карта")}</button>
+        <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
+        <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
+        <button onClick={()=>setMessageRecipient("")}>{t("Messages","Съобщения")}</button>
+        <button onClick={() => setShowInventory(true)}>{t("Inventory","Инвентар")}</button>
+        <button onClick={() => setOptionsVisible(!optionsVisible)}>{t("Options","Настройки")}</button>
       </div>
 
       {optionsVisible && (
         <div id="optionsMenu">
-          <button onClick={logout}>Log Out</button>
+          <label>{t("Language","Език")}{" "}
+            <select value={language} onChange={event=>choose(event.target.value)}>
+              <option value="bg" lang="bg">Български</option>
+              <option value="en" lang="en">English</option>
+            </select>
+          </label>{" "}
+          <button onClick={logout}>{t("Log Out","Изход")}</button>
         </div>
       )}
 
       {showPopup && (
         <div className="popup">
           <div className="popup-header">
-            <span>BASE CONTROL PANEL</span>
+            <span>{t("BASE CONTROL PANEL","УПРАВЛЕНИЕ НА БАЗАТА")}</span>
             <button className="close-button" onClick={() => setShowPopup(false)}>
               X
             </button>
@@ -198,26 +206,26 @@ function Game() {
 
       {showInventory && (
         <div className="popup">
-          <div className="popup-header"><span>INVENTORY</span><button className="close-button" onClick={() => setShowInventory(false)}>X</button></div>
+          <div className="popup-header"><span>{t("INVENTORY","ИНВЕНТАР")}</span><button className="close-button" onClick={() => setShowInventory(false)}>X</button></div>
           <div className="popup-content"><Inventory onClose={() => setShowInventory(false)} /></div>
         </div>
       )}
 
-      {showTalents&&<div className="popup"><div className="popup-header"><span>PLAYER TALENTS</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
-      {showAlliance&&<div className="popup"><div className="popup-header"><span>ALLIANCE</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction}/></div></div>}
-      {showRankings&&<div className="popup"><div className="popup-header"><span>RANKINGS</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings playerAction={playerAction}/></div></div>}
+      {showTalents&&<div className="popup"><div className="popup-header"><span>{t("PLAYER TALENTS","ТАЛАНТИ")}</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
+      {showAlliance&&<div className="popup"><div className="popup-header"><span>{t("ALLIANCE","АЛИАНС")}</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction}/></div></div>}
+      {showRankings&&<div className="popup"><div className="popup-header"><span>{t("RANKINGS","КЛАСИРАНЕ")}</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings playerAction={playerAction}/></div></div>}
       {messageRecipient!==null&&<div className="popup" style={{zIndex:1002}}>
-        <div className="popup-header"><span>MESSAGES</span><button className="close-button" onClick={()=>setMessageRecipient(null)}>X</button></div>
+        <div className="popup-header"><span>{t("MESSAGES","СЪОБЩЕНИЯ")}</span><button className="close-button" onClick={()=>setMessageRecipient(null)}>X</button></div>
         <div className="popup-content"><MessagePanel key={messageRecipient} recipient={messageRecipient} playerAction={playerAction}/></div>
       </div>}
       {playerMenu&&<div className="popup" style={{zIndex:1003}}>
         <div className="popup-header"><span>{playerMenu.username}</span><button className="close-button" onClick={()=>setPlayerMenu(null)}>X</button></div>
         <div className="popup-content" style={{display:"flex",flexWrap:"wrap",gap:8,alignContent:"flex-start"}}>
-          <button onClick={showPlayerBase}>View Base</button>
-          <button disabled={playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setMessageRecipient(playerMenu.username);setPlayerMenu(null);}}>Message</button>
-          <button disabled={!playerMenu.ally || playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setSupportTarget(playerMenu);setShowRankings(false);setShowAlliance(true);setPlayerMenu(null);}}>Support</button>
-          <button disabled title={playerMenu.ally?"You cannot attack an ally.":"Player battles are not enabled yet."}>Attack</button>
-          <button disabled={!playerMenu.canInvite || inviting} onClick={invitePlayer}>Invite to Alliance</button>
+          <button onClick={showPlayerBase}>{t("View Base","Виж базата")}</button>
+          <button disabled={playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setMessageRecipient(playerMenu.username);setPlayerMenu(null);}}>{t("Message","Съобщение")}</button>
+          <button disabled={!playerMenu.ally || playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setSupportTarget(playerMenu);setShowRankings(false);setShowAlliance(true);setPlayerMenu(null);}}>{t("Support","Подкрепление")}</button>
+          <button disabled title={playerMenu.ally?"You cannot attack an ally.":"Player battles are not enabled yet."}>{t("Attack","Атака")}</button>
+          <button disabled={!playerMenu.canInvite || inviting} onClick={invitePlayer}>{t("Invite to Alliance","Покани в алианса")}</button>
           {playerNotice&&<p role="status">{playerNotice}</p>}
         </div>
       </div>}
@@ -225,7 +233,7 @@ function Game() {
       {showQuests && (
         <div className="popup">
           <div className="popup-header">
-            <span>QUESTS</span>
+            <span>{t("QUESTS","МИСИИ")}</span>
             <button className="close-button" onClick={() => setShowQuests(false)}>
               X
             </button>
