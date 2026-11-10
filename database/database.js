@@ -117,6 +117,14 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
+    db.exec(`CREATE TABLE IF NOT EXISTS player_messages (
+      id INTEGER PRIMARY KEY, sender_id INTEGER NOT NULL REFERENCES users(id),
+      recipient_id INTEGER REFERENCES users(id), alliance_id INTEGER REFERENCES alliances(id),
+      body TEXT NOT NULL, sent_at INTEGER NOT NULL,
+      CHECK ((recipient_id IS NULL) != (alliance_id IS NULL)));
+      CREATE INDEX IF NOT EXISTS messages_sender ON player_messages(sender_id,id);
+      CREATE INDEX IF NOT EXISTS messages_recipient ON player_messages(recipient_id,id);
+      CREATE INDEX IF NOT EXISTS messages_alliance ON player_messages(alliance_id,id);`);
     db.exec("CREATE TABLE IF NOT EXISTS alliance_invitations (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), PRIMARY KEY(user_id, alliance_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_applications (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), applied_at INTEGER NOT NULL, PRIMARY KEY(user_id,alliance_id))");
     try { db.exec("ALTER TABLE alliance_members ADD COLUMN role TEXT NOT NULL DEFAULT 'Member'"); } catch(e) { if(!String(e.message).includes("duplicate column"))throw e; }
@@ -640,6 +648,37 @@ class DatabaseManager {
         this.saveUserEquipment(userId,gear?.equippedItems||{},[...(gear?.gearInventory||[]),item],gear?.craftingPoints||{});
       }
       return {index,prize,wheel:this.getWheel(userId)};
+    })();
+  }
+
+  listMessages(userId, scope){
+    if(!["private","alliance"].includes(scope))return {error:"Unknown message channel."};
+    const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+    if(scope==="alliance"&&!member)return {error:"Join an alliance to view its chat."};
+    const filter=member ? "m.alliance_id=?" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL))";
+    const params=member ? [member.alliance_id] : [userId,userId];
+    const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,
+      sender.username AS sender,recipient.username AS recipient FROM player_messages m
+      JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
+      WHERE ${filter} ORDER BY m.id DESC LIMIT 50`).all(...params);
+    return {messages};
+  }
+
+  sendMessage(userId, scope, recipient, body){
+    if(!["private","alliance"].includes(scope))return {error:"Unknown message channel."};
+    const content=typeof body==="string" ? body.trim() : "";
+    if(!content || content.length>500)return {error:"Enter a message between 1 and 500 characters."};
+    return db.transaction(()=>{
+      const now=Date.now();
+      const latest=db.prepare("SELECT sent_at FROM player_messages WHERE sender_id=? ORDER BY id DESC LIMIT 1").get(userId);
+      if(latest && now-latest.sent_at<1000)return {error:"Wait a moment before sending another message."};
+      const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(scope==="alliance"&&!member)return {error:"Join an alliance to use its chat."};
+      const target=scope==="private" && typeof recipient==="string" && this.findUserByUsername(recipient.trim());
+      if(scope==="private"&&(!target||target.id===userId))return {error:"Choose another existing player."};
+      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
+        .run(userId,target?.id||null,member?.alliance_id||null,content,now);
+      return {message:"Message sent."};
     })();
   }
 
