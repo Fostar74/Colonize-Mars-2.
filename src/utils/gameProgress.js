@@ -135,6 +135,20 @@ class GameProgressManager {
     }
   }
 
+  async craftEquipment(itemId, expectedLevel) {
+    const response = await fetch(`${API_BASE}/craft-equipment`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${sessionStorage.getItem("authToken") || ""}`,
+      },
+      body: JSON.stringify({userId:this.userId, itemId, expectedLevel}),
+    });
+    const result = await response.json();
+    if (!response.ok) throw new Error(result.message || "Unable to upgrade equipment.");
+    return result.equipment;
+  }
+
   async loadEquipment() {
     if (!this.userId) {
       console.error("User ID not found");
