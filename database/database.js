@@ -329,6 +329,7 @@ class DatabaseManager {
       // Resource production is calculated from server time, including while logged out.
       const elapsedTicks = Math.floor(Math.max(0, now - state.production_at) / 10000);
       const economyBonus = this.protocolBonus(userId, "Resource Management") / 100;
+      const miningBonus = this.protocolBonus(userId, "Mining Operations") / 100;
       const productionCarry = JSON.parse(state.production_carry || "{}");
       const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
       for (const [resource, name] of Object.entries(rates)) {
@@ -336,7 +337,7 @@ class DatabaseManager {
         if (level > 0 && elapsedTicks > 0) {
           // Preserve sub-unit production between 10-second ticks; otherwise frequent polling
           // silently discards most of the Resource Management protocol bonus.
-          const produced = level * elapsedTicks * (1 + economyBonus) + (Number(productionCarry[resource]) || 0);
+          const produced = level * elapsedTicks * (1 + economyBonus) * (1 + miningBonus) + (Number(productionCarry[resource]) || 0);
           const whole = Math.floor(produced + 1e-9);
           productionCarry[resource] = Math.max(0, Math.round((produced - whole) * 1000000) / 1000000);
           resources[resource] = (Number(resources[resource]) || 0) + whole;
@@ -482,7 +483,7 @@ class DatabaseManager {
   talentCatalog(){
     return [
       ["Rapid Deployment",[15,35,60],"% army speed"],["Resource Management",[10,25,45],"% economy"],
-      ["Mining Operations",[1,3,6],"extra mines"],["Precision Fire",[15,35,60],"% ranged attack"],
+      ["Mining Operations",[20,50,100],"% mine production"],["Precision Fire",[15,35,60],"% ranged attack"],
       ["Reinforced Armor",[10,25,45],"% unit HP"],["Infantry Command",[10,25,45],"% infantry attack and HP"],
       ["Battle Command",[6,16,30],"% leadership"],["Advanced Recon",[10,30,50],"% spy discount"],
       ["Evasion Protocol",[3,8,15],"% evade"],["Combat Recovery",[3,8,15],"% revive"],
@@ -507,7 +508,7 @@ class DatabaseManager {
     db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
   }
   upgradePlayerTalent(userId,name){
-    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery"]);
+    const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery", "Mining Operations"]);
     if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
     if(!activeProtocols.has(name))return {error:"This protocol is not active yet. Protocol Points have not been spent."};
     return db.transaction(()=>{
