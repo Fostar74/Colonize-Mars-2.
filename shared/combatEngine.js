@@ -73,12 +73,26 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
         target.count-=killed;
         casualties.set(target,killed);
       }
-      // Damage and losses are computed per target, not independently for
-      // each shot: independent calculations overstated kills on shared targets.
-      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:0});
-      for(const [target,killed] of casualties){
-        if(killed)round.events.push({phase:step,attacker:"Combat",unit:target.unit,kills:killed,event:"casualties"});
+      // Distribute actual casualties among contributing volleys. The sum of
+      // per-shot kills equals the casualties applied to each target group.
+      const assigned=new Map();
+      for(const shot of shots){
+        const total=hits.get(shot.target)||0;
+        const killed=casualties.get(shot.target)||0;
+        const previous=assigned.get(shot.target)||0;
+        const allocation=shot.dodged||!total?0:Math.min(killed-previous,Math.floor(killed*shot.damage/total));
+        shot.kills=allocation;
+        assigned.set(shot.target,previous+allocation);
       }
+      for(const [target,killed] of casualties){
+        let remainder=killed-(assigned.get(target)||0);
+        for(const shot of shots){
+          if(!remainder)break;
+          if(shot.target!==target||shot.dodged)continue;
+          shot.kills++;remainder--;
+        }
+      }
+      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:shot.kills});
     }
     // Restore a percentage of casualties at the end of each round, capped
     // at the original deployed group size. Fractions accumulate per group.
