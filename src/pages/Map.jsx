@@ -473,7 +473,7 @@ function Map() {
             <p style={{fontSize:12}}>Rover Scout reconnaissance costs 1000 Solar before Quantum Intelligence discounts (10% / 30% / 50%). At least one available Rover Scout is required; it is not consumed.</p>
             <button onClick={async()=>{
               try{
-                const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\\/$/,"");
+                const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
                 const userId=sessionStorage.getItem("userId");
                 const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
                 const response=await fetch(base+"/alien-campaign/scout",{method:"POST",headers,body:JSON.stringify({userId,level:selectedTarget.level})});
