@@ -374,12 +374,24 @@ router.post("/save-equipment", requireSession, async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    db.saveUserEquipment(userId, equippedItems || {}, gearInventory || [], craftingPoints || {});
+    db.saveEquipmentFromClient(userId, equippedItems || {}, gearInventory, craftingPoints);
 
     res.status(200).json({ message: "Equipment saved successfully!" });
   } catch (error) {
     console.error("Save equipment error:", error);
     res.status(500).json({ message: "Internal server error while saving equipment." });
+  }
+});
+
+router.post("/craft-equipment", requireSession, (req, res) => {
+  const {userId, itemId, expectedLevel} = req.body;
+  try {
+    const result = db.craftEquipment(Number(userId), itemId, expectedLevel);
+    if (result.error) return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch (error) {
+    console.error("Craft equipment error:", error);
+    res.status(500).json({message:"Unable to upgrade equipment."});
   }
 });
 
@@ -416,7 +428,7 @@ router.post("/update-equipment", requireSession, async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    db.updateUserEquipment(userId, equippedItems || {}, gearInventory || [], craftingPoints || {});
+    db.saveEquipmentFromClient(userId, equippedItems || {}, gearInventory, craftingPoints);
 
     res.status(200).json({ message: "Equipment updated successfully!" });
   } catch (error) {

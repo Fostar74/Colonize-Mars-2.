@@ -1,3 +1,4 @@
+const craftingCosts = require("../src/shared/craftingCosts");
 const {allianceUpgradeDuration,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
@@ -904,7 +905,7 @@ class DatabaseManager {
   getInventory(userId) {
     db.prepare("INSERT OR IGNORE INTO inventory_reserves(user_id,resources,army) VALUES (?,?,?)").run(userId,JSON.stringify({Gold:10000,Iron:10000,Water:10000,Solar:10000}),"{}");
     const row=db.prepare("SELECT resources,army FROM inventory_reserves WHERE user_id=?").get(userId);
-    return {resources:JSON.parse(row.resources),army:JSON.parse(row.army)};
+    return {resources:JSON.parse(row.resources),army:JSON.parse(row.army),boosters:{universalForge:this.getUserEquipment(userId)?.craftingPoints?.Universal || 0}};
   }
 
   withdrawInventory(userId,kind,name,amount) {
@@ -1208,6 +1209,48 @@ class DatabaseManager {
     } catch (error) {
       throw error;
     }
+  }
+
+  craftEquipment(userId, itemId, expectedLevel) {
+    return db.transaction(() => {
+      const equipment = this.getUserEquipment(userId);
+      const item = equipment?.gearInventory.find(gear => gear.id === itemId);
+      if (!item) return {error:"Item not found."};
+      const level = Number(item.level ?? item.levelRequirement ?? 0);
+      if (level !== expectedLevel) return {error:"Item level changed. Reopen the equipment panel."};
+      if (level >= 50) return {error:"Maximum equipment level reached."};
+      const cost = craftingCosts[String(item.rarity).toLowerCase()];
+      if (!Number.isInteger(cost)) return {error:"Unknown equipment rarity."};
+      const slot = String(item.slot || item.type || "").toUpperCase();
+      if (!["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"].includes(slot)) return {error:"Invalid equipment slot."};
+      const points = equipment.craftingPoints;
+      const slotPoints = Number(points[slot]) || 0;
+      const universal = Number(points.Universal) || 0;
+      if (slotPoints + universal < cost) return {error:"Not enough Crafting Points."};
+      const fromSlot = Math.min(slotPoints, cost);
+      points[slot] = slotPoints - fromSlot;
+      points.Universal = universal - (cost - fromSlot);
+      item.level = level + 1;
+      for (const [key, equipped] of Object.entries(equipment.equippedItems)) {
+        if (equipped?.id === itemId) equipment.equippedItems[key] = item;
+      }
+      this.saveUserEquipment(userId, equipment.equippedItems, equipment.gearInventory, points);
+      return {equipment};
+    })();
+  }
+
+  saveEquipmentFromClient(userId, equippedItems, gearInventory, craftingPoints) {
+    const current = this.getUserEquipment(userId);
+    if (gearInventory === undefined && craftingPoints === undefined) {
+      const inventory = current?.gearInventory || [];
+      const equipped = Object.fromEntries(Object.entries(equippedItems).flatMap(([slot, item]) => {
+        const saved = inventory.find(gear => gear.id === item?.id && (gear.slot || gear.type || "").toUpperCase() === slot);
+        return saved ? [[slot, saved]] : [];
+      }));
+      return this.saveUserEquipment(userId, equipped, inventory, current?.craftingPoints || {});
+    }
+    return this.saveUserEquipment(userId, equippedItems, gearInventory || [],
+      {...craftingPoints, Universal:current?.craftingPoints?.Universal || 0});
   }
 
   saveUserEquipment(userId, equippedItems, gearInventory, craftingPoints) {

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import "./CyberKnightPanel.css";
 import knightImage from "../images/CYBER-KNIGHT-3.png";
+import craftingCosts from "../shared/craftingCosts";
 import GameProgressManager from "../utils/gameProgress";
 
 function CyberKnightPanel({ onClose }) {
@@ -9,7 +10,8 @@ function CyberKnightPanel({ onClose }) {
   const [rarityTab, setRarityTab] = useState("Common");
   const [activeModal, setActiveModal] = useState(null);
   const [selectedItem, setSelectedItem] = useState(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [crafting, setCrafting] = useState(false);
+  const [craftMessage, setCraftMessage] = useState("");
   const [imageFailed, setImageFailed] = useState(false);
 
   const progressManager = new GameProgressManager();
@@ -19,7 +21,7 @@ function CyberKnightPanel({ onClose }) {
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
   const itemsForSlot = inventory.filter(item =>
-    (item.slot || item.type || "").toUpperCase() === selectedSlot && item.rarity === rarityTab
+    (item.slot || item.type || "").toUpperCase() === selectedSlot && String(item.rarity).toLowerCase() === rarityTab.toLowerCase()
   );
 
   useEffect(() => {
@@ -49,25 +51,8 @@ function CyberKnightPanel({ onClose }) {
       }
     } catch (error) {
       console.error("Error loading equipment data:", error);
-    } finally {
-      setIsLoading(false);
     }
   };
-
-  const saveEquipmentData = async () => {
-    try {
-      const userId = sessionStorage.getItem("userId");
-      if (!userId) return;
-
-      sessionStorage.setItem("equippedItems", JSON.stringify(equippedItems));
-
-      await progressManager.saveEquipment(equippedItems, inventory, craftingPoints);
-    } catch (error) {
-      console.error("Error saving equipment data:", error);
-    }
-  };
-
-
 
   const handleSlotClick = (slotName) => {
     setSelectedSlot(slotName);
@@ -77,11 +62,36 @@ function CyberKnightPanel({ onClose }) {
   const handleEquip = async (slot, item) => {
     if ((item.slot || item.type || "").toUpperCase() !== slot) return;
     const nextEquipped = {...equippedItems,[slot]:item};
-    const saved=await progressManager.saveEquipment(nextEquipped,inventory,craftingPoints);
+    progressManager.setUserInfo(sessionStorage.getItem("userId"), sessionStorage.getItem("username"));
+    const saved=await progressManager.saveEquipment(nextEquipped);
     if(!saved){alert("Could not save equipment. Please retry.");return;}
     setEquippedItems(nextEquipped);
     setActiveModal(null);
     setSelectedItem(null);
+  };
+
+  const itemLevel = Number(selectedItem?.level ?? selectedItem?.levelRequirement ?? 0);
+  const craftCost = craftingCosts[String(selectedItem?.rarity).toLowerCase()];
+  const slotPoints = Number(craftingPoints[selectedSlot]) || 0;
+  const universalPoints = Number(craftingPoints.Universal) || 0;
+
+  const handleCraft = async () => {
+    setCrafting(true);
+    setCraftMessage("");
+    try {
+      progressManager.setUserInfo(sessionStorage.getItem("userId"), sessionStorage.getItem("username"));
+      const equipment = await progressManager.craftEquipment(selectedItem.id, itemLevel);
+      setEquippedItems(equipment.equippedItems);
+      setInventory(equipment.gearInventory);
+      setCraftingPoints(equipment.craftingPoints);
+      setActiveModal(null);
+      setCraftMessage(`${selectedItem.name} upgraded to level ${itemLevel + 1}.`);
+      window.dispatchEvent(new Event("game-progress-updated"));
+    } catch (error) {
+      setCraftMessage(error.message);
+    } finally {
+      setCrafting(false);
+    }
   };
 
   const handleCloseAll = () => {
@@ -171,6 +181,7 @@ function CyberKnightPanel({ onClose }) {
                     <button
                       onClick={() => {
                         setSelectedItem(item);
+                        setCraftMessage("");
                         setActiveModal("craft");
                       }}
                     >
@@ -187,7 +198,7 @@ function CyberKnightPanel({ onClose }) {
         <div className="modal-window">
           <h3>Equip {selectedItem.name}?</h3>
           <ul>
-            {selectedItem.stats.map((s, i) => (
+            {(selectedItem.stats || []).map((s, i) => (
               <li key={i}>{s}</li>
             ))}
           </ul>
@@ -205,6 +216,8 @@ function CyberKnightPanel({ onClose }) {
         </div>
       )}
 
+      {craftMessage && <p role="status">{craftMessage}</p>}
+
       {activeModal === "craft" && selectedItem && (
         <div className="modal-window">
           <h3>Craft Upgrade</h3>
@@ -212,10 +225,10 @@ function CyberKnightPanel({ onClose }) {
             <div>
               <h4>Current Item</h4>
               <p>
-                {selectedItem.name} - Level {selectedItem.level}
+                {selectedItem.name} - Level {itemLevel}
               </p>
               <ul>
-                {selectedItem.stats.map((s, i) => (
+                {(selectedItem.stats || []).map((s, i) => (
                   <li key={i}>{s}</li>
                 ))}
               </ul>
@@ -223,17 +236,20 @@ function CyberKnightPanel({ onClose }) {
             <div>
               <h4>Upgraded Item</h4>
               <p>
-                {selectedItem.name} - Level {selectedItem.level + 1}
+                {selectedItem.name} - Level {itemLevel + 1}
               </p>
               <ul>
-                {selectedItem.stats.map((s, i) => (
-                  <li key={i}>{s.replace(/\d+(\.\d+)?/, (match) => (+match + 3).toFixed(1))}</li>
+                {(selectedItem.stats || []).map((s, i) => (
+                  <li key={i}>{s}</li>
                 ))}
               </ul>
             </div>
           </div>
-          <p>Required {selectedSlot} Crafting Points: 66</p>
-          <button onClick={handleCloseAll}>Craft</button>
+          <p>Cost: {craftCost ?? "Unavailable"} Crafting Points</p>
+          <p>{selectedSlot}: {slotPoints} · Universal Forge: {universalPoints}</p>
+          <button disabled={crafting || itemLevel >= 50 || !craftCost || slotPoints + universalPoints < craftCost} onClick={handleCraft}>
+            {itemLevel >= 50 ? "Max level" : crafting ? "Crafting…" : "Craft"}
+          </button>
           <button onClick={() => setActiveModal(null)}>Cancel</button>
         </div>
       )}

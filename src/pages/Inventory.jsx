@@ -58,6 +58,10 @@ export default function Inventory(){
       })}
       {!rows.length&&<p>No reserve troops. Troops earned as rewards will appear here.</p>}
     </div>}
-    {tab==="boosters"&&<p>Boosters are not available yet.</p>}
+    {reserve&&tab==="boosters"&&<div style={card}>
+      <strong>Universal Forge</strong>
+      <p>In inventory: <b>{Number(reserve.boosters?.universalForge || 0).toLocaleString()}</b></p>
+      <p>Use these points to upgrade any equipment slot in Cyber Knight. Slot points are spent first.</p>
+    </div>}
   </div>;
 }
