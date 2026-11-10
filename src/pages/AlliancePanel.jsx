@@ -2,13 +2,33 @@ import React,{useEffect,useState,useCallback} from "react";
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const getUserId=()=>sessionStorage.getItem("userId");
 const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
-export default function AlliancePanel(){
+export default function AlliancePanel({ constructionHelpOnly = false }){
  const [reinforceRecipient,setReinforceRecipient]=useState(""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
  const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[tab,setTab]=useState("members");
  const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
  const helpAll=async()=>{const eligible=(state?.requests||[]).filter(h=>!h.helped&&String(h.requester_id)!==String(getUserId()));if(!eligible.length)return;setBusy(true);setMessage("");let successes=0,failures=0;for(const h of eligible){try{const r=await fetch(api+"/alliance/help",{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),requestId:h.id})});if(r.ok)successes++;else failures++;}catch(e){failures++;}}setMessage(`Help All: ${successes} construction(s) accelerated, ${successes} token(s) earned${failures?`, ${failures} failed`:""}.`);await refresh();setBusy(false);};
  const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
+ const constructionHelp = <div>
+   <button disabled={busy} onClick={()=>action("request-help")}>🤝 Request help for my active construction</button>
+   <h3>Construction Help Requests</h3>
+   <p>Active requests refresh automatically every 10 seconds. Each member can help each construction once.</p>
+   <button disabled={busy||!(state.requests||[]).some(h=>!h.helped&&String(h.requester_id)!==String(getUserId()))} onClick={helpAll}>🤝 Help All Eligible Requests</button>
+   {!(state.requests||[]).length&&<p>No active help requests.</p>}
+   {(state.requests||[]).map(h=><div key={h.id} style={{padding:12,border:"1px solid #47758e",borderRadius:8,marginBottom:8}}>
+    <strong>{h.username}</strong> · {h.building_name} Lv {h.building_level}
+    <p>{h.helperCount||0} member(s) helped · Reduce remaining time by 1 minute or 1%, whichever is greater.</p>
+    <button disabled={busy||h.helped||String(h.requester_id)===String(getUserId())} onClick={()=>action("help",{requestId:h.id})}>{h.helped?"Already helped":String(h.requester_id)===String(getUserId())?"Your construction":"Help · Earn 1 Token"}</button>
+   </div>)}
+   </div>;
+ if(constructionHelpOnly){
+  if(!state?.alliance && !loadError)return null;
+  return <section aria-label="Alliance construction help" style={{color:"#eef6ff",padding:12,marginBottom:12,border:"1px solid #47758e",borderRadius:8}}>
+   {message&&<p role="status">{message}</p>}
+   {loadError&&<p role="alert">{loadError} <button onClick={refresh}>Retry</button></p>}
+   {state?.alliance&&constructionHelp}
+  </section>;
+ }
  return <div style={{color:"#eef6ff",padding:15,minWidth:300}}>
   <h2>Alliance Command</h2><p>Help clanmates build faster and earn 1 wheel token per successful help.</p>
   {message&&<p role="status">{message}</p>}
@@ -102,18 +122,7 @@ export default function AlliancePanel(){
      {["Leader","Co-Leader","Diplomat"].includes(state.alliance.role)&&<> <button disabled={busy} onClick={()=>action("application",{targetId:m.id,accept:true})}>Accept</button> <button disabled={busy} onClick={()=>action("application",{targetId:m.id,accept:false})}>Ignore</button></>}
     </div>)}
    </div>}
-   {tab==="help"&&<div>
-   <button disabled={busy} onClick={()=>action("request-help")}>🤝 Request help for my active construction</button>
-   <h3>Construction Help Requests</h3>
-   <p>Active requests refresh automatically every 10 seconds. Each member can help each construction once.</p>
-   <button disabled={busy||!(state.requests||[]).some(h=>!h.helped&&String(h.requester_id)!==String(getUserId()))} onClick={helpAll}>🤝 Help All Eligible Requests</button>
-   {!(state.requests||[]).length&&<p>No active help requests.</p>}
-   {(state.requests||[]).map(h=><div key={h.id} style={{padding:12,border:"1px solid #47758e",borderRadius:8,marginBottom:8}}>
-    <strong>{h.username}</strong> · {h.building_name} Lv {h.building_level}
-    <p>{h.helperCount||0} member(s) helped · Reduce remaining time by 1 minute or 1%, whichever is greater.</p>
-    <button disabled={busy||h.helped||String(h.requester_id)===String(getUserId())} onClick={()=>action("help",{requestId:h.id})}>{h.helped?"Already helped":String(h.requester_id)===String(getUserId())?"Your construction":"Help · Earn 1 Token"}</button>
-   </div>)}
-   </div>}
+   {tab==="help"&&constructionHelp}
   </div>}
  </div>;
 }

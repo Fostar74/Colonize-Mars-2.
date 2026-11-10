@@ -142,6 +142,7 @@ function Game() {
             </button>
           </div>
           <div className="popup-content">
+            <AlliancePanel constructionHelpOnly />
             <StructurePanel onProgressChange={onProgressChange} />
           </div>
         </div>
