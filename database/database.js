@@ -95,6 +95,7 @@ function initializeDatabase() {
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "queued_building_job")) {
       db.exec("ALTER TABLE game_runtime ADD COLUMN queued_building_job TEXT");
     }
+    if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "training_queues")) db.exec("ALTER TABLE game_runtime ADD COLUMN training_queues TEXT NOT NULL DEFAULT '{}'");
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "barracks_reserve")) db.exec("ALTER TABLE game_runtime ADD COLUMN barracks_reserve TEXT NOT NULL DEFAULT '{}'");
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "production_carry")) {
       db.exec("ALTER TABLE game_runtime ADD COLUMN production_carry TEXT NOT NULL DEFAULT '{}'");
@@ -327,6 +328,11 @@ class DatabaseManager {
       const barracksReserve = JSON.parse(state.barracks_reserve || "{}");
       let buildingJob = state.building_job ? JSON.parse(state.building_job) : null;
       let trainingJob = state.training_job ? JSON.parse(state.training_job) : null;
+      const trainingQueues = JSON.parse(state.training_queues || "{}");
+      const {categories:trainingCategories}=require("../src/shared/unitEconomy");
+      const categoryForUnit=unit=>Object.keys(trainingCategories).find(cat=>trainingCategories[cat].includes(unit));
+      // Preserve existing pre-upgrade training without duplicating or discarding it.
+      if(trainingJob){const category=categoryForUnit(trainingJob.unit);if(category){trainingQueues[category]=[trainingJob,...(trainingQueues[category]||[])];trainingJob=null;}}
       let queuedBuildingJob = state.queued_building_job ? JSON.parse(state.queued_building_job) : null;
       let changed = false;
       // Resource production is calculated from server time, including while logged out.
@@ -356,18 +362,23 @@ class DatabaseManager {
         queuedBuildingJob = null;
         changed = true;
       }
-      if (trainingJob && trainingJob.endsAt <= now) {
-        barracksReserve[trainingJob.unit] = (Number(barracksReserve[trainingJob.unit]) || 0) + trainingJob.quantity;
-        trainingJob = null;
-        changed = true;
+      for(const category of Object.keys(trainingCategories)){
+        const queue=trainingQueues[category]||[];
+        // Process every completed job, including when the player was offline.
+        while(queue.length&&queue[0].endsAt<=now){
+          const done=queue.shift();
+          barracksReserve[done.unit]=(Number(barracksReserve[done.unit])||0)+done.quantity;
+          changed=true;
+        }
+        trainingQueues[category]=queue;
       }
-      db.prepare("UPDATE game_runtime SET production_at=?, production_carry=?, building_job=?, queued_building_job=?, training_job=?, army=?, barracks_reserve=? WHERE user_id=?")
-        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), JSON.stringify(barracksReserve), userId);
+      db.prepare("UPDATE game_runtime SET production_at=?, production_carry=?, building_job=?, queued_building_job=?, training_job=?, army=?, barracks_reserve=?, training_queues=? WHERE user_id=?")
+        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), JSON.stringify(barracksReserve), JSON.stringify(trainingQueues), userId);
       if (changed) db.prepare("UPDATE game_progress SET resources=?, structures=?, last_saved=CURRENT_TIMESTAMP WHERE id=?")
         .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
       return {
         castle: JSON.parse(row.castle_data), resources, structures, army,
-        buildingJob, queuedBuildingJob, trainingJob, barracksReserve, unitUpgrades: JSON.parse(state.unit_upgrades),
+        buildingJob, queuedBuildingJob, trainingJob, trainingQueues, barracksReserve, unitUpgrades: JSON.parse(state.unit_upgrades),
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
         productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * (1 + economyBonus) * 10) / 100])),
         serverTime: now
@@ -410,7 +421,11 @@ class DatabaseManager {
     return db.transaction(() => {
       const current = this.syncGame(userId);
       if (!current) return { error: "Player progress not found." };
-      if (current.trainingJob) return { error: "Training already in progress." };
+      const {categories}=require("../src/shared/unitEconomy");
+      const category=Object.keys(categories).find(key=>categories[key].includes(unit));
+      if(!category)return {error:"Unknown troop category."};
+      const queue=current.trainingQueues[category]||[];
+      if(queue.length>=5)return {error:"This category has five training groups queued."};
       const requirement = unitRequirement(unit);
       if (Number(current.structures[requirement.building] || 0) < requirement.level) return {error: `Requires ${requirement.building} level ${requirement.level}.`};
       const cost = Object.fromEntries(Object.entries(unitPrice(unit)).map(([resource,value])=>[resource,value*quantity]));
@@ -418,11 +433,14 @@ class DatabaseManager {
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       this.awardPlayerXp(userId,Math.min(1000,quantity*2));
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
-      const job = { unit, quantity, endsAt: Date.now() + Math.max(1000, Math.ceil(quantity * 30000 * (1 - trainingBonus))) };
-      db.prepare("UPDATE game_runtime SET training_job=? WHERE user_id=?").run(JSON.stringify(job), userId);
+      const duration=Math.max(1000,Math.ceil(quantity*30000*(1-trainingBonus)));
+      const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
+      const job={unit,quantity,startsAt,endsAt:startsAt+duration};
+      const trainingQueues={...current.trainingQueues,[category]:[...queue,job]};
+      db.prepare("UPDATE game_runtime SET training_queues=? WHERE user_id=?").run(JSON.stringify(trainingQueues),userId);
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
         .run(JSON.stringify(current.resources), userId);
-      return { ...current, trainingJob: job };
+      return { ...current, trainingQueues };
     })();
   }
 
