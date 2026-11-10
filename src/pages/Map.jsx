@@ -350,7 +350,7 @@ function Map() {
       const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation})});
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      setCampaign(old=>({...old,remaining:data.remaining}));
+      setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true}));
       setMarchNotice("Mission dispatched! Battle in 60 seconds. Check CAMPAIGNS for results.");
       setMarchDraft(null);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
@@ -524,6 +524,8 @@ function Map() {
           {marchLoading && <p>Loading your army...</p>}
           {marchDraft && <div>
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
+            <p>Commander: Cyber Knight Lv {campaign.knightLevel || 1} (required)</p>
+            {campaign.knightBusy && <p>Cyber Knight is on a mission and must return before launching another attack.</p>}
             <p>Select troops from your base army:</p>
             {!Object.values(unitEconomy.categories).flat().some(unit=>Number(availableArmy[unit]||0)>0) && <p>No trained troops available. Train units at your base before preparing a march.</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
@@ -542,7 +544,7 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits(Object.fromEntries(Object.entries(availableArmy).map(([k,v])=>[k,Number(v)||0])))}>Select all</button>
               <button onClick={()=>setMarchUnits({})}>Clear</button>
-              <button onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
+              <button disabled={marchLoading || campaign.knightBusy} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
               <button onClick={()=>setMarchDraft(null)}>← Back to mission types</button>
             </div>
             <p style={{fontSize:12,color:"#b5c7d9"}}>Alien attacks reserve selected troops immediately; survivors return after the battle.</p>
@@ -557,7 +559,7 @@ function Map() {
           <h3>Alien Mission Reports</h3>
         {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
           <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result?(m.result.victory?"VICTORY":"DEFEAT"):"Travelling / awaiting battle"}</summary>
-          {m.result&&<div><p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
+          {m.result&&<div>{m.result.cyberKnightLevel && <p>Commander: Cyber Knight Lv {m.result.cyberKnightLevel}</p>}<p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
           <p>Reward: {m.result.reward?.item?.name || (m.result.reward?.type==="crafting" ? `${m.result.reward.amount} Universal Forge points` : m.result.reward?.type==="resources" ? `${m.result.reward.amount} of each resource` : m.result.reward?.type==="army" ? `${m.result.reward.amount} ${m.result.reward.unit}` : "None")}</p>
           <p>Survivors: {Object.entries(m.result.survivors||{}).map(([u,n])=>u+": "+n).join(", ") || "None"}</p>
           {(m.result.report||[]).map(round=><details key={round.round}><summary>Round {round.round}</summary>

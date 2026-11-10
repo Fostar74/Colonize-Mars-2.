@@ -974,7 +974,8 @@ class DatabaseManager {
     const knight=db.prepare("SELECT victories,knight_level FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1};
     const scoutedLevels=db.prepare("SELECT level FROM alien_recon WHERE user_id=? ORDER BY level").all(userId).map(r=>r.level);
     const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
-    return {scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
+    const knightBusy=missions.some(m=>m.returned_at===null);
+    return {knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
   attackAlienBase(userId,level,selectedArmy,formation) {
@@ -983,7 +984,7 @@ class DatabaseManager {
       const campaign=this.getAlienCampaign(userId);
       if(level>campaign.nextLevel)return {error:"Defeat the previous alien base level first."};
       if(campaign.remaining<=0)return {error:"All 20 daily attacks have been used. Reset is at 00:00 UTC."};
-      if(campaign.missions.some(m=>!m.resolved_at))return {error:"Wait for your current alien mission to arrive."};
+      if(campaign.knightBusy)return {error:"Cyber Knight is on an Alien Base mission. Wait until the Knight returns."};
       if(!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy))return {error:"Choose an army."};
       const current=this.syncGame(userId);
       if(!current)return {error:"Player not found."};
@@ -1018,7 +1019,7 @@ class DatabaseManager {
         attack: current.allianceBonuses.attack + (activeBuffs.some(buff => buff.kind==="attack") ? 10 : 0),
         health: current.allianceBonuses.health + (activeBuffs.some(buff => buff.kind==="health") ? 10 : 0)
       };
-      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:formation||null,allianceCombat}),now,arrivesAt);
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:formation||null,cyberKnightLevel:campaign.knightLevel,allianceCombat}),now,arrivesAt);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,remaining:campaign.remaining-1};
     })();
   }
@@ -1049,6 +1050,7 @@ class DatabaseManager {
           revive:this.protocolBonus(userId,"Combat Recovery"),
            leadership:this.protocolBonus(userId,"Battle Command")
         });
+        if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
         if(result.victory){
           this.awardPlayerXp(userId,mission.level*100);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
