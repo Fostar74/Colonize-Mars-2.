@@ -206,11 +206,11 @@ function Game() {
       {showTalents&&<div className="popup"><div className="popup-header"><span>PLAYER TALENTS</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
       {showAlliance&&<div className="popup"><div className="popup-header"><span>ALLIANCE</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction}/></div></div>}
       {showRankings&&<div className="popup"><div className="popup-header"><span>RANKINGS</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings playerAction={playerAction}/></div></div>}
-      {messageRecipient!==null&&<div className="popup" style={{zIndex:90}}>
+      {messageRecipient!==null&&<div className="popup" style={{zIndex:1002}}>
         <div className="popup-header"><span>MESSAGES</span><button className="close-button" onClick={()=>setMessageRecipient(null)}>X</button></div>
         <div className="popup-content"><MessagePanel key={messageRecipient} recipient={messageRecipient} playerAction={playerAction}/></div>
       </div>}
-      {playerMenu&&<div className="popup" style={{zIndex:100}}>
+      {playerMenu&&<div className="popup" style={{zIndex:1003}}>
         <div className="popup-header"><span>{playerMenu.username}</span><button className="close-button" onClick={()=>setPlayerMenu(null)}>X</button></div>
         <div className="popup-content" style={{display:"flex",flexWrap:"wrap",gap:8,alignContent:"flex-start"}}>
           <button onClick={showPlayerBase}>View Base</button>
