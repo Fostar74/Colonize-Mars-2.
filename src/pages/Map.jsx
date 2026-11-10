@@ -23,6 +23,7 @@ function Map() {
   const [marchDraft, setMarchDraft] = useState(null);
   const [availableArmy, setAvailableArmy] = useState({});
   const [marchUnits, setMarchUnits] = useState({});
+  const [knightAdded,setKnightAdded]=useState(false);
   const [formationRows,setFormationRows]=useState({});
   const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
@@ -324,6 +325,7 @@ function Map() {
       setAvailableArmy(data.gameProgress?.army || {});
       setMarchUnits({});
       setFormationRows({});
+      setKnightAdded(false);
       setMarchDraft({type,target,origin});
       } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
   };
@@ -340,6 +342,7 @@ function Map() {
     openMarch(type, selectedTarget, home);
   };
   const prepareMarch = async () => {
+    if(!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
     if(marchDraft?.target?.type!=="alien"){setMarchNotice("Player marches are not yet enabled.");return;}
@@ -347,7 +350,7 @@ function Map() {
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:Number(formationRows[unit]||(["Railgunner","Pulse Sniper","Drone Operator","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"].includes(unit)?4:1))}));
-      const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation})});
+      const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded})});
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
       setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true}));
@@ -355,23 +358,6 @@ function Map() {
       setMarchDraft(null);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
-  const attackAlien = async () => {
-    if (!selectedAlien) return;
-    try {
-      const base=(process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"");
-      const response=await fetch(base+"/alien-campaign/attack",{
-        method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
-        body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:selectedAlien.level})
-      });
-      const data=await response.json();
-      if(!response.ok) throw new Error(data.message || "Attack failed");
-      setCampaign(previous=>({...previous,highestDefeated:data.highestDefeated,nextLevel:data.nextLevel,defenders:data.nextDefenders}));
-      sessionStorage.setItem("resources",JSON.stringify(data.resources));
-      window.dispatchEvent(new Event("game-progress-updated"));
-      setMapError("Alien base level "+data.level+" defeated. Reward: "+data.reward+" of each resource.");
-    } catch(error) {setMapError(error.message);}
-  };
-
   const goToCoordinates = () => {
     const x = parseInt(document.getElementById("xCoord").value);
     const y = parseInt(document.getElementById("yCoord").value);
@@ -525,6 +511,9 @@ function Map() {
           {marchDraft && <div>
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
             <p>Commander: Cyber Knight Lv {campaign.knightLevel || 1} (required)</p>
+            <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
+              {knightAdded ? "Remove Cyber Knight" : "Add Cyber Knight"}
+            </button>
             {campaign.knightBusy && <p>Cyber Knight is on a mission and must return before launching another attack.</p>}
             <p>Select troops from your base army:</p>
             {!Object.values(unitEconomy.categories).flat().some(unit=>Number(availableArmy[unit]||0)>0) && <p>No trained troops available. Train units at your base before preparing a march.</p>}
@@ -544,7 +533,7 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits(Object.fromEntries(Object.entries(availableArmy).map(([k,v])=>[k,Number(v)||0])))}>Select all</button>
               <button onClick={()=>setMarchUnits({})}>Clear</button>
-              <button disabled={marchLoading || campaign.knightBusy} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
+              <button disabled={marchLoading || campaign.knightBusy || !knightAdded} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
               <button onClick={()=>setMarchDraft(null)}>← Back to mission types</button>
             </div>
             <p style={{fontSize:12,color:"#b5c7d9"}}>Alien attacks reserve selected troops immediately; survivors return after the battle.</p>

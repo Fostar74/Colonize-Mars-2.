@@ -978,7 +978,8 @@ class DatabaseManager {
     return {knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
-  attackAlienBase(userId,level,selectedArmy,formation) {
+  attackAlienBase(userId,level,selectedArmy,formation,includeCyberKnight) {
+    if(includeCyberKnight!==true)return {error:"Add Cyber Knight before launching the attack."};
     if(!Number.isInteger(level)||level<1||level>20)return {error:"Invalid alien base level."};
     return db.transaction(()=>{
       const campaign=this.getAlienCampaign(userId);
