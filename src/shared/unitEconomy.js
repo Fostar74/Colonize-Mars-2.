@@ -35,8 +35,12 @@ function unitRequirement(unit) {
   const [category,units]=entry;
   return {building:unlockBuildings[category],level:unlockLevels[category][units.indexOf(unit)]};
 }
+function upgradeDuration(level) {
+  return Math.min(24*3600000,Math.ceil(60000*Math.pow(level+1,1.7)));
+}
 function upgradePrice(level) {
-  return {Gold:100*(level+1),Iron:100*(level+1)};
+  const amount=200*Math.pow(level+1,2);
+  return {Gold:amount,Iron:amount};
 }
 
 // Building resource specialization; nextLevel starts at 1.
@@ -60,4 +64,4 @@ function buildingPrice(name,nextLevel) {
   return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,amount*nextLevel]));
 }
 
-module.exports={categories,unitPrice,upgradePrice,unitRequirement,buildingPrice};
+module.exports={categories,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice};

@@ -133,7 +133,7 @@ router.post("/train-units", requireSession, (req, res) => {
 
 router.post("/upgrade-unit", requireSession, (req, res) => {
   try {
-    const result = db.upgradeUnit(req.body.userId, req.body.unit, req.body.stat);
+    const result = db.upgradeUnit(Number(req.body.userId), req.body.unit, req.body.stat, Number(req.body.slot));
     if (result.error) return res.status(400).json({ message: result.error });
     res.json(result);
   } catch (error) { console.error("Upgrade unit:", error); res.status(500).json({ message: "Upgrade failed." }); }

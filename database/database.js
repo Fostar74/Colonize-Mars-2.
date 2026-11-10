@@ -95,6 +95,7 @@ function initializeDatabase() {
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "queued_building_job")) {
       db.exec("ALTER TABLE game_runtime ADD COLUMN queued_building_job TEXT");
     }
+    if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "upgrade_jobs")) db.exec("ALTER TABLE game_runtime ADD COLUMN upgrade_jobs TEXT NOT NULL DEFAULT '[]'");
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "training_queues")) db.exec("ALTER TABLE game_runtime ADD COLUMN training_queues TEXT NOT NULL DEFAULT '{}'");
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "barracks_reserve")) db.exec("ALTER TABLE game_runtime ADD COLUMN barracks_reserve TEXT NOT NULL DEFAULT '{}'");
     if (!db.prepare("PRAGMA table_info(game_runtime)").all().some(c => c.name === "production_carry")) {
@@ -328,6 +329,8 @@ class DatabaseManager {
       const structures = JSON.parse(row.structures);
       const army = JSON.parse(state.army);
       const barracksReserve = JSON.parse(state.barracks_reserve || "{}");
+      const upgradeJobs=JSON.parse(state.upgrade_jobs || "[]");
+      const unitUpgrades=JSON.parse(state.unit_upgrades);
       let buildingJob = state.building_job ? JSON.parse(state.building_job) : null;
       let trainingJob = state.training_job ? JSON.parse(state.training_job) : null;
       const trainingQueues = JSON.parse(state.training_queues || "{}");
@@ -374,13 +377,23 @@ class DatabaseManager {
         }
         trainingQueues[category]=queue;
       }
-      db.prepare("UPDATE game_runtime SET production_at=?, production_carry=?, building_job=?, queued_building_job=?, training_job=?, army=?, barracks_reserve=?, training_queues=? WHERE user_id=?")
-        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), JSON.stringify(barracksReserve), JSON.stringify(trainingQueues), userId);
+      for(let slot=0;slot<upgradeJobs.length;slot++){
+        const job=upgradeJobs[slot];
+        if(job&&job.endsAt<=now){
+          const stats=unitUpgrades[job.unit]||{attack:1,defense:1};
+          stats[job.stat]=Math.max(Number(stats[job.stat]||1),job.level);
+          unitUpgrades[job.unit]=stats;
+          upgradeJobs[slot]=null;
+          changed=true;
+        }
+      }
+      db.prepare("UPDATE game_runtime SET production_at=?, production_carry=?, building_job=?, queued_building_job=?, training_job=?, army=?, barracks_reserve=?, training_queues=?, upgrade_jobs=?, unit_upgrades=? WHERE user_id=?")
+        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), JSON.stringify(barracksReserve), JSON.stringify(trainingQueues),JSON.stringify(upgradeJobs),JSON.stringify(unitUpgrades), userId);
       if (changed) db.prepare("UPDATE game_progress SET resources=?, structures=?, last_saved=CURRENT_TIMESTAMP WHERE id=?")
         .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
       return {
         castle: JSON.parse(row.castle_data), resources, structures, army,
-        buildingJob, queuedBuildingJob, trainingJob, trainingQueues, barracksReserve, unitUpgrades: JSON.parse(state.unit_upgrades),
+        buildingJob, queuedBuildingJob, trainingJob, trainingQueues, barracksReserve, upgradeJobs, unitUpgrades,
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
         productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * (1 + economyBonus) * 10) / 100])),
         serverTime: now
@@ -465,23 +478,26 @@ class DatabaseManager {
     })();
   }
 
-  upgradeUnit(userId, unit, stat) {
-    const units = ["Explorer Trooper", "Exo-Soldier", "Plasma Bladesman", "Nano Shieldman", "Railgunner", "Pulse Sniper", "Drone Operator", "Rover Scout", "Hoverbike Rider", "Mech Walker", "Hover Drone Rider", "Demolition Bot", "Missile Carrier", "Particle Blaster", "Orbital Strike Beacon", "Martian Noble", "AI General", "Gene Warrior"];
-    if (!units.includes(unit) || !["attack", "defense"].includes(stat)) return { error: "Invalid upgrade." };
-    return db.transaction(() => {
-      const current = this.syncGame(userId);
-      const upgrades = current.unitUpgrades;
-      const values = upgrades[unit] || { attack: 1, defense: 1 };
-      if (values[stat] >= 20) return { error: "Maximum upgrade level." };
-      const price = upgradePrice(values[stat]);
-      if (Object.keys(price).some(resource => current.resources[resource] < price[resource])) return { error: "Not enough resources." };
-      for (const resource of Object.keys(price)) current.resources[resource] -= price[resource];
-      values[stat]++;
-      upgrades[unit] = values;
-      this.awardPlayerXp(userId, Math.max(1, Math.floor(Object.values(price).reduce((sum, value) => sum + Number(value || 0), 0) / 10)));
-      db.prepare("UPDATE game_runtime SET unit_upgrades=? WHERE user_id=?").run(JSON.stringify(upgrades), userId);
-      db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources), userId);
-      return { ...current, unitUpgrades: upgrades };
+  upgradeUnit(userId,unit,stat,slot){
+    const {categories,upgradeDuration}=require("../src/shared/unitEconomy");
+    if(!Object.values(categories).some(group=>group.includes(unit))||!["attack","defense"].includes(stat)||![0,1].includes(slot))return {error:"Invalid upgrade selection."};
+    return db.transaction(()=>{
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      const jobs=[...current.upgradeJobs];
+      if(jobs[slot])return {error:"This upgrade slot is occupied."};
+      if(jobs.some(j=>j&&j.unit===unit&&j.stat===stat))return {error:"This unit stat is already upgrading."};
+      const level=Number(current.unitUpgrades[unit]?.[stat]||1);
+      if(level>=20)return {error:"Maximum upgrade level."};
+      const price=upgradePrice(level);
+      if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
+      for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
+      const job={unit,stat,level:level+1,endsAt:Date.now()+upgradeDuration(level)};
+      jobs[slot]=job;
+      db.prepare("UPDATE game_runtime SET upgrade_jobs=? WHERE user_id=?").run(JSON.stringify(jobs),userId);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
+      this.awardPlayerXp(userId,Math.max(1,Math.floor((price.Gold+price.Iron)/10)));
+      return {...current,upgradeJobs:jobs};
     })();
   }
 
