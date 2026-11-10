@@ -64,6 +64,7 @@ function Map() {
   const [cursorCoord, setCursorCoord] = useState(null);
   const [mineIcons, setMineIcons] = useState({});
   const [alienIcon, setAlienIcon] = useState(null);
+  const [alienSearchLevel, setAlienSearchLevel] = useState("");
 
   // World coordinates are 1–100; each tile has a stable geographic location.
   const mineData = [
@@ -454,6 +455,21 @@ function Map() {
           <input type="number" id="xCoord" placeholder="X (1–100)" style={{width:90}} />
           <input type="number" id="yCoord" placeholder="Y (1–100)" style={{width:90}} />
           <button onClick={goToCoordinates}>Go to Coordinates</button>
+        </div>
+        <div style={{marginTop:6}}>
+          <label>Alien Base level{" "}
+            <select value={alienSearchLevel} onChange={event=>setAlienSearchLevel(event.target.value)}>
+              <option value="">Select level</option>
+              {Array.from({length:20},(_,index)=>index+1).map(level=><option key={level} value={level}>{level}</option>)}
+            </select>
+          </label>
+          {alienSearchLevel && <div>
+            {alienBases.filter(base=>base.level===Number(alienSearchLevel)).map(({x,y})=>(
+              <button key={`${x}:${y}`} onClick={()=>centerMapOn(x,y)} aria-label={`Go to Alien Base level ${alienSearchLevel} at ${x}:${y}`}>
+                {x}:{y}
+              </button>
+            ))}
+          </div>}
         </div>
       </div>
       {(selectedTarget || marchDraft) && <div style={{position:"absolute",inset:0,zIndex:25,background:"rgba(3,8,19,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
