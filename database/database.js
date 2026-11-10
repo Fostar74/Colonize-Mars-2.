@@ -397,6 +397,7 @@ class DatabaseManager {
           const stats=unitUpgrades[job.unit]||{attack:1,defense:1};
           stats[job.stat]=Math.max(Number(stats[job.stat]||1),job.level);
           unitUpgrades[job.unit]=stats;
+          this.awardPlayerXp(userId,job.completionXp);
           upgradeJobs[slot]=null;
           changed=true;
         }
@@ -462,7 +463,6 @@ class DatabaseManager {
       const cost = Object.fromEntries(Object.entries(unitPrice(unit)).map(([resource,value])=>[resource,value*quantity]));
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
-      this.awardPlayerXp(userId,Math.min(1000,quantity*2));
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
       const duration=Math.max(1000,Math.ceil(quantity*30000*(1-trainingBonus)));
       const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
@@ -483,13 +483,17 @@ class DatabaseManager {
       const reserve={...current.barracksReserve};
       const units=unit==="ALL"?Object.keys(reserve):[unit];
       if(unit!=="ALL"&&(!Number.isSafeInteger(amount)||amount<1||amount>Number(reserve[unit]||0)))return {error:"Invalid mobilization quantity."};
+      let trainingXp=0;
       for(const name of units){
         const n=unit==="ALL"?Number(reserve[name]||0):amount;
         if(!Number.isSafeInteger(n)||n<0)return {error:"Invalid reserve quantity."};
         current.army[name]=(Number(current.army[name])||0)+n;
         reserve[name]=(Number(reserve[name])||0)-n;
+        const unitCost=Object.values(unitPrice(name)||{}).reduce((total,cost)=>total+cost,0);
+        trainingXp+=3*n*unitCost;
       }
       db.prepare("UPDATE game_runtime SET army=?,barracks_reserve=? WHERE user_id=?").run(JSON.stringify(current.army),JSON.stringify(reserve),userId);
+      this.awardPlayerXp(userId,trainingXp);
       return {...current,barracksReserve:reserve};
     })();
   }
@@ -508,11 +512,11 @@ class DatabaseManager {
       const price=upgradePrice(level,current.allianceBonuses.discount);
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
-      const job={unit,stat,level:level+1,endsAt:Date.now()+upgradeDuration(level,current.allianceBonuses.speed)};
+      const completionXp=2*Object.values(price).reduce((total,cost)=>total+cost,0);
+      const job={unit,stat,level:level+1,completionXp,endsAt:Date.now()+upgradeDuration(level,current.allianceBonuses.speed)};
       jobs[slot]=job;
       db.prepare("UPDATE game_runtime SET upgrade_jobs=? WHERE user_id=?").run(JSON.stringify(jobs),userId);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
-      this.awardPlayerXp(userId,Math.max(1,Math.floor((price.Gold+price.Iron)/10)));
       return {...current,upgradeJobs:jobs};
     })();
   }
@@ -684,8 +688,8 @@ class DatabaseManager {
   }
 
   rankings(userId){
-    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.construction_points,0) AS points FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN ranking_points r ON r.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
-    const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.construction_points),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN ranking_points r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
+    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.xp,0) AS points FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN player_talents r ON r.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
+    const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.xp),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
     const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
     return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};

@@ -8,7 +8,7 @@ export default function Rankings({playerAction}){
  useEffect(()=>{refresh();const t=setInterval(refresh,15000);return()=>clearInterval(t)},[refresh]);
  const apply=async(a)=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/join",{method:"POST",headers:headers(),body:JSON.stringify({userId:id(),name:a.name})});const d=await r.json();if(!r.ok)throw Error(d.message||"Application failed.");setMessage(d.message||"Application sent.");await refresh();}catch(e){setMessage(e.message)}finally{setBusy(false)}};
  return <div style={{padding:15,color:"#eef6ff"}}>
-  <h2>🏆 Rankings</h2><p>1 resource spent on construction = 1 ranking XP. Army, upgrades and battle scoring will be added later.</p>
+  <h2>🏆 Rankings</h2><p>Rankings use total player XP. Resource spending grants 1× XP for construction, 2× for completed troop upgrades, and 3× for trained troops when mobilized.</p>
   <div style={{display:"flex",gap:8,marginBottom:14}}>{["players","alliances"].map(t=><button key={t} onClick={()=>setTab(t)} style={{background:tab===t?"#257f8e":"#20384d",color:"white",padding:10,borderRadius:7}}>{t==="players"?"Players":"Alliances"}</button>)}</div>
   {error&&<p role="alert">{error} <button onClick={refresh}>Retry</button></p>}
   {message&&<p role="status">{message}</p>}
