@@ -64,6 +64,7 @@ function Map() {
   const [cursorCoord, setCursorCoord] = useState(null);
   const [mineIcons, setMineIcons] = useState({});
   const [alienIcon, setAlienIcon] = useState(null);
+  const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
 
   // World coordinates are 1–100; each tile has a stable geographic location.
@@ -416,6 +417,10 @@ function Map() {
           position: "absolute",
           top: 20,
           left: 20,
+          maxWidth: "calc(100% - 40px)",
+          boxSizing: "border-box",
+          maxHeight: "75%",
+          overflowY: "auto",
           backgroundColor: "rgba(0,0,0,0.7)",
           padding: 12,
           borderRadius: 8,
@@ -423,6 +428,27 @@ function Map() {
           zIndex: 10,
         }}
       >
+        <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:mapMenuOpen?8:0}}>
+          <button type="button" aria-label={mapMenuOpen?"Hide map menu":"Show map menu"} aria-expanded={mapMenuOpen}
+            aria-controls="map-menu-controls" onClick={()=>setMapMenuOpen(open=>!open)} style={{minWidth:44,minHeight:44}}>
+            {mapMenuOpen ? "▲" : "▼"}
+          </button>
+      <button
+        onClick={() => (window.location.href = "/#/game")}
+        style={{
+          padding: "10px 14px",
+          backgroundColor: "#444",
+          color: "white",
+          fontWeight: "bold",
+          border: "none",
+          borderRadius: "5px",
+          cursor: "pointer",
+        }}
+      >
+        GO BACK
+      </button>
+        </div>
+        <div id="map-menu-controls" hidden={!mapMenuOpen}>
         <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel} · Attacks left: {campaign.remaining??"—"}/20 · Cyber Knight Lv {campaign.knightLevel||1}</div>
         <div style={{fontSize:12}}>Mission travel: 60 seconds · Daily reset: 00:00 UTC</div>
         {(campaign.sideQuests||[]).filter(q=>q.completed&&!q.claimed).map(q=><button key={q.level} onClick={async()=>{
@@ -455,6 +481,7 @@ function Map() {
               </button>
             ))}
           </div>}
+        </div>
         </div>
       </div>
       {(selectedTarget || marchDraft) && <div style={{position:"absolute",inset:0,zIndex:25,background:"rgba(3,8,19,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
@@ -558,24 +585,6 @@ function Map() {
         {!(campaign.missions||[]).length&&<p>No alien missions yet.</p>}
         </div>
       </div>}
-      <button
-        onClick={() => (window.location.href = "/#/game")}
-        style={{
-          position: "absolute",
-          top: 20,
-          right: 20,
-          padding: "10px 14px",
-          backgroundColor: "#444",
-          color: "white",
-          fontWeight: "bold",
-          border: "none",
-          borderRadius: "5px",
-          cursor: "pointer",
-          zIndex: 10,
-        }}
-      >
-        GO BACK
-      </button>
     </div>
   );
 }
