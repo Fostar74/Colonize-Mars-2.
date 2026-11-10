@@ -1,3 +1,4 @@
+import labelsBg from "./labelsBg";
 import React, {createContext, useContext, useEffect, useState} from "react";
 
 const LanguageContext = createContext(null);
@@ -30,5 +31,5 @@ export function LanguageProvider({children}) {
 
 export function useLanguage() {
   const {language,choose} = useContext(LanguageContext);
-  return {language,choose,t:(english,bulgarian) => language === "bg" ? bulgarian : english};
+  return {language,choose,label:value=>language === "bg" && Object.hasOwn(labelsBg,value) ? labelsBg[value] : value,t:(english,bulgarian) => language === "bg" ? bulgarian : english};
 }

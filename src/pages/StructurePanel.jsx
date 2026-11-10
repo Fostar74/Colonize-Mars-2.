@@ -1,3 +1,4 @@
+import { useLanguage } from "../language";
 // Final StructurePanel.jsx with internal tab buttons restored
 import React, { useState, useEffect } from "react";
 import "./StructurePanel.css";
@@ -23,6 +24,7 @@ const unitCategories = {
 };
 
 function StructurePanel({ showNavigation = true, onProgressChange }) {
+  const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState("structures");
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
   const [resources, setResources] = useState(() => { try { return JSON.parse(sessionStorage.getItem("resources") || "{}"); } catch { return {}; } });
@@ -122,26 +124,26 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
   const buildingImages = { "Gold Synthesizer": goldIcon, "Iron Driller": ironIcon, "Solar Array": solarIcon, "Water Extractor": waterIcon };
   const renderStructures = () => (
     <>
-      <h2 style={{ textAlign: "center" }}>Structures</h2>
-      {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
-      <p style={{textAlign:"center",opacity:.8}}>Build your resource facilities first. Upgrade all four to level 3.</p>
+      <h2 style={{ textAlign: "center" }}>{t("Structures","Сгради")}</h2>
+      {error && <p role="alert" style={{color:"#ff7777"}}>{localLabel(error)}</p>}
+      <p style={{textAlign:"center",opacity:.8}}>{t("Build your resource facilities first. Upgrade all four to level 3.","Първо построй ресурсните съоръжения. Надстрой и четирите до ниво 3.")}</p>
       <p style={{textAlign:"center"}}>
-        Production per hour: {["Gold", "Iron", "Water", "Solar"].map(resource =>
-          `${resource} ${(game.productionPerHour?.[resource] ?? 0).toLocaleString("en-US", {maximumFractionDigits: 1})}`
+        {t("Production per hour:","Производство на час:")} {["Gold", "Iron", "Water", "Solar"].map(resource =>
+          `${localLabel(resource)} ${(game.productionPerHour?.[resource] ?? 0).toLocaleString("en-US", {maximumFractionDigits: 1})}`
         ).join(" · ")}
       </p>
-      <p>Construction: {game.buildingJob ? game.buildingJob.name + " (" + formatTime(remaining(game.buildingJob)) + ")" : "Idle"} · Queue: {game.queuedBuildingJob ? game.queuedBuildingJob.name + " (level " + game.queuedBuildingJob.level + ")" : "Empty"}</p>
+      <p>{t("Construction:","Строеж:")} {game.buildingJob ? game.buildingJob.name + " (" + formatTime(remaining(game.buildingJob)) + ")" : "Idle"} {t("· Queue:","· Опашка:")} {game.queuedBuildingJob ? game.queuedBuildingJob.name + " (level " + game.queuedBuildingJob.level + ")" : "Empty"}</p>
       {game.buildingJob&&<div style={{padding:12,margin:"12px 0",border:"1px solid #4b96ac",borderRadius:8,background:"#183449"}}>
-        <strong>🤝 Alliance Construction Help</strong>
-        <p>Ask your alliance to speed up {game.buildingJob.name} (Level {game.buildingJob.level}). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.</p>
-        <button className="upgrade-btn" disabled={allianceHelpBusy} onClick={requestBuildingHelp}>{allianceHelpBusy?"Sending...":"Request Alliance Help"}</button>
+        <strong>{t("🤝 Alliance Construction Help","🤝 Строителна помощ от алианса")}</strong>
+        <p>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {game.buildingJob.name} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</p>
+        <button className="upgrade-btn" disabled={allianceHelpBusy} onClick={requestBuildingHelp}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
         {allianceHelpMessage&&<p role="status">{allianceHelpMessage}</p>}
       </div>}
       {Object.entries(structureTypes).map(([section, buildings]) => (
         <section key={section} style={{marginBottom:16}}>
           <button type="button" onClick={() => setExpandedSections(prev => ({...prev,[section]:!prev[section]}))}
             style={{width:"100%",textAlign:"left",padding:"12px 16px",background:"#333",color:"#fff",border:"1px solid #555",cursor:"pointer",fontWeight:"bold"}}>
-            {expandedSections[section] ? "▾" : "▸"} {section} {section === "Resources" ? "— start here" : ""}
+            {expandedSections[section] ? "▾" : "▸"} {localLabel(section)} {section === "Resources" ? "— start here" : ""}
           </button>
           {expandedSections[section] && <div className="building-grid">
             {buildings.map(name => {
@@ -151,13 +153,13 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
               const affordable = Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
               return <div key={name} className="building" style={{padding:14}}>
                 {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}
-                <h4 style={{margin:"6px 0"}}>{name}</h4>
-                <div>Level {level} / 20</div>
-                {game.buildingJob?.name === name && <div>Construction: {formatTime(remaining(game.buildingJob))}</div>}
-                {game.queuedBuildingJob?.name === name && <div>Queued: Level {game.queuedBuildingJob.level}</div>}
-                <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>Next: {cost.Gold} Gold · {cost.Iron} Iron · {cost.Water} Water · {cost.Solar} Solar</p>
+                <h4 style={{margin:"6px 0"}}>{localLabel(name)}</h4>
+                <div>{t("Level","Ниво")} {level} / 20</div>
+                {game.buildingJob?.name === name && <div>{t("Construction:","Строеж:")} {formatTime(remaining(game.buildingJob))}</div>}
+                {game.queuedBuildingJob?.name === name && <div>{t("Queued: Level","На опашката: ниво")} {game.queuedBuildingJob.level}</div>}
+                <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>{t("Next:","Следващо:")} {cost.Gold} {t("Gold ·","злато ·")} {cost.Iron} {t("Iron ·","желязо ·")} {cost.Water} {t("Water ·","вода ·")} {cost.Solar} {t("Solar","слънчева енергия")}</p>
                 <button className="upgrade-btn" disabled={!!busy || !!game.queuedBuildingJob || next > 20 || !affordable} onClick={() => upgrade(name)}>
-                  {busy === name ? "Starting..." : game.queuedBuildingJob ? "Queue full" : next > 20 ? "Max level" : game.buildingJob ? "Queue as second" : !affordable ? "Not enough resources" : level === 0 ? "Build" : "Upgrade"}
+                  {busy === name ? "Starting..." : game.queuedBuildingJob ? localLabel("Queue full") : next > 20 ? localLabel("Max level") : game.buildingJob ? localLabel("Queue as second") : !affordable ? localLabel("Not enough resources") : level === 0 ? localLabel("Build") : localLabel("Upgrade")}
                 </button>
               </div>;
             })}
@@ -169,30 +171,30 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
 
   const renderUnits = () => (
     <>
-      <h2 style={{ textAlign: "center" }}>Army Units</h2>
+      <h2 style={{ textAlign: "center" }}>{t("Army Units","Военни единици")}</h2>
       <section style={{padding:12,marginBottom:14,border:"1px solid #478da4",borderRadius:8}}>
-        <strong>Barracks Reserve — trained troops awaiting mobilization</strong>
-        <p>Completed training goes to reserve, not directly into your active army.</p>
+        <strong>{t("Barracks Reserve — trained troops awaiting mobilization","Казармен резерв · обучени войски, чакащи мобилизация")}</strong>
+        <p>{t("Completed training goes to reserve, not directly into your active army.","Обучените войски се прибират в резерва до мобилизация.")}</p>
         {Object.entries(game.barracksReserve||{}).filter(([,n])=>Number(n)>0).map(([unit,n])=><div key={unit} style={{display:"flex",gap:12,alignItems:"center",margin:"6px 0"}}>
-          <span>{unit}: {n}</span>
-          <button disabled={!!busy} onClick={()=>act("/barracks/mobilize",{unit,amount:n},"mobilize-"+unit)}>Mobilize</button>
+          <span>{localLabel(unit)}: {n}</span>
+          <button disabled={!!busy} onClick={()=>act("/barracks/mobilize",{unit,amount:n},"mobilize-"+unit)}>{t("Mobilize","Мобилизирай")}</button>
         </div>)}
-        {!Object.values(game.barracksReserve||{}).some(n=>Number(n)>0)&&<p>Reserve empty.</p>}
-        <button disabled={!!busy||!Object.values(game.barracksReserve||{}).some(n=>Number(n)>0)} onClick={()=>act("/barracks/mobilize",{unit:"ALL"},"mobilize-all")}>Mobilize All</button>
+        {!Object.values(game.barracksReserve||{}).some(n=>Number(n)>0)&&<p>{t("Reserve empty.","Резервът е празен.")}</p>}
+        <button disabled={!!busy||!Object.values(game.barracksReserve||{}).some(n=>Number(n)>0)} onClick={()=>act("/barracks/mobilize",{unit:"ALL"},"mobilize-all")}>{t("Mobilize All","Мобилизирай всички")}</button>
       </section>
-      {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
+      {error && <p role="alert" style={{color:"#ff7777"}}>{localLabel(error)}</p>}
       <div className="subtab-buttons">
         {Object.keys(unitCategories).map((cat) => (
-          <button key={cat} onClick={() => setUnitTab(cat)}>{cat}</button>
+          <button key={cat} onClick={() => setUnitTab(cat)}>{localLabel(cat)}</button>
         ))}
       </div>
       <section style={{padding:10,border:"1px solid #587c91",borderRadius:8,marginBottom:12}}>
-        <strong>{unitTab} training groups: {(game.trainingQueues?.[unitTab]||[]).length}/5</strong>
+        <strong>{unitTab} {t("training groups:","групи за обучение:")} {(game.trainingQueues?.[unitTab]||[]).length}/5</strong>
         {(game.trainingQueues?.[unitTab]||[]).map((job,index)=><div key={index}>
-          {index+1}. {job.quantity} × {job.unit} — {index===0?"Training":"Queued"} · {index===0?formatTime(remaining(job)):"Starts "+new Date(job.startsAt).toLocaleTimeString()}
+          {index+1}. {job.quantity} × {localLabel(job.unit)} — {index===0?localLabel("Training"):localLabel("Queued")} · {index===0?formatTime(remaining(job)):"Starts "+new Date(job.startsAt).toLocaleTimeString()}
         </div>)}
-        {!(game.trainingQueues?.[unitTab]||[]).length&&<p>No training groups in this category.</p>}
-        <p>Each category runs independently. Up to five groups are trained sequentially per category.</p>
+        {!(game.trainingQueues?.[unitTab]||[]).length&&<p>{t("No training groups in this category.","Няма групи в тази категория.")}</p>}
+        <p>{t("Each category runs independently. Up to five groups are trained sequentially per category.","Категориите се обучават независимо. Във всяка се редят до пет групи.")}</p>
       </section>
       <div className="unit-grid">
         {unitCategories[unitTab].map((unit) => {
@@ -206,20 +208,20 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
           return (
             <div key={unit} className="unit-card" style={{filter:unlocked?"none":"grayscale(1)",opacity:unlocked?1:0.62,border:unlocked?"1px solid #40a7b9":"1px solid #777",transition:"filter .25s, opacity .25s, border-color .25s"}}>
               <div aria-hidden="true" style={{fontSize:36,filter:unlocked?"none":"grayscale(1)",marginBottom:4}}>{unitTab==="Ground"?"🪖":unitTab==="Ranged"?"🎯":unitTab==="Mobile"?"🚙":unitTab==="Heavy Systems"?"🤖":"⚔️"}</div>
-              <h4>{unit}</h4>
-              {unlocked && <p style={{color:"#79dfad",fontWeight:"bold"}}>Unlocked · Ready to train</p>}
-              {!unlocked && <p style={{color:"#ffbb77"}}>Locked: Requires {requirement.building} level {requirement.level}</p>}
+              <h4>{localLabel(unit)}</h4>
+              {unlocked && <p style={{color:"#79dfad",fontWeight:"bold"}}>{t("Unlocked · Ready to train","Отключена · готова за обучение")}</p>}
+              {!unlocked && <p style={{color:"#ffbb77"}}>{t("Locked: Requires","Заключена: изисква")} {requirement.building} {t("level","ниво")} {requirement.level}</p>}
               <div className="train-slider">
                 <button disabled={!unlocked} onClick={() => handlePresetClick(unit, 0)}>–</button>
                 <button onClick={() => handlePresetClick(unit, 0.25)}>1/4</button>
                 <button onClick={() => handlePresetClick(unit, 0.5)}>1/2</button>
                 <button onClick={() => handlePresetClick(unit, 0.75)}>3/4</button>
-                <button onClick={() => handlePresetClick(unit, 1)}>+ MAX</button>
+                <button onClick={() => handlePresetClick(unit, 1)}>{t("+ MAX","+ МАКС.")}</button>
               </div>
-              <label>Quantity: <input type="number" disabled={!unlocked} min="0" max="10000" value={qty} onChange={e => setTrainAmounts(prev => ({...prev, [unit]:Math.max(0,Math.min(10000,Math.floor(Number(e.target.value)||0)))}))} style={{width:90,color:"#111"}} /></label>
-              <p>Train Time: {timeDisplay}</p>
-              {(game.trainingQueues?.[unitTab]||[]).filter(job=>job.unit===unit).length>0 && <p>Groups queued: {(game.trainingQueues?.[unitTab]||[]).filter(job=>job.unit===unit).length}</p>}
-              <p>Owned: {Number(game.army?.[unit] || 0)}</p>
+              <label>{t("Quantity:","Количество:")} <input type="number" disabled={!unlocked} min="0" max="10000" value={qty} onChange={e => setTrainAmounts(prev => ({...prev, [unit]:Math.max(0,Math.min(10000,Math.floor(Number(e.target.value)||0)))}))} style={{width:90,color:"#111"}} /></label>
+              <p>{t("Train Time:","Време за обучение:")} {timeDisplay}</p>
+              {(game.trainingQueues?.[unitTab]||[]).filter(job=>job.unit===unit).length>0 && <p>{t("Groups queued:","Групи на опашката:")} {(game.trainingQueues?.[unitTab]||[]).filter(job=>job.unit===unit).length}</p>}
+              <p>{t("Owned:","Налични:")} {Number(game.army?.[unit] || 0)}</p>
               <div className="resource-row">
                 <div className="resource-cost"><img src={goldIcon} alt="Gold" /><span>{price.Gold}</span></div>
                 <div className="resource-cost"><img src={ironIcon} alt="Iron" /><span>{price.Iron}</span></div>
@@ -227,7 +229,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
                 <div className="resource-cost"><img src={solarIcon} alt="Solar" /><span>{price.Solar}</span></div>
               </div>
               <button style={{ marginTop: 10 }} disabled={!unlocked || !qty || qty > calculateMaxTrainable(unit) || !!busy || (game.trainingQueues?.[unitTab]||[]).length>=5} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
-                {!unlocked ? "Locked" : (game.trainingQueues?.[unitTab]||[]).length>=5 ? "Category queue full" : "Train"}
+                {!unlocked ? localLabel("Locked") : (game.trainingQueues?.[unitTab]||[]).length>=5 ? "Category queue full" : "Train"}
               </button>
             </div>
           );
@@ -238,8 +240,8 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
 
   const renderUpgrades = () => (
     <>
-      <h2 style={{textAlign:"center"}}>Upgrade Center</h2>
-      {error && <p role="alert" style={{color:"#ff7777"}}>{error}</p>}
+      <h2 style={{textAlign:"center"}}>{t("Upgrade Center","Център за подобрения")}</h2>
+      {error && <p role="alert" style={{color:"#ff7777"}}>{localLabel(error)}</p>}
       <div className="upgrade-slots">
         {[0,1].map(slot=>(
           <button key={slot} className="upgrade-slot" onClick={()=>setUpgradeSlot(slot)}>
@@ -248,24 +250,24 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
         ))}
       </div>
       {upgradeSlot!==null && <div className="upgrade-window">
-        <h4>Choose Unit Category</h4>
+        <h4>{t("Choose Unit Category","Избери категория войски")}</h4>
         <div className="subtab-buttons">
-          {Object.keys(unitCategories).map(cat=><button key={cat} onClick={()=>setUpgradeCategory(cat)}>{cat}</button>)}
+          {Object.keys(unitCategories).map(cat=><button key={cat} onClick={()=>setUpgradeCategory(cat)}>{localLabel(cat)}</button>)}
         </div>
         <div className="unit-grid">
           {unitCategories[upgradeCategory].map(unit=>(
             <div key={unit} className="unit-card">
-              <h4>{unit}</h4>
+              <h4>{localLabel(unit)}</h4>
               {["attack","defense"].map(stat=>{
                 const level=Number(game.unitUpgrades?.[unit]?.[stat] ?? 1);
                 const cost=upgradePrice(level, game.allianceBonuses?.discount);
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
-                  <p>{stat==="attack"?"Attack":"Health / Defense"} Level: {level}</p>
-                  <p>Next level {Math.min(20,level+1)}: {cost.Gold.toLocaleString()} Gold + {cost.Iron.toLocaleString()} Iron · {formatTime(Math.ceil(upgradeDuration(level, game.allianceBonuses?.speed)/1000))}</p>
+                  <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {level}</p>
+                  <p>{t("Next level","Следващо ниво")} {Math.min(20,level+1)}: {cost.Gold.toLocaleString()} {t("Gold +","злато +")} {cost.Iron.toLocaleString()} {t("Iron ·","желязо ·")} {formatTime(Math.ceil(upgradeDuration(level, game.allianceBonuses?.speed)/1000))}</p>
                   <button disabled={!!busy || level>=20 || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
                     onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>
-                    {level>=20?"MAX LEVEL":stat==="attack"?"Upgrade Attack":"Upgrade Health / Defense"}
+                    {level>=20?localLabel("MAX LEVEL"):stat==="attack"?localLabel("Upgrade Attack"):localLabel("Upgrade Health / Defense")}
                   </button>
                 </div>;
               })}
@@ -279,9 +281,9 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
   return (
     <div style={{ color: "white", padding: "10px" }}>
       {showNavigation && <div className="subtab-buttons">
-        <button onClick={() => setActiveTab("structures")}>Structures</button>
-        <button onClick={() => setActiveTab("units")}>Units</button>
-        <button onClick={() => setActiveTab("upgrades")}>Upgrades</button>
+        <button onClick={() => setActiveTab("structures")}>{t("Structures","Сгради")}</button>
+        <button onClick={() => setActiveTab("units")}>{t("Units","Войски")}</button>
+        <button onClick={() => setActiveTab("upgrades")}>{t("Upgrades","Подобрения")}</button>
       </div>}
       <div className="building-tab">
         {activeTab === "structures" && renderStructures()}

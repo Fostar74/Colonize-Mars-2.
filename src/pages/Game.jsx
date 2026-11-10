@@ -12,7 +12,7 @@ import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
 
 function Game() {
-  const {language, choose, t} = useLanguage();
+  const {language, choose, t, label: localLabel} = useLanguage();
   const [showPopup, setShowPopup] = useState(false);
   const [castleName, setCastleName] = useState("Headquarter");
   const [resources, setResources] = useState(null);
@@ -156,7 +156,7 @@ function Game() {
 
       <div className="castle-top-bar">
         <button className="castle-name-btn" onClick={() => setShowPopup(true)}>
-          {castleName}
+          {language === "bg" ? castleName.replace("Headquarter","Щаб") : castleName}
         </button>
       </div>
 
@@ -226,7 +226,7 @@ function Game() {
           <button disabled={!playerMenu.ally || playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setSupportTarget(playerMenu);setShowRankings(false);setShowAlliance(true);setPlayerMenu(null);}}>{t("Support","Подкрепление")}</button>
           <button disabled title={playerMenu.ally?"You cannot attack an ally.":"Player battles are not enabled yet."}>{t("Attack","Атака")}</button>
           <button disabled={!playerMenu.canInvite || inviting} onClick={invitePlayer}>{t("Invite to Alliance","Покани в алианса")}</button>
-          {playerNotice&&<p role="status">{playerNotice}</p>}
+          {playerNotice&&<p role="status">{localLabel(playerNotice)}</p>}
         </div>
       </div>}
 

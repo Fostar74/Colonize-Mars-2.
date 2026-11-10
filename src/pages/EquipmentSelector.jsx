@@ -1,9 +1,11 @@
+import { useLanguage } from "../language";
 import React, { useState, useEffect } from "react";
 import gearData from "../data/gear";
 import GameProgressManager from "../utils/gameProgress";
 import "./CyberKnightPanel.css";
 
 function EquipmentSelector({ slot, onClose, onEquip }) {
+  const { t } = useLanguage();
   const [activeTab, setActiveTab] = useState("common");
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
@@ -134,7 +136,7 @@ function EquipmentSelector({ slot, onClose, onEquip }) {
     <div className="equipment-panel-overlay">
       <div className="equipment-panel expanded">
         <div className="equipment-header">
-          <span>VIEW {slot.toUpperCase()} ITEMS</span>
+          <span>{t("VIEW","ВИЖ")} {slot.toUpperCase()} {t("ITEMS","ПРЕДМЕТИ")}</span>
           <button className="close-button" onClick={onClose}>
             X
           </button>
@@ -155,18 +157,18 @@ function EquipmentSelector({ slot, onClose, onEquip }) {
 
         <div className="rarity-content">
           <div className="crafting-points">
-            Crafting Points ({slot}): {craftingPoints[slot] || 0}
+            {t("Crafting Points (","Точки за изковаване (")}{slot}): {craftingPoints[slot] || 0}
             {equipped && (
               <button className="unequip-button" onClick={handleUnequip}>
-                Unequip
+                {t("Unequip","Свали")}
               </button>
             )}
           </div>
 
           {filteredGear.length === 0 ? (
             <p className="no-items">
-              Currently, you don't have items from the selected type. <br />
-              Complete Knight missions to obtain more.
+              {t("Currently, you don't have items from the selected type.","Нямаш предмети от избрания вид.")} <br />
+              {t("Complete Knight missions to obtain more.","Изпълнявай мисии на рицаря за още предмети.")}
             </p>
           ) : (
             <div className="gear-grid">
@@ -174,10 +176,10 @@ function EquipmentSelector({ slot, onClose, onEquip }) {
                 <div key={item.id} className={`gear-card ${equipped === item.id ? "equipped" : ""}`}>
                   <div className="gear-name">{item.name}</div>
                   <div className="gear-bonus">{item.bonus}</div>
-                  <div className="gear-level">Level {item.level || item.levelRequirement} / 50</div>
+                  <div className="gear-level">{t("Level","Ниво")} {item.level || item.levelRequirement} / 50</div>
                   <div className="gear-actions">
-                    <button onClick={() => handleEquip(item)}>Equip</button>
-                    <button onClick={() => handleDismantle(item)}>Dismantle</button>
+                    <button onClick={() => handleEquip(item)}>{t("Equip","Екипирай")}</button>
+                    <button onClick={() => handleDismantle(item)}>{t("Dismantle","Разглоби")}</button>
                     <button
                       onClick={() => handleCraft(item)}
                       disabled={
@@ -185,7 +187,7 @@ function EquipmentSelector({ slot, onClose, onEquip }) {
                         (craftingPoints[slot] || 0) < (craftingCosts[item.rarity] || 0)
                       }
                     >
-                      Craft
+                      {t("Craft","Изкови")}
                     </button>
                   </div>
                 </div>

@@ -6,7 +6,7 @@ import background from "../images/mars-background.jpg"; // ✅ Correct image pat
 const API_BASE = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
 
 function LoginRegister() {
-  const { t } = useLanguage();
+  const { t , label: localLabel} = useLanguage();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -203,7 +203,7 @@ function LoginRegister() {
 
       {message && (
         <p className="login-message" style={{ marginTop: "15px" }}>
-          {message}
+          {localLabel(message)}
         </p>
       )}
     </div>

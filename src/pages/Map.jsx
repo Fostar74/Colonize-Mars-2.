@@ -1,3 +1,4 @@
+import { useLanguage } from "../language";
 
 // Colonize Mars Map.jsx with full formatting, mines, and alien bases
 
@@ -13,6 +14,7 @@ import alienBases from "../shared/alienBases";
 const {units, marchLimit, defaultFormation}=formations;
 
 function Map() {
+  const { t , label: localLabel} = useLanguage();
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
   const suppressClickRef = useRef(false);
@@ -499,7 +501,7 @@ function Map() {
         }}
       >
         <div style={{display:"flex",justifyContent:"space-between",gap:8,marginBottom:mapMenuOpen?8:0}}>
-          <button type="button" aria-label={mapMenuOpen?"Hide map menu":"Show map menu"} aria-expanded={mapMenuOpen}
+          <button type="button" aria-label={mapMenuOpen?localLabel("Hide map menu"):localLabel("Show map menu")} aria-expanded={mapMenuOpen}
             aria-controls="map-menu-controls" onClick={()=>setMapMenuOpen(open=>!open)} style={{minWidth:44,minHeight:44}}>
             {mapMenuOpen ? "▲" : "▼"}
           </button>
@@ -515,32 +517,32 @@ function Map() {
           cursor: "pointer",
         }}
       >
-        GO BACK
+        {t("GO BACK","НАЗАД")}
       </button>
         </div>
         <div id="map-menu-controls" hidden={!mapMenuOpen}>
-        <div>Alien campaign: defeated level {campaign.highestDefeated}/20 · Next: level {campaign.nextLevel} · Attacks left: {campaign.remaining??"—"}/20 · Cyber Knight Lv {campaign.knightLevel||1}</div>
-        <div style={{fontSize:12}}>Mission travel: 60 seconds · Daily reset: 00:00 UTC</div>
+        <div>{t("Alien campaign: defeated level","Извънземна кампания: победено ниво")} {campaign.highestDefeated}{t("/20 · Next: level","/20 · Следващо ниво")} {campaign.nextLevel} {t("· Attacks left:","· Оставащи атаки:")} {campaign.remaining??"—"}{t("/20 · Cyber Knight Lv","/20 · Киберрицар ниво")} {campaign.knightLevel||1}</div>
+        <div style={{fontSize:12}}>{t("Mission travel: 60 seconds · Daily reset: 00:00 UTC","Пътуване: 60 секунди · Нулиране в 00:00 UTC")}</div>
         {(campaign.sideQuests||[]).filter(q=>q.completed&&!q.claimed).map(q=><button key={q.level} onClick={async()=>{
           const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
           const r=await fetch(base+"/alien-campaign/side-quest",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),milestone:q.level})});
           const d=await r.json();setMapError(r.ok?"Side quest claimed! "+d.amount+" of each resource added to Inventory.":d.message);
           if(r.ok)setCampaign(old=>({...old,sideQuests:old.sideQuests.map(x=>x.level===q.level?{...x,claimed:true}:x)}));
-        }}>Side Quest: claim Level {q.level} reward</button>)}
-        <div style={{margin:"8px 0"}}>Zoom <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(50.5,50.5);}}>Full map 100×100</button> <button onClick={()=>setZoom(1)}>100%</button></div>
-        {mapError && <div role="alert">{mapError}</div>}
-        <div>Coordinates: {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : "Move cursor over map"}</div>
-        <input type="text" id="usernameInput" placeholder="Search Username" />
-        <button onClick={searchByUsername}>Search</button>
+        }}>{t("Side Quest: claim Level","Странична мисия: вземи наградата за ниво")} {q.level} {t("reward"," ")}</button>)}
+        <div style={{margin:"8px 0"}}>{t("Zoom","Мащаб")} <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(50.5,50.5);}}>{t("Full map 100×100","Цяла карта 100×100")}</button> <button onClick={()=>setZoom(1)}>100%</button></div>
+        {mapError && <div role="alert">{localLabel(mapError)}</div>}
+        <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
+        <input type="text" id="usernameInput" placeholder={localLabel("Search Username")} />
+        <button onClick={searchByUsername}>{t("Search","Търси")}</button>
         <div style={{marginTop:6}}>
           <input type="number" id="xCoord" placeholder="X (1–100)" style={{width:90}} />
           <input type="number" id="yCoord" placeholder="Y (1–100)" style={{width:90}} />
-          <button onClick={goToCoordinates}>Go to Coordinates</button>
+          <button onClick={goToCoordinates}>{t("Go to Coordinates","Към координатите")}</button>
         </div>
         <div style={{marginTop:6}}>
-          <label>Alien Base level{" "}
+          <label>{t("Alien Base level","Ниво на извънземна база")}{" "}
             <select value={alienSearchLevel} onChange={event=>setAlienSearchLevel(event.target.value)}>
-              <option value="">Select level</option>
+              <option value="">{t("Select level","Избери ниво")}</option>
               {Array.from({length:20},(_,index)=>index+1).map(level=><option key={level} value={level}>{level}</option>)}
             </select>
           </label>
@@ -557,18 +559,18 @@ function Map() {
       {(selectedTarget || marchDraft) && <div style={{position:"absolute",inset:0,zIndex:25,background:"rgba(3,8,19,.72)",display:"flex",alignItems:"center",justifyContent:"center",padding:16}}>
         <div style={{background:"linear-gradient(135deg,#182c40,#0c1424)",border:"1px solid #5d8ca7",boxShadow:"0 16px 60px #000",borderRadius:12,color:"#f0f7ff",width:"min(920px,96vw)",maxHeight:"86vh",overflowY:"auto",padding:22}}>
           <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-            <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?"MARCH CONTROL":"TARGET COMMAND"}</h2>
-            <button onClick={()=>{setSelectedTarget(null);setMarchDraft(null);setMarchNotice("");}}>✕ Close</button>
+            <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?localLabel("MARCH CONTROL"):localLabel("TARGET COMMAND")}</h2>
+            <button onClick={()=>{setSelectedTarget(null);setMarchDraft(null);setMarchNotice("");}}>{t("✕ Close","✕ Затвори")}</button>
           </div>
-          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?"Alien Stronghold · Level "+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:"Open Sector"} · Coordinates {selectedTarget?.x}:{selectedTarget?.y}</p>
+          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?"Alien Stronghold · Level "+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
           {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
-            <strong>Alien garrison · Level {selectedTarget.level}</strong>
+            <strong>{t("Alien garrison · Level","Извънземен гарнизон · Ниво")} {selectedTarget.level}</strong>
             {campaign.garrisons?.[selectedTarget.level] ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:6,marginTop:8}}>
-              {Object.entries(campaign.garrisons[selectedTarget.level]).map(([unit,count])=><div key={unit}>{unit}: <strong>{count.toLocaleString()}</strong></div>)}
-              <div style={{gridColumn:"1 / -1",marginTop:6,fontWeight:"bold"}}>Total defenders: {Object.values(campaign.garrisons[selectedTarget.level]).reduce((sum,n)=>sum+n,0).toLocaleString()}</div>
-            </div> : <p>Loading fixed garrison data...</p>}
-            <p style={{fontSize:12}}>Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.</p>
-            <p style={{fontSize:12}}>Rover Scout reconnaissance costs 1000 Solar before Quantum Intelligence discounts (10% / 30% / 50%). At least one available Rover Scout is required; it is not consumed.</p>
+              {Object.entries(campaign.garrisons[selectedTarget.level]).map(([unit,count])=><div key={unit}>{localLabel(unit)}: <strong>{count.toLocaleString()}</strong></div>)}
+              <div style={{gridColumn:"1 / -1",marginTop:6,fontWeight:"bold"}}>{t("Total defenders:","Общо защитници:")} {Object.values(campaign.garrisons[selectedTarget.level]).reduce((sum,n)=>sum+n,0).toLocaleString()}</div>
+            </div> : <p>{t("Loading fixed garrison data...","Зареждане на гарнизона…")}</p>}
+            <p style={{fontSize:12}}>{t("Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.","По-високите нива имат по-големи и по-силни гарнизони. Крепостта на ниво 20 има извънземен владетел.")}</p>
+            <p style={{fontSize:12}}>{t("Rover Scout reconnaissance costs 1000 Solar before Quantum Intelligence discounts (10% / 30% / 50%). At least one available Rover Scout is required; it is not consumed.","Разузнаването струва 1000 слънчева енергия преди отстъпките от Квантово разузнаване (10% / 30% / 50%). Нужен е поне един разузнавателен роувър, който остава наличен.")}</p>
             <button onClick={async()=>{
               try{
                 const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
@@ -581,11 +583,11 @@ function Map() {
                 const updated=await fetch(base+"/alien-campaign/"+userId,{headers});
                 if(updated.ok)setCampaign(await updated.json());
               }catch(e){setMapError(e.message);}
-            }}>◈ Send Rover Scout</button>
-            {(campaign.scoutedLevels||[]).includes(selectedTarget.level)&&<p style={{color:"#9be8b7"}}>Reconnaissance completed for this stronghold.</p>}
+            }}>{t("◈ Send Rover Scout","◈ Изпрати разузнавач")}</button>
+            {(campaign.scoutedLevels||[]).includes(selectedTarget.level)&&<p style={{color:"#9be8b7"}}>{t("Reconnaissance completed for this stronghold.","Разузнаването на базата приключи.")}</p>}
           </div>}
           {!marchDraft && <div>
-            <p>Choose mission type:</p>
+            <p>{t("Choose mission type:","Избери вид мисия:")}</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
               {(selectedTarget?.type==="alien"?["Attack"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
                 const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
@@ -601,42 +603,42 @@ function Map() {
                 </button>;
               })}
             </div>
-            {targetIsOwn && <p>This is your own base. Choose another destination.</p>}
-            {selectedTarget?.type==="alien" ? <p style={{fontSize:12,color:"#b2c8d8"}}>Use Send Rover Scout above to complete reconnaissance, or Attack to launch a combat mission.</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.</p>}
+            {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
+            {selectedTarget?.type==="alien" ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Use Send Rover Scout above to complete reconnaissance, or Attack to launch a combat mission.","Изпрати разузнавач или избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
           </div>}
-          {marchLoading && <p>Loading your army...</p>}
+          {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
           {marchDraft && <div>
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
-            <p>Commander: Cyber Knight Lv {campaign.knightLevel || 1} (required)</p>
+            <p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {campaign.knightLevel || 1} {t("(required)","(задължителен)")}</p>
             <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
-              {knightAdded ? "Remove Cyber Knight" : "Add Cyber Knight"}
+              {knightAdded ? localLabel("Remove Cyber Knight") : localLabel("Add Cyber Knight")}
             </button>
-            {campaign.knightBusy && <p>Cyber Knight is on a mission and must return before launching another attack.</p>}
-            <p>Select troops from your base army · {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
-            <label>Load formation <select defaultValue="" onChange={event=>{
+            {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
+            <p>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
+            <label>{t("Load formation","Зареди формация")} <select defaultValue="" onChange={event=>{
               setFormationRows(event.target.value==="default" ? defaultFormation() : presets[event.target.value]);
               event.target.value="";
             }}>
-              <option value="" disabled>Choose formation</option>
-              <option value="default">Default Attack</option>
-              {Object.keys(presets).map(slot=><option key={slot} value={slot}>Formation {slot}</option>)}
+              <option value="" disabled>{t("Choose formation","Избери формация")}</option>
+              <option value="default">{t("Default Attack","Стандартна атака")}</option>
+              {Object.keys(presets).map(slot=><option key={slot} value={slot}>{t("Formation","Формация")} {slot}</option>)}
             </select></label>
-            <p><label>Save current rows to <select value={presetSlot} onChange={event=>setPresetSlot(Number(event.target.value))}>
-              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>Slot {slot}</option>)}
+            <p><label>{t("Save current rows to","Запази текущите редове в")} <select value={presetSlot} onChange={event=>setPresetSlot(Number(event.target.value))}>
+              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>{t("Slot","Слот")} {slot}</option>)}
             </select></label>{" "}
-            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:formationRows})}>Save Formation</button></p>
-            {formationMessage&&<p role="status">{formationMessage}</p>}
-            {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>No trained troops available. Train units at your base before preparing a march.</p>}
+            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:formationRows})}>{t("Save Formation","Запази формацията")}</button></p>
+            {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
+            {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
               {units.map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
-                <strong>{unit}</strong>
-                <span>Available: {Number(availableArmy[unit]||0)}</span>
+                <strong>{localLabel(unit)}</strong>
+                <span>{t("Available:","Налични:")} {Number(availableArmy[unit]||0)}</span>
                 <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
                   onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
-                <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>MAX</button>
-                <span>Formation row (1 front / 4 rear)</span>
+                <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>{t("MAX","МАКС.")}</button>
+                <span>{t("Formation row (1 front / 4 rear)","Ред във формацията (1 отпред / 4 отзад)")}</span>
                 <select value={formationRows[unit]} onChange={e=>setFormationRows(old=>({...old,[unit]:Number(e.target.value)}))}>
-                  {[1,2,3,4].map(row=><option key={row} value={row}>Row {row}</option>)}
+                  {[1,2,3,4].map(row=><option key={row} value={row}>{t("Row","Ред")} {row}</option>)}
                 </select>
               </label>)}
             </div>
@@ -649,62 +651,62 @@ function Map() {
                   remaining-=selection[unit];
                 }
                 setMarchUnits(selection);
-              }}>Select up to 50,000</button>
-              <button onClick={()=>setMarchUnits({})}>Clear</button>
-              <button disabled={marchLoading || campaign.knightBusy || !knightAdded || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>Launch attack (60 sec)</button>
-              <button onClick={()=>setMarchDraft(null)}>← Back to mission types</button>
+              }}>{t("Select up to 50,000","Избери до 50 000")}</button>
+              <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
+              <button disabled={marchLoading || campaign.knightBusy || !knightAdded || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Започни атака (60 сек.)")}</button>
+              <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
-            {selectedTroops>marchLimit && <p role="alert">Cyber Knight can command at most 50,000 troops.</p>}
-            <p style={{fontSize:12,color:"#b5c7d9"}}>Alien attacks reserve selected troops immediately; survivors return after the battle.</p>
+            {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
+            <p style={{fontSize:12,color:"#b5c7d9"}}>{t("Alien attacks reserve selected troops immediately; survivors return after the battle.","Избраните войски тръгват веднага. Оцелелите се връщат след битката.")}</p>
           </div>}
-          {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{marchNotice}</p>}
+          {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{localLabel(marchNotice)}</p>}
         </div>
       </div>}
-      <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>🚀 CAMPAIGNS</button>
+      <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</button>
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
-          <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>🚀 CAMPAIGNS</h2><button onClick={()=>setMarchHistoryOpen(false)}>✕ Close</button></div>
+          <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</h2><button onClick={()=>setMarchHistoryOpen(false)}>{t("✕ Close","✕ Затвори")}</button></div>
           <details>
-            <summary onClick={()=>setPresetRows(presets[presetSlot] || defaultFormation())}>Formations</summary>
-            <label>Edit slot <select value={presetSlot} onChange={event=>{
+            <summary onClick={()=>setPresetRows(presets[presetSlot] || defaultFormation())}>{t("Formations","Формации")}</summary>
+            <label>{t("Edit slot","Редактирай слот")} <select value={presetSlot} onChange={event=>{
               const slot=Number(event.target.value);
               setPresetSlot(slot);setPresetRows(presets[slot] || defaultFormation());
             }}>
-              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>Formation {slot}{presets[slot]?"":" (empty)"}</option>)}
+              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>{t("Formation","Формация")} {slot}{presets[slot]?"":localLabel(" (empty)")}</option>)}
             </select></label>{" "}
-            <button onClick={()=>setPresetRows(defaultFormation())}>Load Default Attack</button>{" "}
-            <button onClick={()=>setPresetRows(defaultFormation(true))}>Load Default Defense</button>
+            <button onClick={()=>setPresetRows(defaultFormation())}>{t("Load Default Attack","Зареди стандартна атака")}</button>{" "}
+            <button onClick={()=>setPresetRows(defaultFormation(true))}>{t("Load Default Defense","Зареди стандартна защита")}</button>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8,margin:"12px 0"}}>
-              {units.map(unit=><label key={unit}>{unit}{" "}
+              {units.map(unit=><label key={unit}>{localLabel(unit)}{" "}
                 <select value={presetRows[unit]} onChange={event=>setPresetRows(rows=>({...rows,[unit]:Number(event.target.value)}))}>
-                  {[1,2,3,4].map(row=><option key={row} value={row}>Row {row}</option>)}
+                  {[1,2,3,4].map(row=><option key={row} value={row}>{t("Row","Ред")} {row}</option>)}
                 </select>
               </label>)}
             </div>
-            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}>Save Formation</button>
-            <p><label>Active defense formation{" "}
+            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}>{t("Save Formation","Запази формацията")}</button>
+            <p><label>{t("Active defense formation","Активна отбранителна формация")}{" "}
               <select disabled={formationBusy} value={campaign.formations?.defenseSlot || 0} onChange={event=>saveFormation({defenseSlot:Number(event.target.value)})}>
-                <option value={0}>Default Defense</option>
-                {Object.keys(presets).map(slot=><option key={slot} value={slot}>Formation {slot}</option>)}
+                <option value={0}>{t("Default Defense","Стандартна защита")}</option>
+                {Object.keys(presets).map(slot=><option key={slot} value={slot}>{t("Formation","Формация")} {slot}</option>)}
               </select>
             </label></p>
-            <p>Defense formation is saved for future player battles.</p>
-            {formationMessage&&<p role="status">{formationMessage}</p>}
+            <p>{t("Defense formation is saved for future player battles.","Отбранителната формация се пази за бъдещи битки между играчи.")}</p>
+            {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
           </details>
-          <h3>Alien Mission Reports</h3>
+          <h3>{t("Alien Mission Reports","Доклади от извънземни мисии")}</h3>
         {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
-          <summary>Mission #{m.id} · Alien Lv {m.level} · {m.result ? (m.result.victory?"VICTORY":"DEFEAT") : "Travelling"}{!m.returned_at && ` · ${m.result ? "Returning" : "Arrival"} in ${Math.max(0,Math.ceil(((m.result ? m.returns_at : m.arrives_at)-clock)/1000))}s` }</summary>
-          {m.cyberKnightLevel && <p>Commander: Cyber Knight Lv {m.cyberKnightLevel}</p>}
-          {m.formation?.length ? <ul>{m.formation.map(({unit,count,row},index)=><li key={index}>{count.toLocaleString()} {unit} · Row {row}</li>)}</ul>
-            : m.units && <p>Dispatched: {Object.entries(m.units).map(([unit,count])=>`${count} ${unit}`).join(", ")}</p>}
-          {m.result&&<div><p>Rounds: {m.result.rounds} · Remaining alien defenders: {m.result.defendersRemaining}</p>
-          <p>Reward: {m.result.reward?.item?.name || (m.result.reward?.type==="crafting" ? `${m.result.reward.amount} Universal Forge points` : m.result.reward?.type==="resources" ? `${m.result.reward.amount} of each resource` : m.result.reward?.type==="army" ? `${m.result.reward.amount} ${m.result.reward.unit}` : "None")}</p>
-          <p>Survivors: {Object.entries(m.result.survivors||{}).map(([u,n])=>u+": "+n).join(", ") || "None"}</p>
-          {(m.result.report||[]).map(round=><details key={round.round}><summary>Round {round.round}</summary>
-            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${e.unit} restored` : <>{e.attacker}: {e.units} {e.unit} → {e.target} · {e.damage} damage{Number.isInteger(e.kills) ? ` · ${e.kills} defeated` : ""}{e.dodged ? " · Evaded" : ""}</>}</p>)}
+          <summary>{t("Mission #","Мисия №")}{m.id} {t("· Alien Lv","· Извънземна база ниво")} {m.level} · {m.result ? (m.result.victory?localLabel("VICTORY"):localLabel("DEFEAT")) : localLabel("Travelling")}{!m.returned_at && ` · ${m.result ? localLabel("Returning") : localLabel("Arrival")} · ${Math.max(0,Math.ceil(((m.result ? m.returns_at : m.arrives_at)-clock)/1000))}s` }</summary>
+          {m.cyberKnightLevel && <p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
+          {m.formation?.length ? <ul>{m.formation.map(({unit,count,row},index)=><li key={index}>{count.toLocaleString()} {localLabel(unit)} {t("· Row","· Ред")} {row}</li>)}</ul>
+            : m.units && <p>{t("Dispatched:","Изпратени:")} {Object.entries(m.units).map(([unit,count])=>`${count} ${localLabel(unit)}`).join(", ")}</p>}
+          {m.result&&<div><p>{t("Rounds:","Рундове:")} {m.result.rounds} {t("· Remaining alien defenders:","· Оставащи извънземни защитници:")} {m.result.defendersRemaining}</p>
+          <p>{t("Reward:","Награда:")} {m.result.reward?.item?.name || (m.result.reward?.type==="crafting" ? `${m.result.reward.amount} ${t("Universal Forge points","универсални точки за изковаване")}` : m.result.reward?.type==="resources" ? `${m.result.reward.amount} ${t("of each resource","от всеки ресурс")}` : m.result.reward?.type==="army" ? `${m.result.reward.amount} ${localLabel(m.result.reward.unit)}` : "None")}</p>
+          <p>{t("Survivors:","Оцелели:")} {Object.entries(m.result.survivors||{}).map(([u,n])=>localLabel(u)+": "+n).join(", ") || "None"}</p>
+          {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
+            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${localLabel(e.unit)} restored` : <>{localLabel(e.attacker)}: {e.units} {localLabel(e.unit)} → {localLabel(e.target)} · {e.damage} {t("damage","щети")}{Number.isInteger(e.kills) ? ` · ${e.kills} ${t("defeated","убити")}` : ""}{e.dodged ? t(" · Evaded"," · Избегнат удар") : ""}</>}</p>)}
           </details>)}</div>}
         </details>)}
-        {!(campaign.missions||[]).length&&<p>No alien missions yet.</p>}
+        {!(campaign.missions||[]).length&&<p>{t("No alien missions yet.","Все още няма извънземни мисии.")}</p>}
         </div>
       </div>}
     </div>

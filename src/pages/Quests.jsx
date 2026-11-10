@@ -8,7 +8,7 @@ import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
 const Quests = () => {
-  const { t } = useLanguage();
+  const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState("main");
   const [loginRewards, setLoginRewards] = useState(null);
   const [loginBusy, setLoginBusy] = useState(false);
@@ -99,7 +99,7 @@ const Quests = () => {
   const renderMainQuests = () => (
     <div className="quest-section">
       <h3>{t("Tutorial Missions","Обучителни мисии")} ({tutorial.filter(m=>m.claimed).length}/{tutorial.length})</h3>
-      {claimError && <p role="alert">{claimError}</p>}
+      {claimError && <p role="alert">{localLabel(claimError)}</p>}
       {tutorial.map(m => (
         <div className="quest-box" key={m.id} style={{opacity:m.unlocked?1:0.55}}>
           <div className="quest-title">{m.id}. {t(m.titleEn,m.title)}</div>
@@ -110,7 +110,7 @@ const Quests = () => {
             m.completed ? t("Completed — collect your reward","Завършена · вземи наградата") :
             m.progress + " / " + m.target}</div>
           {m.kind==="mines" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
-            {productionBuildings.map(name => {const level=Number(structures[name]?.level ?? structures[name] ?? 0);return <div key={name}>{level>=m.target?"✓ ":"○ "}{name}: Level {level} / {m.target}</div>;})}
+            {productionBuildings.map(name => {const level=Number(structures[name]?.level ?? structures[name] ?? 0);return <div key={name}>{level>=m.target?"✓ ":"○ "}{localLabel(name)}{t(": Level",": Ниво")} {level} / {m.target}</div>;})}
           </div>}
           <div className="quest-rewards">{t("Reward","Награда")}: {m.reward.toLocaleString()} {t("each of Gold, Iron, Water and Solar + 100 Wheel Tokens","от всеки ресурс: злато, желязо, вода и слънчева енергия + 100 жетона")}</div>
           {m.claimed ? <button disabled>{t("Reward claimed","Наградата е взета")}</button> :
@@ -127,23 +127,19 @@ const Quests = () => {
       <h3>{t("Side Quests","Странични мисии")}</h3>
 
       <div className="quest-box">
-        <div className="quest-title">Level up your Cyber Knight to level 2</div>
+        <div className="quest-title">{t("Level up your Cyber Knight to level 2","Повиши Киберрицаря до ниво 2")}</div>
         <div className="quest-progress">{cyberKnightLevel >= 2 ? "2 / 2" : "1 / 2"}</div>
         <div className="quest-rewards">
-          Helmet x1
-          Gloves x25
-          Armor x25
-          Boots x25
+          {t("Helmet x1 Gloves x25 Armor x25 Boots x25","Шлем ×1, ръкавици ×25, броня ×25, ботуши ×25")}
         </div>
         <button onClick={handleLevelUpKnight}>{t("Show Me","Покажи ми")}</button>
       </div>
 
       <div className="quest-box">
-        <div className="quest-title">Gather from 1 independent map mine</div>
+        <div className="quest-title">{t("Gather from 1 independent map mine","Събери ресурси от една независима мина")}</div>
         <div className="quest-progress">{gatheredMine ? "1 / 1" : "0 / 1"}</div>
         <div className="quest-rewards">
-          Boost x1 (2h)
-          Forge Token x50
+          {t("Boost x1 (2h) Forge Token x50","Бонус ×1 (2 ч.), жетони за изковаване ×50")}
         </div>
         <button onClick={handleGatherMine}>{t("Show Me","Покажи ми")}</button>
       </div>
@@ -166,18 +162,18 @@ const Quests = () => {
   };
   const renderLoginRewards = () => (
     <div className="quest-section">
-      <h3>30-Day Login Rewards</h3>
-      <p>Collect one reward per UTC calendar day. Each player has their own Cyber Knight and equipment inventory.</p>
-      {loginMessage && <p role="status">{loginMessage}</p>}
-      {!loginRewards ? <p>Loading daily rewards...</p> : <>
+      <h3>{t("30-Day Login Rewards","30-дневни награди за вход")}</h3>
+      <p>{t("Collect one reward per UTC calendar day. Each player has their own Cyber Knight and equipment inventory.","Вземай по една награда на календарен ден по UTC. Всеки играч има собствен Киберрицар и екипировка.")}</p>
+      {loginMessage && <p role="status">{localLabel(loginMessage)}</p>}
+      {!loginRewards ? <p>{t("Loading daily rewards...","Зареждане на дневните награди…")}</p> : <>
         <p>{loginRewards.claimedToday?"Today's reward collected. Come back tomorrow!":loginRewards.nextDay<=30?"Day "+loginRewards.nextDay+" is ready to claim.":"All 30 rewards collected!"}</p>
         <div className="login-calendar">
           {loginRewards.days.map(d=>(
             <div key={d.day} className="login-day" style={{opacity:d.claimed?0.6:1,padding:10}}>
-              <strong>Day {d.day}</strong>
+              <strong>{t("Day","Ден")} {d.day}</strong>
               <div>{d.reward.type==="resources"?d.reward.amount+" each: Gold, Iron, Water, Solar":d.reward.type==="army"?d.reward.amount+" "+d.reward.label:d.reward.label+" (Rare)"}</div>
-              <div>{d.claimed?"✓ Collected":d.day===loginRewards.nextDay&&!loginRewards.claimedToday?"Available":t("Locked","Заключена")}</div>
-              {d.day===loginRewards.nextDay&&!loginRewards.claimedToday&&<button disabled={loginBusy} onClick={claimLoginReward}>{loginBusy?"Claiming...":"Claim reward"}</button>}
+              <div>{d.claimed?localLabel("✓ Collected"):d.day===loginRewards.nextDay&&!loginRewards.claimedToday?localLabel("Available"):t("Locked","Заключена")}</div>
+              {d.day===loginRewards.nextDay&&!loginRewards.claimedToday&&<button disabled={loginBusy} onClick={claimLoginReward}>{loginBusy?localLabel("Claiming..."):localLabel("Claim reward")}</button>}
             </div>
           ))}
         </div>
@@ -187,7 +183,7 @@ const Quests = () => {
 
   return (
     <div className="quests-container">
-      <h2>Quests</h2>
+      <h2>{t("Quests","Мисии")}</h2>
       <div className="quest-tabs">
         <button onClick={() => setActiveTab("main")}>{t("Main Quests","Основни мисии")}</button>
         <button onClick={() => setActiveTab("side")}>{t("Side Quests","Странични мисии")}</button>
