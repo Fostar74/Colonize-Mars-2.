@@ -1,7 +1,7 @@
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
-const {units: formationUnits, marchLimit, defaultFormation} = require("../src/shared/formations");
+const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
 const {allianceUpgradeDuration,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
@@ -1092,7 +1092,10 @@ class DatabaseManager {
 
   getFormations(userId) {
     const row=db.prepare("SELECT presets,defense_slot FROM player_formations WHERE user_id=?").get(userId);
-    return {presets:row ? JSON.parse(row.presets) : {}, defenseSlot:row?.defense_slot || 0};
+    const stored = row ? JSON.parse(row.presets) : {};
+    const presets = Object.fromEntries(Object.entries(stored)
+      .map(([slot, formation]) => [slot, normalizeFormation(formation)]));
+    return {presets, defenseSlot:row?.defense_slot || 0};
   }
 
   saveFormation(userId, slot, rows, defenseSlot) {
@@ -1100,11 +1103,11 @@ class DatabaseManager {
       const settings=this.getFormations(userId);
       if(rows!==undefined){
         if(!Number.isInteger(slot)||slot<1||slot>5||!rows||typeof rows!=="object"||Array.isArray(rows)
-          || Object.keys(rows).length!==formationUnits.length
+          || Object.keys(rows).some(key => key !== "columns" && !formationUnits.includes(key))
           || !formationUnits.every(unit=>Number.isInteger(rows[unit])&&rows[unit]>=1&&rows[unit]<=4)){
           return {error:"Choose formation slot 1–5 and a valid row for every unit."};
         }
-        settings.presets[slot]=rows;
+        settings.presets[slot]=normalizeFormation(rows);
       }
       if(defenseSlot!==undefined){
         if(!Number.isInteger(defenseSlot)||defenseSlot<0||defenseSlot>5||(defenseSlot!==0&&!settings.presets[defenseSlot])){

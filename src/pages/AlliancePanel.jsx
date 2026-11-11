@@ -110,7 +110,7 @@ export default function AlliancePanel({supportTarget,playerAction,constructionHe
       {(state.members||[]).filter(m=>String(m.id)!==String(getUserId())).map(m=><option key={m.id} value={m.id}>{m.username}</option>)}
     </select></label>
     <label> {t("Unit","Единица")} <select value={reinforceUnit} onChange={e=>setReinforceUnit(e.target.value)}>
-      {["Explorer Trooper","Exo-Soldier","Plasma Bladesman","Nano Shieldman","Railgunner","Pulse Sniper","Drone Operator","Rover Scout","Hoverbike Rider","Mech Walker","Hover Drone Rider","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon","Martian Noble","AI General","Gene Warrior"].map(u=><option key={u} value={u}>{localLabel(u)}</option>)}
+      {["Explorer Trooper","Exo-Soldier","Plasma Bladesman","Nano Shieldman","Railgunner","Pulse Sniper","Drone Operator","Rover Scout","Hoverbike Rider","Mech Walker","Hover Drone Rider","Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon","AI General","Gene Warrior"].map(u=><option key={u} value={u}>{localLabel(u)}</option>)}
     </select></label>
     <label> {t("Count","Брой")} <input type="number" min="1" step="1" value={reinforceCount} onChange={e=>setReinforceCount(Number(e.target.value))} style={{width:95}}/></label>
     <button disabled={busy||!reinforceRecipient||!Number.isSafeInteger(reinforceCount)||reinforceCount<1} onClick={()=>action("reinforce",{recipientId:Number(reinforceRecipient),units:{[reinforceUnit]:reinforceCount}})}>{t("Send Reinforcements","Изпрати подкрепления")}</button>

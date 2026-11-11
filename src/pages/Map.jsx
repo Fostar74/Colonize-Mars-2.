@@ -13,7 +13,7 @@ import alienBaseImg from "../images/alien-base.png";
 import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
 import alienBases from "../shared/alienBases";
-const {units, marchLimit, defaultFormation}=formations;
+const {units, marchLimit, cellsPerRow, defaultFormation, normalizeFormation}=formations;
 
 const formationTypes = {
   Ground: ["Ground", "Наземни", 1],
@@ -28,18 +28,33 @@ const formationUnitTypes = Object.fromEntries(Object.entries(unitEconomy.categor
 function FormationBoard({ rows, setRows }) {
   const { t, label } = useLanguage();
   const [selected, setSelected] = useState(null);
-  const place = (unit, row) => {
+  const board = normalizeFormation(rows);
+  const place = (unit, row, column) => {
     if (!units.includes(unit)) return;
-    setRows(previous => ({ ...previous, [unit]: row }));
+    setRows(previous => {
+      const next = normalizeFormation(previous);
+      const occupant = units.find(name => next[name] === row && next.columns[name] === column);
+      if (occupant === unit) return previous;
+      if (occupant && next[unit]) {
+        next[occupant] = next[unit];
+        next.columns[occupant] = next.columns[unit];
+      } else if (occupant) {
+        delete next[occupant];
+        delete next.columns[occupant];
+      }
+      next[unit] = row;
+      next.columns[unit] = column;
+      return next;
+    });
     setSelected(null);
   };
   const tile = (unit) => {
     const [type, translatedType, range] = formationUnitTypes[unit];
     return <button key={unit} type="button" draggable
       aria-pressed={selected === unit}
-      onClick={() => setSelected(unit)}
+      onClick={event => { event.stopPropagation(); setSelected(unit); }}
       onDragStart={event => event.dataTransfer.setData("text/plain", unit)}
-      style={{ flex: "0 0 115px", minHeight: 65, background: selected === unit ? "#29677f" : "#20384d", color: "#edf6ff", border: "1px solid #69a5c2", borderRadius: 5 }}>
+      style={{ flex: "0 0 115px", overflowWrap: "anywhere", minHeight: 65, background: selected === unit ? "#29677f" : "#20384d", color: "#edf6ff", border: "1px solid #69a5c2", borderRadius: 5 }}>
       <strong>{label(unit)}</strong><br />
       <small>{t(type, translatedType)} · {t("Range","Обхват")} {range}</small>
     </button>;
@@ -49,15 +64,27 @@ function FormationBoard({ rows, setRows }) {
     <div style={{ textAlign: "center", padding: 10, border: "2px solid #75e9ff", background: "repeating-linear-gradient(110deg,#103442 0 22px,#1c657a 22px 26px,#145068 26px 50px)" }}>
       <strong>{t("Plasma Wall","Плазмена стена")}</strong>
     </div>
-    {[1, 2, 3, 4].map(row => <div key={row} onDragOver={event => event.preventDefault()}
-      onDrop={event => { event.preventDefault(); place(event.dataTransfer.getData("text/plain"), row); }}
-      style={{ display: "flex", gap: 6, alignItems: "center", overflowX: "auto", padding: 6, minHeight: 68, border: "1px dashed #65859a" }}>
-      <button type="button" disabled={!selected} onClick={() => place(selected, row)}>
-        {t("Row","Ред")} {row}
-      </button>
-      {units.filter(unit => rows[unit] === row).map(tile)}
-    </div>)}
-    <p style={{ margin: "4px 0" }}>{t("Drag a unit to a row, or select the unit and click the row.","Плъзни войник до ред или го избери и натисни реда.")}</p>
+    <div style={{ overflowX: "auto" }}>
+      <div style={{ minWidth: 640, display: "grid", gridTemplateColumns: "64px repeat(7,minmax(0,1fr))", gap: 6, alignItems: "stretch" }}>
+        {[1, 2, 3, 4].map(row => <React.Fragment key={row}>
+          <strong style={{ alignSelf: "center" }}>{t("Row","Ред")} {row}</strong>
+          {Array.from({ length: cellsPerRow }, (_, column) => {
+            const unit = units.find(name => board[name] === row && board.columns[name] === column);
+            return <div key={column} onDragOver={event => event.preventDefault()}
+              onDrop={event => { event.preventDefault(); place(event.dataTransfer.getData("text/plain"), row, column); }}
+              style={{ display: "grid", minHeight: 66, background: "#162a3a", border: "1px solid #65859a", borderRadius: 5 }}>
+              {selected && selected !== unit
+                ? <button type="button" onClick={() => place(selected, row, column)}
+                    aria-label={t("Place in row","Постави на ред") + " " + row + ", " + t("cell","клетка") + " " + (column + 1)}>
+                    {unit ? label(unit) : "+"}
+                  </button>
+                : unit ? tile(unit) : null}
+            </div>;
+          })}
+        </React.Fragment>)}
+      </div>
+    </div>
+    <p style={{ margin: "4px 0" }}>{t("Drag a unit into a cell, or select a unit and click a cell.","Плъзни войник в клетка или избери войник и натисни клетка.")}</p>
     <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6 }}>{units.map(tile)}</div>
   </div>;
 }

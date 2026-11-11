@@ -20,7 +20,7 @@ const unitCategories = {
   Ranged: ["Railgunner", "Pulse Sniper", "Drone Operator"],
   Mobile: ["Rover Scout", "Hoverbike Rider", "Mech Walker", "Hover Drone Rider"],
   "Heavy Systems": ["Demolition Bot", "Missile Carrier", "Particle Blaster", "Orbital Strike Beacon"],
-  Elite: ["Martian Noble", "AI General", "Gene Warrior"]
+  Elite: ["AI General", "Gene Warrior"]
 };
 
 function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange, questTarget }) {

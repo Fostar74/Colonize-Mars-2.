@@ -4,7 +4,7 @@ const categories = {
   Ranged: ["Railgunner","Pulse Sniper","Drone Operator"],
   Mobile: ["Rover Scout","Hoverbike Rider","Mech Walker","Hover Drone Rider"],
   "Heavy Systems": ["Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"],
-  Elite: ["Martian Noble","AI General","Gene Warrior"]
+  Elite: ["AI General","Gene Warrior"]
 };
 const tiers = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3, Elite:5 };
 // Each unit has a dominant resource; rotate the emphasis within every class.
@@ -18,7 +18,7 @@ function unitPrice(unit) {
   const entry = Object.entries(categories).find(([,units])=>units.includes(unit));
   if (!entry) return null;
   const [category,units]=entry;
-  const base=emphasis[units.indexOf(unit)%emphasis.length];
+  const base=emphasis[(units.indexOf(unit) + (category === "Elite" ? 1 : 0)) % emphasis.length];
   return Object.fromEntries(Object.entries(base).map(([resource,value])=>[resource,Math.ceil(value*tiers[category])]));
 }
 const unlockBuildings = {
@@ -27,7 +27,7 @@ const unlockBuildings = {
 };
 const unlockLevels = {
   Ground:[1,2,4,6], Ranged:[3,5,7], Mobile:[1,3,5,7],
-  "Heavy Systems":[2,4,6,8], Elite:[10,12,15]
+  "Heavy Systems":[2,4,6,8], Elite:[12,15]
 };
 function unitRequirement(unit) {
   const entry=Object.entries(categories).find(([,units])=>units.includes(unit));
