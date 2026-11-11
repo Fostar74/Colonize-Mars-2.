@@ -3,6 +3,7 @@ import { useLanguage } from "../language";
 // Colonize Mars Map.jsx with full formatting, mines, and alien bases
 
 import React, { useEffect, useRef, useState } from "react";
+import { useLocation } from "react-router-dom";
 import hqIconFile from "../images/hq-icon.png";
 import goldMineImg from "../images/mine-gold.png";
 import ironMineImg from "../images/mine-iron.png";
@@ -38,7 +39,8 @@ function Map() {
   const [formationBusy,setFormationBusy]=useState(false);
   const [clock,setClock]=useState(Date.now);
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
-  const reconShortcut=useRef(new URLSearchParams(window.location.hash.split("?")[1]).has("recon"));
+  const { search } = useLocation();
+  const reconShortcut = new URLSearchParams(search).has("recon");
   const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || !!campaign.supportRoutes?.length;
   useEffect(()=>{
     if(!marchHistoryOpen&&!hasRoutes)return;
@@ -78,6 +80,11 @@ function Map() {
   }, []);
   const mapPlayerTarget = useRef(sessionStorage.getItem("mapPlayerTarget"));
   useEffect(() => {
+    if (reconShortcut) {
+      mapPlayerTarget.current = null;
+      sessionStorage.removeItem("mapPlayerTarget");
+      return;
+    }
     const username = mapPlayerTarget.current;
     const base = castles.find(c => c.username === username);
     if (base) {
@@ -85,7 +92,7 @@ function Map() {
       sessionStorage.removeItem("mapPlayerTarget");
       setViewCenter({x:base.x,y:base.y});
     }
-  }, [castles]);
+  }, [castles, reconShortcut]);
   const [hqIcon, setHqIcon] = useState(null);
   const [hoveredTitle, setHoveredTitle] = useState("");
   const [cursorCoord, setCursorCoord] = useState(null);
@@ -154,22 +161,24 @@ function Map() {
 
       setCastles(previous => previous.length ? previous : [savedCastle]);
 
-      if (hqIcon && !mapPlayerTarget.current) {
-        if (reconShortcut.current) {
-          const distance=base=>Math.hypot(base.x-savedCastle.x,base.y-savedCastle.y);
-          const nearest=alienBases.filter(base=>base.level===1).reduce((best,base)=>distance(base)<distance(best)?base:best);
-          centerMapOn(nearest.x,nearest.y);
-          setSelectedTarget({type:"alien",...nearest});
-          reconShortcut.current=false;
-        } else {
-          centerMapOn(savedCastle.x,savedCastle.y);
+      if (reconShortcut) {
+        const distance = base => Math.hypot(base.x - savedCastle.x, base.y - savedCastle.y);
+        const nearest = alienBases.filter(base => base.level === 1)
+          .reduce((best, base) => !best || distance(base) < distance(best) ? base : best, null);
+        if (nearest) {
+          setViewCenter({ x: nearest.x, y: nearest.y });
+          setSelectedAlien(nearest);
+          setSelectedTarget({ type: "alien", ...nearest });
+          setMarchDraft(null);
         }
+      } else if (!mapPlayerTarget.current) {
+        setViewCenter({ x: savedCastle.x, y: savedCastle.y });
       }
     } catch {
       alert("Invalid castle data. Please log in again.");
       window.location.href = "/#/";
     }
-  }, [hqIcon]);
+  }, [reconShortcut]);
 
   useEffect(() => {
     if (
