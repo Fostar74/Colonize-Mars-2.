@@ -13,6 +13,7 @@ import marsBackground from "../images/mars-background.jpg";
 
 function Game() {
   const {language, choose, t, label: localLabel} = useLanguage();
+  const [showUpgradeCenter, setShowUpgradeCenter] = useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [castleName, setCastleName] = useState("Headquarter");
   const [resources, setResources] = useState(null);
@@ -186,7 +187,7 @@ function Game() {
         </div>
       )}
 
-      {showPopup && (
+      {showPopup && !showUpgradeCenter && (
         <div className="popup">
           <div className="popup-header">
             <span>{t("BASE CONTROL PANEL","УПРАВЛЕНИЕ НА БАЗАТА")}</span>
@@ -196,7 +197,19 @@ function Game() {
           </div>
           <div className="popup-content">
             <AlliancePanel constructionHelpOnly />
-            <StructurePanel questBuilding={questBuilding} onProgressChange={onProgressChange} />
+            <StructurePanel questBuilding={questBuilding} onProgressChange={onProgressChange} onOpenUpgrades={() => setShowUpgradeCenter(true)} />
+          </div>
+        </div>
+      )}
+
+      {showUpgradeCenter && (
+        <div className="popup">
+          <div className="popup-header">
+            <span>{t("Upgrade Center","Център за подобрения")}</span>
+            <button className="close-button" onClick={() => setShowUpgradeCenter(false)}>X</button>
+          </div>
+          <div className="popup-content">
+            <StructurePanel upgradesOnly onProgressChange={onProgressChange} />
           </div>
         </div>
       )}

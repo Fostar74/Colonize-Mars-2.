@@ -121,6 +121,7 @@ export default {
   "Martian Noble": "Марсиански благородник",
   "AI General": "Генерал с ИИ",
   "Gene Warrior": "Генетичен воин",
+  "Alien Infantry": "Извънземна пехота",
   "Alien Scout": "Извънземен разузнавач",
   "Xeno Warrior": "Ксеновоин",
   "Spore Archer": "Споров стрелец",

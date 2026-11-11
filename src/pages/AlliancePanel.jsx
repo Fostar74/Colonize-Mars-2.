@@ -1,3 +1,4 @@
+import AllianceResearch from "./AllianceResearch";
 import { useLanguage } from "../language";
 import MessagePanel from "./MessagePanel";
 import goldIcon from "../images/gold.png";
@@ -82,21 +83,8 @@ export default function AlliancePanel({supportTarget,playerAction,constructionHe
     </table></div>
     {state.alliance.role==="Leader"&&<p style={{fontSize:12}}>{t("Transfer leadership before leaving. One player per officer role.","Предай лидерството преди да напуснеш. Всяка офицерска роля се заема от един играч.")}</p>}
    </div>}
-   {tab==="research"&&<section>
-    <h3>{t("Alliance Research","Изследвания на алианса")}</h3>
-    <p>{t("Research upgrades are managed by the Leader and Co-Leader.","Изследванията се управляват от лидера и заместника.")}</p>
-    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:12}}>
-    {Object.entries({attack:["Army Attack","Gold"],growth:["Development","Water"],health:["Army Health","Iron"],speed:["Faster Upgrades","Solar"],discount:["Cheaper Upgrades","Gold"],wallHealth:["Wall Health","Iron"],wallAttack:["Wall Attack","Solar"]}).map(([kind,[label,resource]])=>{
-      const level=state.economy?.bonuses?.[kind]||0;
-      const available=kind!=="wallHealth"&&kind!=="wallAttack";
-      return <div key={kind} style={{padding:12,border:"1px solid #47758e",borderRadius:8,background:"#172c40"}}>
-        <img src={available?{Gold:goldIcon,Iron:ironIcon,Water:waterIcon,Solar:solarIcon}[resource]:baseIcon} alt="" width="44" height="44" />
-        <h4>{localLabel(label)}</h4><p>{t("Level","Ниво")} {level}/10 · {available ? level===10 ? localLabel("Max level") : `+2% per level · Next: ${1000*(level+1)} ${localLabel(resource)}` : "Available when wall combat launches"}</p>
-        <button disabled={busy||!available||level>=10||!["Leader","Co-Leader"].includes(state.alliance.role)} onClick={()=>action("bonus/upgrade",{kind})}>{t("Research","Изследвай")}</button>
-      </div>;
-    })}
-    </div>
-   </section>}
+   {tab==="research"&&<AllianceResearch economy={state.economy} role={state.alliance.role} busy={busy}
+     start={kind=>action("bonus/upgrade",{kind})}/>}
    {tab==="market"&&<div>
     <h3>{t("Alliance Donation & Market","Дарения и пазар")}</h3>
     <p>{t("Alliance Points:","Точки на алианса:")} <strong>{state.economy?.points||0}</strong> {t("· Donations left today (resets at 00:00 UTC):","· Оставащи дарения днес (нулиране в 00:00 UTC):")} {state.economy?.donationsRemaining??20}/20</p>

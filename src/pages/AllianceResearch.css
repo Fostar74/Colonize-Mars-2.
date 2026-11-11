@@ -1,0 +1,54 @@
+.alliance-research-tabs {
+  display: flex;
+  gap: .5rem;
+  flex-wrap: wrap;
+}
+.alliance-research-tabs button[aria-pressed="true"] {
+  background: #a7e9ff;
+  color: #102130;
+}
+.alliance-research-tree {
+  --branch-color: #ff976a;
+  overflow-x: auto;
+  padding: .5rem;
+  background: radial-gradient(ellipse at top, #244058, #0b1827 75%);
+  border-radius: .75rem;
+}
+.alliance-research-tree[data-branch="health"] { --branch-color: #82ceff; }
+.alliance-research-tree[data-branch="development"] { --branch-color: #98dfa3; }
+.alliance-research-row {
+  position: relative;
+  display: flex;
+  justify-content: center;
+  gap: .75rem;
+  min-width: 35rem;
+}
+.alliance-research-row + .alliance-research-row { padding-top: 2rem; }
+.alliance-research-node {
+  position: relative;
+  box-sizing: border-box;
+  width: 11rem;
+  padding: .75rem;
+  border: 1px solid var(--branch-color);
+  border-radius: .75rem;
+  background: #172b40;
+  text-align: center;
+}
+.alliance-research-row + .alliance-research-row .alliance-research-node::before {
+  content: "";
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  height: 2rem;
+  border-left: 2px solid var(--branch-color);
+  transform-origin: bottom;
+  transform: skewX(var(--parent-angle));
+}
+.alliance-research-node h4, .alliance-research-node p { margin: 0 0 .45rem; }
+.alliance-research-cost {
+  display: inline-flex;
+  align-items: center;
+  gap: .3rem;
+  margin-inline-end: .5rem;
+}
+.alliance-research-cost img { width: 1.25rem; height: 1.25rem; }

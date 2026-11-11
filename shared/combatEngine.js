@@ -4,7 +4,7 @@ const {categories}=require("../src/shared/unitEconomy");
 const playerTypes=Object.fromEntries(Object.entries(categories).flatMap(([category,names])=>names.map((name,index)=>[name,{category:category==="Ground"||category==="Elite"?"infantry":category==="Ranged"?"ranged":category==="Mobile"?"mobile":"artillery",hp:category==="Ground"?90+index*30:category==="Ranged"?65+index*10:category==="Mobile"?180+index*80:category==="Elite"?350+index*100:120+index*50,attack:category==="Ground"?20+index*7:category==="Ranged"?35+index*12:category==="Mobile"?50+index*18:category==="Elite"?90+index*25:55+index*20,range:category==="Ground"?1:category==="Elite"?2:category==="Mobile"?1:category==="Ranged"?4:5}])));
 // Alien defenders are persistent templates; their casualties never modify the map.
 const alienTypes={
-"Alien Scout":{category:"infantry",hp:75,attack:17,range:1},
+"Alien Infantry":{category:"infantry",hp:75,attack:17,range:1},
 "Xeno Warrior":{category:"infantry",hp:160,attack:35,range:1},
 "Spore Archer":{category:"ranged",hp:65,attack:38,range:4},
 "Plasma Stalker":{category:"infantry",hp:200,attack:50,range:2},
@@ -39,8 +39,9 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
   for(const group of sides[0]){
     const categoryBonus=group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
     // Neural Command improves coordinated offensive effectiveness for all deployed units.
-    group.attack*=1+((Number(categoryBonus)||0)+(Number(bonuses.leadership)||0)+(Number(bonuses.allAttack)||0))/100;
-    group.hp*=1+((Number(bonuses.allHealth)||0)+(group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
+    const research = bonuses.unitResearch?.[group.unit];
+    group.attack*=1+((Number(categoryBonus)||0)+(Number(bonuses.leadership)||0)+(Number(bonuses.allAttack)||0)+(research?.attack||0))/100;
+    group.hp*=1+((Number(bonuses.allHealth)||0)+(research?.health||0)+(group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
   }
   const dodgeChance=Math.max(0,Math.min(0.15,(Number(bonuses.dodge)||0)/100));
   const reviveRate=Math.max(0,Math.min(0.15,(Number(bonuses.revive)||0)/100));

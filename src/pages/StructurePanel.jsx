@@ -23,9 +23,9 @@ const unitCategories = {
   Elite: ["Martian Noble", "AI General", "Gene Warrior"]
 };
 
-function StructurePanel({ showNavigation = true, onProgressChange, questBuilding }) {
+function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange, questBuilding }) {
   const { t , label: localLabel} = useLanguage();
-  const [activeTab, setActiveTab] = useState("structures");
+  const [activeTab, setActiveTab] = useState(upgradesOnly ? "upgrades" : "structures");
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
   const [resources, setResources] = useState(() => { try { return JSON.parse(sessionStorage.getItem("resources") || "{}"); } catch { return {}; } });
   const [busy, setBusy] = useState("");
@@ -158,6 +158,7 @@ function StructurePanel({ showNavigation = true, onProgressChange, questBuilding
                 {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}
                 <h4 style={{margin:"6px 0"}}>{localLabel(name)}</h4>
                 <div>{t("Level","Ниво")} {level} / 20</div>
+                {name === "Upgrade Lab" && level > 0 && <button onClick={onOpenUpgrades}>{t("Upgrade Center","Център за подобрения")}</button>}
                 {game.buildingJob?.name === name && <div>{t("Construction:","Строеж:")} {formatTime(remaining(game.buildingJob))}</div>}
                 {game.queuedBuildingJob?.name === name && <div>{t("Queued: Level","На опашката: ниво")} {game.queuedBuildingJob.level}</div>}
                 <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>{t("Next:","Следващо:")} {cost.Gold} {t("Gold ·","злато ·")} {cost.Iron} {t("Iron ·","желязо ·")} {cost.Water} {t("Water ·","вода ·")} {cost.Solar} {t("Solar","слънчева енергия")}</p>
@@ -243,16 +244,21 @@ function StructurePanel({ showNavigation = true, onProgressChange, questBuilding
 
   const renderUpgrades = () => (
     <>
-      <h2 style={{textAlign:"center"}}>{t("Upgrade Center","Център за подобрения")}</h2>
       {error && <p role="alert" style={{color:"#ff7777"}}>{localLabel(error)}</p>}
       <div className="upgrade-slots">
-        {[0,1].map(slot=>(
-          <button key={slot} className="upgrade-slot" onClick={()=>setUpgradeSlot(slot)}>
-            {game.upgradeJobs?.[slot] ? `Slot ${slot+1}: ${game.upgradeJobs[slot].unit} ${game.upgradeJobs[slot].stat} — ${formatTime(remaining(game.upgradeJobs[slot]))}` : upgradeSlot===slot ? "Selected Slot "+(slot+1) : "Slot "+(slot+1)}
-          </button>
-        ))}
+        {[0,1].map(slot=>{
+          const job = game.upgradeJobs?.[slot];
+          const selectable = !job && (slot === 0 || !!game.upgradeJobs?.[0]);
+          const status = job
+            ? `${localLabel(job.unit)} · ${job.stat === "attack" ? localLabel("Attack") : localLabel("Health / Defense")} · ${t("Level","Ниво")} ${job.level} · ${job.endsAt == null ? t("Queued","На опашка") : formatTime(remaining(job))}`
+            : t("Empty","Свободен");
+          return <button key={slot} className="upgrade-slot" disabled={!selectable}
+            aria-pressed={upgradeSlot === slot && selectable} onClick={()=>setUpgradeSlot(slot)}>
+            {t("Slot","Слот")} {slot+1} · {status}
+          </button>;
+        })}
       </div>
-      {upgradeSlot!==null && <div className="upgrade-window">
+      {upgradeSlot === (game.upgradeJobs?.[0] ? 1 : 0) && !game.upgradeJobs?.[upgradeSlot] && <div className="upgrade-window">
         <h4>{t("Choose Unit Category","Избери категория войски")}</h4>
         <div className="subtab-buttons">
           {Object.keys(unitCategories).map(cat=><button key={cat} onClick={()=>setUpgradeCategory(cat)}>{localLabel(cat)}</button>)}
@@ -283,10 +289,10 @@ function StructurePanel({ showNavigation = true, onProgressChange, questBuilding
 
   return (
     <div style={{ color: "white", padding: "10px" }}>
-      {showNavigation && <div className="subtab-buttons">
+      {!upgradesOnly && <div className="subtab-buttons">
         <button onClick={() => setActiveTab("structures")}>{t("Structures","Сгради")}</button>
         <button onClick={() => setActiveTab("units")}>{t("Units","Войски")}</button>
-        <button onClick={() => setActiveTab("upgrades")}>{t("Upgrades","Подобрения")}</button>
+        <button onClick={onOpenUpgrades}>{t("Upgrades","Подобрения")}</button>
       </div>}
       <div className="building-tab">
         {activeTab === "structures" && renderStructures()}

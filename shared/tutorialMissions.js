@@ -67,17 +67,6 @@ const missions = [
     "level": null
   },
   {
-    "id": 7,
-    "title": "Разузнаване на Марс",
-    "description": "Изпрати разузнавателен роувър да разузнае извънземна база от картата.",
-    "titleEn": "Mars Reconnaissance",
-    "descriptionEn": "Send a Rover Scout to scout an alien base from the map.",
-    "reward": 4500,
-    "kind": "recon",
-    "target": null,
-    "level": null
-  },
-  {
     "id": 8,
     "title": "Мобилни сили",
     "description": "Построй Хангар за машини до ниво 1.",
@@ -245,9 +234,9 @@ const missions = [
   {
     "id": 23,
     "title": "Край на началната подготовка",
-    "description": "Завърши предходните 22 мисии и премини към активния сезон.",
+    "description": "Завърши предходните 21 мисии и премини към активния сезон.",
     "titleEn": "Training Complete",
-    "descriptionEn": "Complete the previous 22 missions to enter the active season.",
+    "descriptionEn": "Complete the previous 21 missions to enter the active season.",
     "reward": 25000,
     "kind": "final",
     "target": null,
