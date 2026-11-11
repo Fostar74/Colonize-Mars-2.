@@ -13,8 +13,19 @@ if (!fs.existsSync(dbDir)) {
   fs.mkdirSync(dbDir, { recursive: true });
 }
 
-const dbPath = process.env.DATABASE_PATH || path.join(dbDir, "colonize_mars.db");
+const persistentDbPath = process.env.DATABASE_PATH || (process.env.RENDER ? "/var/data/colonize_mars.db" : null);
+const dbPath = persistentDbPath || path.join(dbDir, "colonize_mars.db");
 fs.mkdirSync(path.dirname(dbPath), { recursive: true });
+
+if (persistentDbPath && !fs.existsSync(dbPath)) {
+  const previousDbPath = path.join(dbDir, "colonize_mars.db");
+  if (fs.existsSync(previousDbPath)) {
+    for (const suffix of ["", "-wal", "-shm"]) {
+      const source = previousDbPath + suffix;
+      if (fs.existsSync(source)) fs.copyFileSync(source, dbPath + suffix);
+    }
+  }
+}
 const db = new Database(dbPath);
 db.pragma("busy_timeout = 5000");
 db.pragma("foreign_keys = ON");
