@@ -1,6 +1,6 @@
 import { useLanguage } from "../language";
 // Final StructurePanel.jsx with internal tab buttons restored
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import "./StructurePanel.css";
 import unitEconomy from "../shared/unitEconomy";
 import goldIcon from "../images/gold.png";
@@ -23,8 +23,10 @@ const unitCategories = {
   Elite: ["Martian Noble", "AI General", "Gene Warrior"]
 };
 
-function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange, questBuilding }) {
+function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange, questTarget }) {
   const { t , label: localLabel} = useLanguage();
+  const questDestination = useRef(null);
+  const focusedQuest = useRef(null);
   const [activeTab, setActiveTab] = useState(upgradesOnly ? "upgrades" : "structures");
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
   const [resources, setResources] = useState(() => { try { return JSON.parse(sessionStorage.getItem("resources") || "{}"); } catch { return {}; } });
@@ -120,16 +122,30 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
     }));
   };
 
-  const [expandedSections, setExpandedSections] = useState(()=>{
-    const section=Object.keys(structureTypes).find(key=>structureTypes[key].includes(questBuilding));
-    return {[section || "Resources"]:true};
-  });
+  const [expandedSections, setExpandedSections] = useState({ Resources: true });
+  const questSection = questTarget?.section ?? Object.keys(structureTypes)
+    .find(section => structureTypes[section].includes(questTarget?.building));
+
+  useEffect(() => {
+    if (!questTarget) return;
+    setActiveTab(questTarget.tab || "structures");
+    setExpandedSections(questSection ? { [questSection]: true } : {});
+  }, [questTarget, questSection]);
+
+  useEffect(() => {
+    if (!questTarget || focusedQuest.current === questTarget || !questDestination.current) return;
+    if (activeTab !== (questTarget.tab || "structures")) return;
+    if (questSection && !expandedSections[questSection]) return;
+    questDestination.current.scrollIntoView({ block: "start" });
+    focusedQuest.current = questTarget;
+  }, [questTarget, questSection, activeTab, expandedSections]);
+
   const buildingImages = { "Gold Synthesizer": goldIcon, "Iron Driller": ironIcon, "Solar Array": solarIcon, "Water Extractor": waterIcon };
   const renderStructures = () => (
     <>
       <h2 style={{ textAlign: "center" }}>{t("Structures","Сгради")}</h2>
       {error && <p role="alert" style={{color:"#ff7777"}}>{localLabel(error)}</p>}
-      <p style={{textAlign:"center",opacity:.8}}>{t("Build your resource facilities first. Upgrade all four to level 3.","Първо построй ресурсните съоръжения. Надстрой и четирите до ниво 3.")}</p>
+      {!questTarget && <p style={{textAlign:"center",opacity:.8}}>{t("Build your resource facilities first. Upgrade all four to level 3.","Първо построй ресурсните съоръжения. Надстрой и четирите до ниво 3.")}</p>}
       <p style={{textAlign:"center"}}>
         {t("Production per hour:","Производство на час:")} {["Gold", "Iron", "Water", "Solar"].map(resource =>
           `${localLabel(resource)} ${(game.productionPerHour?.[resource] ?? 0).toLocaleString("en-US", {maximumFractionDigits: 1})}`
@@ -143,7 +159,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
         {allianceHelpMessage&&<p role="status">{allianceHelpMessage}</p>}
       </div>}
       {Object.entries(structureTypes).map(([section, buildings]) => (
-        <section key={section} style={{marginBottom:16}}>
+        <section key={section} ref={questSection === section && !questTarget?.building ? questDestination : null} style={{marginBottom:16}}>
           <button type="button" onClick={() => setExpandedSections(prev => ({...prev,[section]:!prev[section]}))}
             style={{width:"100%",textAlign:"left",padding:"12px 16px",background:"#333",color:"#fff",border:"1px solid #555",cursor:"pointer",fontWeight:"bold"}}>
             {expandedSections[section] ? "▾" : "▸"} {localLabel(section)} {section === "Resources" ? t("— start here","— започни тук") : ""}
@@ -154,7 +170,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
               const next = level + (game.buildingJob?.name === name ? 1 : 0) + 1;
               const cost = buildingPrice(name, next, game.allianceBonuses?.discount) || {Gold:0,Iron:0,Water:0,Solar:0};
               const affordable = Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
-              return <div key={name} className="building" style={{padding:14}}>
+              return <div key={name} ref={questTarget?.building === name ? questDestination : null} className="building" style={{padding:14}}>
                 {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}
                 <h4 style={{margin:"6px 0"}}>{localLabel(name)}</h4>
                 <div>{t("Level","Ниво")} {level} / 20</div>
@@ -294,7 +310,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
         <button onClick={() => setActiveTab("units")}>{t("Units","Войски")}</button>
         <button onClick={onOpenUpgrades}>{t("Upgrades","Подобрения")}</button>
       </div>}
-      <div className="building-tab">
+      <div className="building-tab" ref={questTarget?.tab === "units" ? questDestination : null}>
         {activeTab === "structures" && renderStructures()}
         {activeTab === "units" && renderUnits()}
         {activeTab === "upgrades" && renderUpgrades()}

@@ -7,7 +7,7 @@ import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
-const Quests = () => {
+const Quests = ({ onShowBase }) => {
   const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState("main");
   const [loginRewards, setLoginRewards] = useState(null);
@@ -82,7 +82,13 @@ const Quests = () => {
       window.location.hash = "/map?recon=1";
       return;
     }
-    window.dispatchEvent(new CustomEvent("open-base-panel",{detail:{building:mission.building}}));
+    if (mission.kind === "mines") onShowBase({ section: "Resources" });
+    else if (mission.kind === "building") onShowBase({ building: mission.building });
+    else if (mission.kind === "army" && Number(structures["Training Center"] || 0) < 1) {
+      onShowBase({ building: "Training Center" });
+    } else if (mission.kind === "army" || mission.kind === "units") {
+      onShowBase({ tab: "units" });
+    }
   };
   const handleLevelUpKnight = () => { setCyberKnightLevel(1); alert("Cyber Knight leveling is not available yet."); };
   const handleGatherMine = () => { setGatheredMine(false); alert("Mine gathering is not available yet."); };
