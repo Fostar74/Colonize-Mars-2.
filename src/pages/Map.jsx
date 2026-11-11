@@ -38,9 +38,6 @@ function Map() {
   const [formationBusy,setFormationBusy]=useState(false);
   const [clock,setClock]=useState(Date.now);
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
-  const [scoutQuantity,setScoutQuantity]=useState(1);
-  const [scoutSending,setScoutSending]=useState(false);
-  const [scoutError,setScoutError]=useState("");
   const reconShortcut=useRef(new URLSearchParams(window.location.hash.split("?")[1]).has("recon"));
   const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || !!campaign.supportRoutes?.length;
   useEffect(()=>{
@@ -333,8 +330,6 @@ function Map() {
     })).filter(hit=>hit.dist<=hitRadius).sort((a,b)=>a.dist-b.dist)[0]?.item;
     const castle=nearest(castles);
     const alien=castle?null:nearest(alienBases);
-    setScoutQuantity(1);
-    setScoutError("");
     setSelectedAlien(castle?null:alien||null);
     setMarchDraft(null);
     setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
@@ -588,35 +583,6 @@ function Map() {
               <div style={{gridColumn:"1 / -1",marginTop:6,fontWeight:"bold"}}>{t("Total defenders:","Общо защитници:")} {Object.values(campaign.garrisons[selectedTarget.level]).reduce((sum,n)=>sum+n,0).toLocaleString()}</div>
             </div> : <p>{t("Loading fixed garrison data...","Зареждане на гарнизона…")}</p>}
             <p style={{fontSize:12}}>{t("Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.","По-високите нива имат по-големи и по-силни гарнизони. Крепостта на ниво 20 има извънземен владетел.")}</p>
-            <p style={{fontSize:12}}>{t("Reconnaissance costs 1,000 Solar per mission before discounts. Scouts return after reporting.","Разузнаването струва 1000 слънчева енергия на поход преди отстъпките. Роувърите се връщат след доклада.")}</p>
-            <label>{t("Scouts to send","Брой разузнавачи")}{" "}
-              <input type="number" min={1} max={campaign.availableScouts || 0} value={scoutQuantity}
-                onChange={event=>setScoutQuantity(Number(event.target.value))} />
-              {" "}{t("Available:","Налични:")} {campaign.availableScouts || 0}
-            </label>{" "}
-            <button disabled={scoutSending || !Number.isSafeInteger(scoutQuantity) || scoutQuantity<1 || scoutQuantity>(campaign.availableScouts||0)} onClick={async()=>{
-              setScoutSending(true);
-              setScoutError("");
-              try {
-                const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
-                const response=await fetch(base+"/alien-campaign/scout",{method:"POST",
-                  headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
-                  body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:selectedTarget.level,quantity:scoutQuantity,target:{x:selectedTarget.x,y:selectedTarget.y}})});
-                const mission=await response.json();
-                if(!response.ok)throw Error(mission.message);
-                setCampaign(old=>({...old,availableScouts:Math.max(0,(old.availableScouts||0)-mission.quantity),scoutMissions:[mission,...(old.scoutMissions||[]).filter(row=>row.id!==mission.id)]}));
-                setClock(Date.now());
-                setSelectedTarget(null);
-                setMapError(t("Scouts dispatched. Track them in Campaigns.","Разузнавачите потеглиха. Проследи ги в „Кампании“."));
-              } catch(error) {
-                setScoutError(error.message);
-              } finally {
-                setScoutSending(false);
-              }
-            }}>{t("◈ Send scouts","◈ Изпрати разузнавачи")}</button>
-            {!campaign.availableScouts && <p>{t("Mobilize trained Rover Scouts from the Barracks Reserve first.","Първо мобилизирай обучените роувъри от казармения резерв.")}</p>}
-            {scoutError && <p role="alert">{localLabel(scoutError)}</p>}
-            {(campaign.scoutedLevels||[]).includes(selectedTarget.level)&&<p style={{color:"#9be8b7"}}>{t("Reconnaissance completed for this stronghold.","Разузнаването на базата приключи.")}</p>}
           </div>}
           {!marchDraft && <div>
             <p>{t("Choose mission type:","Избери вид мисия:")}</p>
@@ -636,16 +602,18 @@ function Map() {
               })}
             </div>
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
-            {selectedTarget?.type==="alien" ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Use Send Rover Scout above to complete reconnaissance, or Attack to launch a combat mission.","Изпрати разузнавач или избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
+            {selectedTarget?.type==="alien" ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
           </div>}
           {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
           {marchDraft && <div>
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
+            {marchDraft.type === "Attack" && marchDraft.target.type === "alien" && <>
             <p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {campaign.knightLevel || 1} {t("(required)","(задължителен)")}</p>
             <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
               {knightAdded ? localLabel("Remove Cyber Knight") : localLabel("Add Cyber Knight")}
             </button>
             {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
+            </>}
             <p>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
             <label>{t("Load formation","Зареди формация")} <select defaultValue="" onChange={event=>{
               setFormationRows(event.target.value==="default" ? defaultFormation() : presets[event.target.value]);

@@ -108,7 +108,7 @@ const Quests = () => {
       {claimError && <p role="alert">{localLabel(claimError)}</p>}
       {tutorial.map(m => (
         <div className="quest-box" key={m.id} style={{opacity:m.unlocked?1:0.55}}>
-          <div className="quest-title">{m.id}. {t(m.titleEn,m.title)}</div>
+          <div className="quest-title">{m.number}. {t(m.titleEn,m.title)}</div>
           <p>{t(m.descriptionEn,m.description)}</p>
           <div className="quest-progress">{m.claimed ? t("Completed — reward claimed","Завършена · наградата е взета") :
             !m.unlocked ? t("Locked — complete previous mission","Заключена · завърши предишната мисия") :
