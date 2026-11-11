@@ -1344,9 +1344,10 @@ class DatabaseManager {
   }
 
   dailyLoginReward(day) {
-    if (day % 7 === 0) return {type:"equipment",label:"Cyber Knight Armor",item:{id:"login-armor-"+day,name:"Cyber Knight Armor",slot:"ARMOR",rarity:"Rare",level:1,stats:["+5 Defense"]}};
-    if (day % 5 === 0) return {type:"army",label:"Explorer Trooper",amount:5+day};
-    return {type:"resources",label:"Gold, Iron, Water, Solar",amount:250+day*100};
+    const multiplier = 5;
+    if (day % 7 === 0) return {type:"equipment",label:"Cyber Knight Armor",amount:multiplier,item:{id:"login-armor-"+day,name:"Cyber Knight Armor",slot:"ARMOR",rarity:"Rare",level:1,stats:["+5 Defense"]}};
+    if (day % 5 === 0) return {type:"army",label:"Explorer Trooper",amount:(5+day)*multiplier};
+    return {type:"resources",label:"Gold, Iron, Water, Solar",amount:(250+day*100)*multiplier};
   }
 
   getDailyLogin(userId) {
@@ -1376,7 +1377,9 @@ class DatabaseManager {
       } else {
         const existing=this.getUserEquipment(userId);
         const inventory=existing?.gearInventory||[];
-        inventory.push({...reward.item,obtainedFrom:"Daily login day "+day});
+        for (let copy = 1; copy <= reward.amount; copy++) {
+          inventory.push({...reward.item,id:reward.item.id+"-"+copy,obtainedFrom:"Daily login day "+day});
+        }
         this.saveUserEquipment(userId,existing?.equippedItems||{},inventory,existing?.craftingPoints||{});
       }
       return {day,reward,success:true};
