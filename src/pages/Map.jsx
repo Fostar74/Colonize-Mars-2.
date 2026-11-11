@@ -111,6 +111,7 @@ function Map() {
   const [campaignTab, setCampaignTab] = useState("active");
   const [presetSlot,setPresetSlot]=useState(1);
   const [presetRows,setPresetRows]=useState({});
+  const [presetName,setPresetName]=useState("");
   const [formationMessage,setFormationMessage]=useState("");
   const [formationBusy,setFormationBusy]=useState(false);
   const [clock,setClock]=useState(Date.now);
@@ -491,6 +492,7 @@ function Map() {
       const result=await response.json();
       if(!response.ok)throw new Error(result.message || "Unable to save formation.");
       setCampaign(old=>({...old,formations:result}));
+      if(payload.slot && payload.name) setPresetName(payload.name);
       setFormationMessage("Formation settings saved.");
     }catch(error){setFormationMessage(error.message);}
     finally{setFormationBusy(false);}
@@ -770,18 +772,19 @@ function Map() {
           {campaignTab==="formations" ? <section>
             <label>{t("Edit slot","Редактирай слот")} <select value={presetSlot} onChange={event=>{
               const slot=Number(event.target.value);
-              setPresetSlot(slot);setPresetRows(presets[slot] || {});
+              setPresetSlot(slot);setPresetRows(presets[slot] || {});setPresetName(campaign.formations?.names?.[slot] || "");
             }}>
-              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>{t("Formation","Формация")} {slot}{presets[slot]?"":localLabel(" (empty)")}</option>)}
+              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>{campaign.formations?.names?.[slot] || t("Formation","Формация")+" "+slot}{presets[slot]?"":localLabel(" (empty)")}</option>)}
             </select></label>{" "}
             <button onClick={()=>setPresetRows(defaultFormation())}>{t("Load Default Attack","Зареди стандартна атака")}</button>{" "}
             <button onClick={()=>setPresetRows(defaultFormation(true))}>{t("Load Default Defense","Зареди стандартна защита")}</button>
+            <label style={{display:"inline-flex",gap:8,alignItems:"center",margin:"12px 0"}}>{t("Formation name","Име на формацията")} <input value={presetName} maxLength={32} onChange={event=>setPresetName(event.target.value)} placeholder={t("e.g. Fast attack","например Бърза атака")} /></label>
             <FormationBoard key={presetSlot} rows={presetRows} setRows={setPresetRows} />
             <div style={{position:"sticky",bottom:0,zIndex:5,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"12px 8px",background:"#122334",borderTop:"1px solid #69a5c2"}}>
               <strong>{units.filter(unit => presetRows[unit]).length} / {units.length} {t("troops placed","войници подредени")}</strong>
-              <button type="button" disabled={formationBusy || !units.every(unit => presetRows[unit])}
-                onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}
-                style={{padding:"10px 20px",fontWeight:"bold",background:"#26765e",color:"white",border:"1px solid #8fe0a5",borderRadius:6,opacity:formationBusy || !units.every(unit => presetRows[unit]) ? .7 : 1}}>
+              <button type="button" disabled={formationBusy || !units.every(unit => presetRows[unit]) || !presetName.trim()}
+                onClick={()=>saveFormation({slot:presetSlot,rows:presetRows,name:presetName.trim()})}
+                style={{padding:"10px 20px",fontWeight:"bold",background:"#26765e",color:"white",border:"1px solid #8fe0a5",borderRadius:6,opacity:formationBusy || !units.every(unit => presetRows[unit]) || !presetName.trim() ? .7 : 1}}>
                 {formationBusy ? t("Saving…","Запазване…") : t("Save Formation","Запази формацията")}
               </button>
             </div>
