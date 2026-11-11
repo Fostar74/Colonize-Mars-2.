@@ -10,9 +10,57 @@ import ironMineImg from "../images/mine-iron.png";
 import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
 import alienBaseImg from "../images/alien-base.png";
+import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
 import alienBases from "../shared/alienBases";
 const {units, marchLimit, defaultFormation}=formations;
+
+const formationTypes = {
+  Ground: ["Ground", "Наземни", 1],
+  Ranged: ["Ranger", "Далекобойни", 4],
+  Mobile: ["Mobile", "Мобилни", 1],
+  "Heavy Systems": ["Heavy System", "Тежки системи", 5],
+  Elite: ["Elite", "Елитни", 2]
+};
+const formationUnitTypes = Object.fromEntries(Object.entries(unitEconomy.categories)
+  .flatMap(([category, names]) => names.map(name => [name, formationTypes[category]])));
+
+function FormationBoard({ rows, setRows }) {
+  const { t, label } = useLanguage();
+  const [selected, setSelected] = useState(null);
+  const place = (unit, row) => {
+    if (!units.includes(unit)) return;
+    setRows(previous => ({ ...previous, [unit]: row }));
+    setSelected(null);
+  };
+  const tile = (unit) => {
+    const [type, translatedType, range] = formationUnitTypes[unit];
+    return <button key={unit} type="button" draggable
+      aria-pressed={selected === unit}
+      onClick={() => setSelected(unit)}
+      onDragStart={event => event.dataTransfer.setData("text/plain", unit)}
+      style={{ flex: "0 0 115px", minHeight: 65, background: selected === unit ? "#29677f" : "#20384d", color: "#edf6ff", border: "1px solid #69a5c2", borderRadius: 5 }}>
+      <strong>{label(unit)}</strong><br />
+      <small>{t(type, translatedType)} · {t("Range","Обхват")} {range}</small>
+    </button>;
+  };
+
+  return <div style={{ display: "grid", gap: 6, margin: "14px 0" }}>
+    <div style={{ textAlign: "center", padding: 10, border: "2px solid #75e9ff", background: "repeating-linear-gradient(110deg,#103442 0 22px,#1c657a 22px 26px,#145068 26px 50px)" }}>
+      <strong>{t("Plasma Wall","Плазмена стена")}</strong>
+    </div>
+    {[1, 2, 3, 4].map(row => <div key={row} onDragOver={event => event.preventDefault()}
+      onDrop={event => { event.preventDefault(); place(event.dataTransfer.getData("text/plain"), row); }}
+      style={{ display: "flex", gap: 6, alignItems: "center", overflowX: "auto", padding: 6, minHeight: 68, border: "1px dashed #65859a" }}>
+      <button type="button" disabled={!selected} onClick={() => place(selected, row)}>
+        {t("Row","Ред")} {row}
+      </button>
+      {units.filter(unit => rows[unit] === row).map(tile)}
+    </div>)}
+    <p style={{ margin: "4px 0" }}>{t("Drag a unit to a row, or select the unit and click the row.","Плъзни войник до ред или го избери и натисни реда.")}</p>
+    <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6 }}>{units.map(tile)}</div>
+  </div>;
+}
 
 function Map() {
   const { t , label: localLabel} = useLanguage();
@@ -35,7 +83,7 @@ function Map() {
   const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
   const [campaignTab, setCampaignTab] = useState("active");
   const [presetSlot,setPresetSlot]=useState(1);
-  const [presetRows,setPresetRows]=useState(defaultFormation);
+  const [presetRows,setPresetRows]=useState({});
   const [formationMessage,setFormationMessage]=useState("");
   const [formationBusy,setFormationBusy]=useState(false);
   const [clock,setClock]=useState(Date.now);
@@ -688,27 +736,22 @@ function Map() {
             ].map(([tab,label]) => <button key={tab} type="button" aria-pressed={campaignTab===tab}
               style={{padding:"8px 14px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:campaignTab===tab?"#27657e":"#20384d"}}
               onClick={()=>{
-                if (tab==="formations" && campaignTab!==tab) setPresetRows(presets[presetSlot] || defaultFormation());
+                if (tab==="formations" && campaignTab!==tab) setPresetRows(presets[presetSlot] || {});
                 setCampaignTab(tab);
               }}>{label}</button>)}
           </nav>
           {campaignTab==="formations" ? <section>
             <label>{t("Edit slot","Редактирай слот")} <select value={presetSlot} onChange={event=>{
               const slot=Number(event.target.value);
-              setPresetSlot(slot);setPresetRows(presets[slot] || defaultFormation());
+              setPresetSlot(slot);setPresetRows(presets[slot] || {});
             }}>
               {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>{t("Formation","Формация")} {slot}{presets[slot]?"":localLabel(" (empty)")}</option>)}
             </select></label>{" "}
             <button onClick={()=>setPresetRows(defaultFormation())}>{t("Load Default Attack","Зареди стандартна атака")}</button>{" "}
             <button onClick={()=>setPresetRows(defaultFormation(true))}>{t("Load Default Defense","Зареди стандартна защита")}</button>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:8,margin:"12px 0"}}>
-              {units.map(unit=><label key={unit}>{localLabel(unit)}{" "}
-                <select value={presetRows[unit]} onChange={event=>setPresetRows(rows=>({...rows,[unit]:Number(event.target.value)}))}>
-                  {[1,2,3,4].map(row=><option key={row} value={row}>{t("Row","Ред")} {row}</option>)}
-                </select>
-              </label>)}
-            </div>
-            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}>{t("Save Formation","Запази формацията")}</button>
+            <FormationBoard key={presetSlot} rows={presetRows} setRows={setPresetRows} />
+            <button disabled={formationBusy || !units.every(unit => presetRows[unit])}
+              onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}>{t("Save Formation","Запази формацията")}</button>
             <p><label>{t("Active defense formation","Активна отбранителна формация")}{" "}
               <select disabled={formationBusy} value={campaign.formations?.defenseSlot || 0} onChange={event=>saveFormation({defenseSlot:Number(event.target.value)})}>
                 <option value={0}>{t("Default Defense","Стандартна защита")}</option>
