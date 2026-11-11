@@ -249,7 +249,7 @@ router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
   catch(error) { console.error(error);res.status(500).json({message:"Campaign unavailable."}); }
 });
 router.post("/alien-campaign/formations",requireSession,(req,res)=>{
-  const result=db.saveFormation(Number(req.body.userId),req.body.slot,req.body.rows,req.body.defenseSlot);
+  const result=db.saveFormation(Number(req.body.userId),req.body.slot,req.body.rows,req.body.defenseSlot,req.body.name);
   if(result.error)return res.status(400).json({message:result.error});
   res.json(result);
 });
