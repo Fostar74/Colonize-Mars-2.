@@ -183,7 +183,7 @@ const Quests = ({ onShowBase }) => {
           {loginRewards.days.map(d=>(
             <div key={d.day} className="login-day" style={{opacity:d.claimed?0.6:1,padding:10}}>
               <strong>{t("Day","Ден")} {d.day}</strong>
-              <div>{d.reward.type==="resources"?d.reward.amount+" each: Gold, Iron, Water, Solar":d.reward.type==="army"?d.reward.amount+" "+d.reward.label:d.reward.label+" (Rare)"}</div>
+              <div>{d.reward.type==="resources"?d.reward.amount+" each: Gold, Iron, Water, Solar":d.reward.type==="army"?d.reward.amount+" "+d.reward.label:(d.reward.amount || 1)+" × "+d.reward.label+" (Rare)"}</div>
               <div>{d.claimed?localLabel("✓ Collected"):d.day===loginRewards.nextDay&&!loginRewards.claimedToday?localLabel("Available"):t("Locked","Заключена")}</div>
               {d.day===loginRewards.nextDay&&!loginRewards.claimedToday&&<button disabled={loginBusy} onClick={claimLoginReward}>{loginBusy?localLabel("Claiming..."):localLabel("Claim reward")}</button>}
             </div>
