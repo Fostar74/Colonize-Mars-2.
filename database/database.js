@@ -113,6 +113,7 @@ function initializeDatabase() {
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returns_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returns_at INTEGER");
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returned_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returned_at INTEGER");
     db.exec("CREATE TABLE IF NOT EXISTS player_formations (user_id INTEGER PRIMARY KEY REFERENCES users(id), presets TEXT NOT NULL, defense_slot INTEGER NOT NULL DEFAULT 0)");
+    if(!db.prepare("PRAGMA table_info(player_formations)").all().some(c=>c.name==="names")) db.exec("ALTER TABLE player_formations ADD COLUMN names TEXT NOT NULL DEFAULT '{}' ");
     db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
     db.exec(`CREATE TABLE IF NOT EXISTS scout_missions (
@@ -1095,10 +1096,10 @@ class DatabaseManager {
     const stored = row ? JSON.parse(row.presets) : {};
     const presets = Object.fromEntries(Object.entries(stored)
       .map(([slot, formation]) => [slot, normalizeFormation(formation)]));
-    return {presets, defenseSlot:row?.defense_slot || 0};
+    return {presets, names: row?.names ? JSON.parse(row.names) : {}, defenseSlot:row?.defense_slot || 0};
   }
 
-  saveFormation(userId, slot, rows, defenseSlot) {
+  saveFormation(userId, slot, rows, defenseSlot, name) {
     return db.transaction(()=>{
       const settings=this.getFormations(userId);
       if(rows!==undefined){
@@ -1107,7 +1108,9 @@ class DatabaseManager {
           || !formationUnits.every(unit=>Number.isInteger(rows[unit])&&rows[unit]>=1&&rows[unit]<=4)){
           return {error:"Choose formation slot 1–5 and a valid row for every unit."};
         }
+        if(typeof name !== "string" || !name.trim() || name.trim().length > 32) return {error:"Enter a formation name up to 32 characters."};
         settings.presets[slot]=normalizeFormation(rows);
+        settings.names[slot]=name.trim();
       }
       if(defenseSlot!==undefined){
         if(!Number.isInteger(defenseSlot)||defenseSlot<0||defenseSlot>5||(defenseSlot!==0&&!settings.presets[defenseSlot])){
@@ -1115,9 +1118,9 @@ class DatabaseManager {
         }
         settings.defenseSlot=defenseSlot;
       }
-      db.prepare(`INSERT INTO player_formations(user_id,presets,defense_slot) VALUES (?,?,?)
-        ON CONFLICT(user_id) DO UPDATE SET presets=excluded.presets,defense_slot=excluded.defense_slot`)
-        .run(userId,JSON.stringify(settings.presets),settings.defenseSlot);
+      db.prepare(`INSERT INTO player_formations(user_id,presets,defense_slot,names) VALUES (?,?,?,?)
+        ON CONFLICT(user_id) DO UPDATE SET presets=excluded.presets,defense_slot=excluded.defense_slot,names=excluded.names`)
+        .run(userId,JSON.stringify(settings.presets),settings.defenseSlot,JSON.stringify(settings.names));
       return settings;
     })();
   }
