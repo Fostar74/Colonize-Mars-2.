@@ -33,6 +33,7 @@ function Map() {
   const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
   const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
+  const [campaignTab, setCampaignTab] = useState("active");
   const [presetSlot,setPresetSlot]=useState(1);
   const [presetRows,setPresetRows]=useState(defaultFormation);
   const [formationMessage,setFormationMessage]=useState("");
@@ -41,6 +42,10 @@ function Map() {
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
   const { search } = useLocation();
   const reconShortcut = new URLSearchParams(search).has("recon");
+  const scoutMarches = (campaign.scoutMissions || []).filter(mission =>
+    campaignTab === "active" ? !mission.returned_at : mission.report || mission.returned_at);
+  const alienMarches = (campaign.missions || []).filter(mission =>
+    campaignTab === "active" ? !mission.returned_at : mission.result || mission.returned_at);
   const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || !!campaign.supportRoutes?.length;
   useEffect(()=>{
     if(!marchHistoryOpen&&!hasRoutes)return;
@@ -671,12 +676,23 @@ function Map() {
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{localLabel(marchNotice)}</p>}
         </div>
       </div>}
-      <button onClick={()=>setMarchHistoryOpen(true)} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</button>
+      <button onClick={()=>{setCampaignTab("active");setMarchHistoryOpen(true);}} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</button>
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</h2><button onClick={()=>setMarchHistoryOpen(false)}>{t("✕ Close","✕ Затвори")}</button></div>
-          <details>
-            <summary onClick={()=>setPresetRows(presets[presetSlot] || defaultFormation())}>{t("Formations","Формации")}</summary>
+          <nav aria-label={t("Campaign sections","Раздели на кампаниите")} style={{display:"flex",flexWrap:"wrap",gap:8,margin:"16px 0"}}>
+            {[
+              ["active",t("Active Marches","Активни походи")],
+              ["reports",t("Reports","Доклади")],
+              ["formations",t("Formations","Формации")]
+            ].map(([tab,label]) => <button key={tab} type="button" aria-pressed={campaignTab===tab}
+              style={{padding:"8px 14px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:campaignTab===tab?"#27657e":"#20384d"}}
+              onClick={()=>{
+                if (tab==="formations" && campaignTab!==tab) setPresetRows(presets[presetSlot] || defaultFormation());
+                setCampaignTab(tab);
+              }}>{label}</button>)}
+          </nav>
+          {campaignTab==="formations" ? <section>
             <label>{t("Edit slot","Редактирай слот")} <select value={presetSlot} onChange={event=>{
               const slot=Number(event.target.value);
               setPresetSlot(slot);setPresetRows(presets[slot] || defaultFormation());
@@ -701,9 +717,11 @@ function Map() {
             </label></p>
             <p>{t("Defense formation is saved for future player battles.","Отбранителната формация се пази за бъдещи битки между играчи.")}</p>
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
-          </details>
-          <h3>{t("Reconnaissance","Разузнаване")}</h3>
-          {(campaign.scoutMissions||[]).map(mission=>{
+          </section> : <>
+          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length &&
+            <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
+          {(campaignTab==="reports" || scoutMarches.length>0) && <h3>{t("Reconnaissance","Разузнаване")}</h3>}
+          {scoutMarches.map(mission=>{
             const returning=clock>=mission.arrives_at;
             const remaining=Math.max(0,Math.ceil(((returning?mission.returns_at:mission.arrives_at)-clock)/1000));
             return <details key={mission.id}>
@@ -714,9 +732,9 @@ function Map() {
                 : <p>{t("Report available on arrival.","Докладът ще е достъпен при пристигане.")}</p>}
             </details>;
           })}
-          {!campaign.scoutMissions?.length && <p>{t("No scout missions yet.","Все още няма разузнавателни походи.")}</p>}
-          <h3>{t("Alien Mission Reports","Доклади от извънземни мисии")}</h3>
-        {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
+          {campaignTab==="reports" && !scoutMarches.length && <p>{t("No scout missions yet.","Все още няма разузнавателни походи.")}</p>}
+          {(campaignTab==="reports" || alienMarches.length>0) && <h3>{campaignTab==="reports" ? t("Alien Mission Reports","Доклади от извънземни мисии") : t("Alien Attacks","Атаки срещу извънземни")}</h3>}
+        {alienMarches.map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
           <summary>{t("Mission #","Мисия №")}{m.id} {t("· Alien Lv","· Извънземна база ниво")} {m.level} · {m.result ? (m.result.victory?localLabel("VICTORY"):localLabel("DEFEAT")) : localLabel("Travelling")}{!m.returned_at && ` · ${m.result ? localLabel("Returning") : localLabel("Arrival")} · ${Math.max(0,Math.ceil(((m.result ? m.returns_at : m.arrives_at)-clock)/1000))}s` }</summary>
           {m.cyberKnightLevel && <p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
           {m.formation?.length ? <ul>{m.formation.map(({unit,count,row},index)=><li key={index}>{count.toLocaleString()} {localLabel(unit)} {t("· Row","· Ред")} {row}</li>)}</ul>
@@ -728,7 +746,8 @@ function Map() {
             {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${localLabel(e.unit)} restored` : <>{localLabel(e.attacker)}: {e.units} {localLabel(e.unit)} → {localLabel(e.target)} · {e.damage} {t("damage","щети")}{Number.isInteger(e.kills) ? ` · ${e.kills} ${t("defeated","убити")}` : ""}{e.dodged ? t(" · Evaded"," · Избегнат удар") : ""}</>}</p>)}
           </details>)}</div>}
         </details>)}
-        {!(campaign.missions||[]).length&&<p>{t("No alien missions yet.","Все още няма извънземни мисии.")}</p>}
+        {campaignTab==="reports" && !alienMarches.length&&<p>{t("No alien missions yet.","Все още няма извънземни мисии.")}</p>}
+          </>}
         </div>
       </div>}
     </div>
