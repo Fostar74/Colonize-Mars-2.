@@ -1,4 +1,10 @@
 export default {
+  "Economy": "Икономика",
+  "Military": "Военни сгради",
+  "Invalid Alien Base coordinates.": "Невалидни координати на извънземната база.",
+  "Choose a valid number of scouts.": "Избери валиден брой разузнавачи.",
+  "Not enough available Rover Scouts.": "Няма достатъчно свободни разузнавателни роувъри.",
+  "Not enough Solar for reconnaissance.": "Няма достатъчно слънчева енергия за разузнаване.",
   "Players": "Играчите",
   "Alliances": "Алианси",
   "Resources": "Ресурси",

@@ -77,7 +77,13 @@ const Quests = () => {
   const [cyberKnightLevel, setCyberKnightLevel] = useState(1);
   const [gatheredMine, setGatheredMine] = useState(false);
 
-  const handleMainQuest = () => { window.dispatchEvent(new CustomEvent("open-base-panel")); };
+  const handleMainQuest = mission => {
+    if (mission.kind === "recon") {
+      window.location.hash = "/map?recon=1";
+      return;
+    }
+    window.dispatchEvent(new CustomEvent("open-base-panel",{detail:{building:mission.building}}));
+  };
   const handleLevelUpKnight = () => { setCyberKnightLevel(1); alert("Cyber Knight leveling is not available yet."); };
   const handleGatherMine = () => { setGatheredMine(false); alert("Mine gathering is not available yet."); };
 
@@ -116,7 +122,7 @@ const Quests = () => {
           {m.claimed ? <button disabled>{t("Reward claimed","Наградата е взета")}</button> :
             !m.unlocked || !m.available ? <button disabled>{m.unlocked?t("Coming soon","Очаквайте скоро"):t("Locked","Заключена")}</button> :
             m.completed ? <button disabled={claimBusy} onClick={()=>claimTutorial(m.id)}>{t("Claim reward","Вземи наградата")}</button> :
-            <button onClick={handleMainQuest}>{t("Show Me","Покажи ми")}</button>}
+            <button onClick={()=>handleMainQuest(m)}>{t("Show Me","Покажи ми")}</button>}
         </div>
       ))}
     </div>

@@ -114,6 +114,12 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS player_formations (user_id INTEGER PRIMARY KEY REFERENCES users(id), presets TEXT NOT NULL, defense_slot INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
+    db.exec(`CREATE TABLE IF NOT EXISTS scout_missions (
+      id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL,
+      quantity INTEGER NOT NULL, origin TEXT NOT NULL, target TEXT NOT NULL, launched_at INTEGER NOT NULL,
+      arrives_at INTEGER NOT NULL, returns_at INTEGER NOT NULL, report TEXT, returned_at INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS scout_missions_user ON scout_missions(user_id,id);`);
     db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
     db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
     db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
@@ -344,6 +350,7 @@ class DatabaseManager {
       const resources = JSON.parse(row.resources);
       const structures = JSON.parse(row.structures);
       const army = JSON.parse(state.army);
+      this.settleScoutMissions(userId, now, army);
       const barracksReserve = JSON.parse(state.barracks_reserve || "{}");
       const upgradeJobs=JSON.parse(state.upgrade_jobs || "[]");
       const unitUpgrades=JSON.parse(state.unit_upgrades);
@@ -1027,19 +1034,44 @@ class DatabaseManager {
     return army;
   }
 
-  scoutAlienBase(userId,level) {
-    if(!Number.isInteger(level)||level<1||level>20)return {error:"Invalid alien base level."};
+  settleScoutMissions(userId, now, army) {
+    const due = db.prepare("SELECT * FROM scout_missions WHERE user_id=? AND returned_at IS NULL AND arrives_at<=?").all(userId, now);
+    for (const mission of due) {
+      if (!mission.report) {
+        db.prepare("UPDATE scout_missions SET report=? WHERE id=?").run(JSON.stringify(this.getAlienArmy(mission.level)), mission.id);
+        db.prepare(`INSERT INTO alien_recon(user_id,level,scouted_at) VALUES (?,?,?)
+          ON CONFLICT(user_id,level) DO UPDATE SET scouted_at=MAX(scouted_at,excluded.scouted_at)`).run(userId, mission.level, mission.arrives_at);
+      }
+      if (now >= mission.returns_at) {
+        army["Rover Scout"] = (Number(army["Rover Scout"]) || 0) + mission.quantity;
+        db.prepare("UPDATE scout_missions SET returned_at=? WHERE id=?").run(now, mission.id);
+      }
+    }
+  }
+
+  scoutAlienBase(userId, level, quantity, coordinates) {
+    const target = alienBases.find(base=>base.level===level && base.x===coordinates?.x && base.y===coordinates?.y);
+    if (!target) return {error:"Invalid Alien Base coordinates."};
+    if (!Number.isSafeInteger(quantity) || quantity < 1) return {error:"Choose a valid number of scouts."};
     return db.transaction(()=>{
-      const current=this.syncGame(userId);
-      if(!current)return {error:"Player not found."};
-      if(Number(current.army["Rover Scout"]||0)<1)return {error:"Train at least one Rover Scout before reconnaissance."};
-      const discount=this.protocolBonus(userId,"Advanced Recon")/100;
-      const cost=Math.ceil(1000*(1-discount));
-      if(Number(current.resources.Solar||0)<cost)return {error:"Not enough Solar for reconnaissance."};
-      current.resources.Solar-=cost;
+      const current = this.syncGame(userId);
+      if (!current) return {error:"Player not found."};
+      if (quantity > (Number(current.army["Rover Scout"]) || 0)) return {error:"Not enough available Rover Scouts."};
+      const discount = this.protocolBonus(userId,"Advanced Recon") / 100;
+      const cost = Math.ceil(1000 * (1-discount));
+      if (Number(current.resources.Solar || 0) < cost) return {error:"Not enough Solar for reconnaissance."};
+      const launched_at = Date.now();
+      const duration = Math.max(1000, Math.ceil(60000 / (1 + this.protocolBonus(userId,"Rapid Deployment") / 100)));
+      const arrives_at = launched_at + duration;
+      const returns_at = arrives_at + duration;
+      const origin = {x:current.castle.x, y:current.castle.y};
+      current.resources.Solar -= cost;
+      current.army["Rover Scout"] -= quantity;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army), userId);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE id=(SELECT id FROM game_progress WHERE user_id=? ORDER BY id DESC LIMIT 1)").run(JSON.stringify(current.resources),userId);
-      db.prepare("INSERT INTO alien_recon(user_id,level,scouted_at) VALUES (?,?,?) ON CONFLICT(user_id,level) DO UPDATE SET scouted_at=excluded.scouted_at").run(userId,level,Date.now());
-      return {level,scoutedAt:Date.now(),cost,resources:current.resources,garrison:this.getAlienArmy(level)};
+      const inserted = db.prepare("INSERT INTO scout_missions(user_id,level,quantity,origin,target,launched_at,arrives_at,returns_at) VALUES (?,?,?,?,?,?,?,?)")
+        .run(userId,level,quantity,JSON.stringify(origin),JSON.stringify(target),launched_at,arrives_at,returns_at);
+      return {id:Number(inserted.lastInsertRowid),level,quantity,origin,target,launched_at,arrives_at,returns_at,cost};
     })();
   }
 
@@ -1074,6 +1106,10 @@ class DatabaseManager {
 
   getAlienCampaign(userId) {
     this.resolveAlienMissions(userId);
+    const current = this.syncGame(userId);
+    const scoutMissions = db.prepare("SELECT * FROM scout_missions WHERE user_id=? AND (returned_at IS NULL OR id IN (SELECT id FROM scout_missions WHERE user_id=? ORDER BY id DESC LIMIT 20)) ORDER BY id DESC")
+      .all(userId,userId).map(({origin,target,report,...mission})=>({...mission,origin:JSON.parse(origin),target:JSON.parse(target),report:report ? JSON.parse(report) : null}));
+
     const row=db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId);
     const highestDefeated=row?.highest_defeated||0;
     const nextLevel=Math.min(20,highestDefeated+1);
@@ -1091,7 +1127,7 @@ class DatabaseManager {
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {supportRoutes,formations:this.getFormations(userId),knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
+    return {scoutMissions,availableScouts:current?.army["Rover Scout"] || 0,supportRoutes,formations:this.getFormations(userId),knightBusy,scoutedLevels,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
   attackAlienBase(userId,level,selectedArmy,formation,includeCyberKnight,targetCoords) {
@@ -1242,7 +1278,7 @@ class DatabaseManager {
       else if (m.kind === "final") { progress = [...Array(22)].filter((_,i)=>claimed.has(i+1)).length; target=22; }
       const completed = progress >= target && m.kind !== "future";
       const unlocked = m.id === 1 || claimed.has(m.id-1);
-      return {...m,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
+      return {...m,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":null,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
     });
     return { missions, resources:current.resources };
   }

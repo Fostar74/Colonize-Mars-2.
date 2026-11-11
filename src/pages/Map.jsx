@@ -38,7 +38,11 @@ function Map() {
   const [formationBusy,setFormationBusy]=useState(false);
   const [clock,setClock]=useState(Date.now);
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
-  const hasRoutes=(campaign.missions||[]).some(m=>m.target&&!m.returned_at) || !!campaign.supportRoutes?.length;
+  const [scoutQuantity,setScoutQuantity]=useState(1);
+  const [scoutSending,setScoutSending]=useState(false);
+  const [scoutError,setScoutError]=useState("");
+  const reconShortcut=useRef(new URLSearchParams(window.location.hash.split("?")[1]).has("recon"));
+  const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || !!campaign.supportRoutes?.length;
   useEffect(()=>{
     if(!marchHistoryOpen&&!hasRoutes)return;
     setClock(Date.now());
@@ -154,7 +158,15 @@ function Map() {
       setCastles(previous => previous.length ? previous : [savedCastle]);
 
       if (hqIcon && !mapPlayerTarget.current) {
-        centerMapOn(savedCastle.x, savedCastle.y);
+        if (reconShortcut.current) {
+          const distance=base=>Math.hypot(base.x-savedCastle.x,base.y-savedCastle.y);
+          const nearest=alienBases.filter(base=>base.level===1).reduce((best,base)=>distance(base)<distance(best)?base:best);
+          centerMapOn(nearest.x,nearest.y);
+          setSelectedTarget({type:"alien",...nearest});
+          reconShortcut.current=false;
+        } else {
+          centerMapOn(savedCastle.x,savedCastle.y);
+        }
       }
     } catch {
       alert("Invalid castle data. Please log in again.");
@@ -321,6 +333,8 @@ function Map() {
     })).filter(hit=>hit.dist<=hitRadius).sort((a,b)=>a.dist-b.dist)[0]?.item;
     const castle=nearest(castles);
     const alien=castle?null:nearest(alienBases);
+    setScoutQuantity(1);
+    setScoutError("");
     setSelectedAlien(castle?null:alien||null);
     setMarchDraft(null);
     setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
@@ -399,13 +413,13 @@ function Map() {
   };
 
   const goToCoordinates = () => {
-    const x = parseInt(document.getElementById("xCoord").value);
-    const y = parseInt(document.getElementById("yCoord").value);
+    const x = Number(document.getElementById("xCoord").value);
+    const y = Number(document.getElementById("yCoord").value);
 
-    if (!isNaN(x) && !isNaN(y) && x >= 1 && x <= 100 && y >= 1 && y <= 100) {
+    if (Number.isInteger(x) && Number.isInteger(y) && x >= 1 && x <= 100 && y >= 1 && y <= 100) {
       centerMapOn(x, y);
     } else {
-      alert("Invalid coordinates");
+      setMapError(t("Enter whole coordinates between 1 and 100.","Въведи цели координати между 1 и 100."));
     }
   };
 
@@ -440,7 +454,11 @@ function Map() {
     }
     return [{id:"support-"+m.id,color:"#54b8ff",from:sender,to:recipient,start:m.launched_at,end:m.arrives_at}];
   });
-  const routes=[...attackRoutes,...supportRoutes].filter(route=>route.end>clock);
+  const scoutRoutes=(campaign.scoutMissions||[]).filter(m=>!m.returned_at).map(m=>({
+    id:"scout-"+m.id,color:"#f7d34e",from:clock<m.arrives_at?m.origin:m.target,to:clock<m.arrives_at?m.target:m.origin,
+    start:clock<m.arrives_at?m.launched_at:m.arrives_at,end:clock<m.arrives_at?m.arrives_at:m.returns_at,
+  }));
+  const routes=[...attackRoutes,...supportRoutes,...scoutRoutes].filter(route=>route.end>clock);
   const screenPoint=point=>({x:(point.x-.5)*tileSize+offset.x,y:(point.y-.5)*tileSize+offset.y});
 
   return (
@@ -478,7 +496,7 @@ function Map() {
           const progress=Math.max(0,Math.min(1,(clock-route.start)/Math.max(1,route.end-route.start)));
           const x=from.x+(to.x-from.x)*progress,y=from.y+(to.y-from.y)*progress;
           return <g key={route.id}>
-            <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={route.color} strokeWidth="3"/>
+            <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={route.color} strokeWidth="3" strokeDasharray={route.id.startsWith("scout-")?"7 5":undefined}/>
             <circle cx={x} cy={y} r="6" fill={route.color} stroke="white" strokeWidth="2"/>
           </g>;
         })}
@@ -562,7 +580,7 @@ function Map() {
             <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?localLabel("MARCH CONTROL"):localLabel("TARGET COMMAND")}</h2>
             <button onClick={()=>{setSelectedTarget(null);setMarchDraft(null);setMarchNotice("");}}>{t("✕ Close","✕ Затвори")}</button>
           </div>
-          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?"Alien Stronghold · Level "+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
+          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
           {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
             <strong>{t("Alien garrison · Level","Извънземен гарнизон · Ниво")} {selectedTarget.level}</strong>
             {campaign.garrisons?.[selectedTarget.level] ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:6,marginTop:8}}>
@@ -570,20 +588,34 @@ function Map() {
               <div style={{gridColumn:"1 / -1",marginTop:6,fontWeight:"bold"}}>{t("Total defenders:","Общо защитници:")} {Object.values(campaign.garrisons[selectedTarget.level]).reduce((sum,n)=>sum+n,0).toLocaleString()}</div>
             </div> : <p>{t("Loading fixed garrison data...","Зареждане на гарнизона…")}</p>}
             <p style={{fontSize:12}}>{t("Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.","По-високите нива имат по-големи и по-силни гарнизони. Крепостта на ниво 20 има извънземен владетел.")}</p>
-            <p style={{fontSize:12}}>{t("Rover Scout reconnaissance costs 1000 Solar before Quantum Intelligence discounts (10% / 30% / 50%). At least one available Rover Scout is required; it is not consumed.","Разузнаването струва 1000 слънчева енергия преди отстъпките от Квантово разузнаване (10% / 30% / 50%). Нужен е поне един разузнавателен роувър, който остава наличен.")}</p>
-            <button onClick={async()=>{
-              try{
+            <p style={{fontSize:12}}>{t("Reconnaissance costs 1,000 Solar per mission before discounts. Scouts return after reporting.","Разузнаването струва 1000 слънчева енергия на поход преди отстъпките. Роувърите се връщат след доклада.")}</p>
+            <label>{t("Scouts to send","Брой разузнавачи")}{" "}
+              <input type="number" min={1} max={campaign.availableScouts || 0} value={scoutQuantity}
+                onChange={event=>setScoutQuantity(Number(event.target.value))} />
+              {" "}{t("Available:","Налични:")} {campaign.availableScouts || 0}
+            </label>{" "}
+            <button disabled={scoutSending || !Number.isSafeInteger(scoutQuantity) || scoutQuantity<1 || scoutQuantity>(campaign.availableScouts||0)} onClick={async()=>{
+              setScoutSending(true);
+              setScoutError("");
+              try {
                 const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
-                const userId=sessionStorage.getItem("userId");
-                const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
-                const response=await fetch(base+"/alien-campaign/scout",{method:"POST",headers,body:JSON.stringify({userId,level:selectedTarget.level})});
-                const data=await response.json();
-                if(!response.ok)throw Error(data.message||"Reconnaissance failed.");
-                setMapError("Rover Scout reconnaissance complete at alien level "+data.level+". Solar spent: "+data.cost+". Mission 7 progress updated.");
-                const updated=await fetch(base+"/alien-campaign/"+userId,{headers});
-                if(updated.ok)setCampaign(await updated.json());
-              }catch(e){setMapError(e.message);}
-            }}>{t("◈ Send Rover Scout","◈ Изпрати разузнавач")}</button>
+                const response=await fetch(base+"/alien-campaign/scout",{method:"POST",
+                  headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
+                  body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:selectedTarget.level,quantity:scoutQuantity,target:{x:selectedTarget.x,y:selectedTarget.y}})});
+                const mission=await response.json();
+                if(!response.ok)throw Error(mission.message);
+                setCampaign(old=>({...old,availableScouts:Math.max(0,(old.availableScouts||0)-mission.quantity),scoutMissions:[mission,...(old.scoutMissions||[]).filter(row=>row.id!==mission.id)]}));
+                setClock(Date.now());
+                setSelectedTarget(null);
+                setMapError(t("Scouts dispatched. Track them in Campaigns.","Разузнавачите потеглиха. Проследи ги в „Кампании“."));
+              } catch(error) {
+                setScoutError(error.message);
+              } finally {
+                setScoutSending(false);
+              }
+            }}>{t("◈ Send scouts","◈ Изпрати разузнавачи")}</button>
+            {!campaign.availableScouts && <p>{t("Mobilize trained Rover Scouts from the Barracks Reserve first.","Първо мобилизирай обучените роувъри от казармения резерв.")}</p>}
+            {scoutError && <p role="alert">{localLabel(scoutError)}</p>}
             {(campaign.scoutedLevels||[]).includes(selectedTarget.level)&&<p style={{color:"#9be8b7"}}>{t("Reconnaissance completed for this stronghold.","Разузнаването на базата приключи.")}</p>}
           </div>}
           {!marchDraft && <div>
@@ -599,7 +631,7 @@ function Map() {
                   type==="Relocation"?field:false;
                 return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}
                   style={{padding:"12px 18px",background:allowed?(type==="Attack"?"#9e4437":"#205c78"):"#253441",color:allowed?"white":"#788796",border:"1px solid #50718b",borderRadius:7,cursor:allowed?"pointer":"not-allowed"}}>
-                  {type==="Attack"?"⚔ ":type==="Espionage"?"◈ ":type==="Support"?"🛡 ":""}{type}
+                  {type==="Attack"?"⚔ ":type==="Espionage"?"◈ ":type==="Support"?"🛡 ":""}{localLabel(type)}
                 </button>;
               })}
             </div>
@@ -693,6 +725,19 @@ function Map() {
             <p>{t("Defense formation is saved for future player battles.","Отбранителната формация се пази за бъдещи битки между играчи.")}</p>
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
           </details>
+          <h3>{t("Reconnaissance","Разузнаване")}</h3>
+          {(campaign.scoutMissions||[]).map(mission=>{
+            const returning=clock>=mission.arrives_at;
+            const remaining=Math.max(0,Math.ceil(((returning?mission.returns_at:mission.arrives_at)-clock)/1000));
+            return <details key={mission.id}>
+              <summary>{t("Scout mission","Разузнавателен поход")} #{mission.id} · {mission.target.x}:{mission.target.y} · {mission.quantity} × {localLabel("Rover Scout")} · {
+                mission.returned_at ? t("Returned","Върнали се") : remaining===0 ? t("Updating…","Обновяване…") : `${returning?localLabel("Returning"):localLabel("Travelling")} · ${remaining} ${t("sec.","сек.")}`
+              }</summary>
+              {mission.report ? <ul>{Object.entries(mission.report).map(([unit,count])=><li key={unit}>{localLabel(unit)}: {count}</li>)}</ul>
+                : <p>{t("Report available on arrival.","Докладът ще е достъпен при пристигане.")}</p>}
+            </details>;
+          })}
+          {!campaign.scoutMissions?.length && <p>{t("No scout missions yet.","Все още няма разузнавателни походи.")}</p>}
           <h3>{t("Alien Mission Reports","Доклади от извънземни мисии")}</h3>
         {(campaign.missions||[]).map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
           <summary>{t("Mission #","Мисия №")}{m.id} {t("· Alien Lv","· Извънземна база ниво")} {m.level} · {m.result ? (m.result.victory?localLabel("VICTORY"):localLabel("DEFEAT")) : localLabel("Travelling")}{!m.returned_at && ` · ${m.result ? localLabel("Returning") : localLabel("Arrival")} · ${Math.max(0,Math.ceil(((m.result ? m.returns_at : m.arrives_at)-clock)/1000))}s` }</summary>

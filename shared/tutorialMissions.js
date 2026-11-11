@@ -14,7 +14,7 @@ const missions = [
   {
     "id": 2,
     "title": "Първи защитници",
-    "description": "Построй Training Center ниво 1 и обучи общо 10 войници.",
+    "description": "Построй Учебен център ниво 1 и обучи общо 10 войници.",
     "titleEn": "First Defenders",
     "descriptionEn": "Build a level 1 Training Center and train a total of 10 troops.",
     "reward": 5000,
@@ -25,7 +25,7 @@ const missions = [
   {
     "id": 3,
     "title": "Военни технологии",
-    "description": "Построй Upgrade Lab до ниво 1.",
+    "description": "Построй Лаборатория за подобрения до ниво 1.",
     "titleEn": "Military Technology",
     "descriptionEn": "Build the Upgrade Lab to level 1.",
     "reward": 3500,
@@ -36,7 +36,7 @@ const missions = [
   {
     "id": 4,
     "title": "Жилищен сектор",
-    "description": "Изгради Bio-Lab до ниво 1 — първата стъпка към колонистки капацитет.",
+    "description": "Изгради Биолаборатория до ниво 1 — първата стъпка към колонистки капацитет.",
     "titleEn": "Habitation Sector",
     "descriptionEn": "Build the Bio-Lab to level 1 to begin expanding colony capacity.",
     "reward": 3500,
@@ -47,7 +47,7 @@ const missions = [
   {
     "id": 5,
     "title": "Защитени запаси",
-    "description": "Надстрой Cargo Depot до ниво 3.",
+    "description": "Надстрой Товарно депо до ниво 3.",
     "titleEn": "Protected Supplies",
     "descriptionEn": "Upgrade the Cargo Depot to level 3.",
     "reward": 5000,
@@ -69,7 +69,7 @@ const missions = [
   {
     "id": 7,
     "title": "Разузнаване на Марс",
-    "description": "Изпрати Rover Scout да разузнае извънземна база от картата.",
+    "description": "Изпрати разузнавателен роувър да разузнае извънземна база от картата.",
     "titleEn": "Mars Reconnaissance",
     "descriptionEn": "Send a Rover Scout to scout an alien base from the map.",
     "reward": 4500,
@@ -80,7 +80,7 @@ const missions = [
   {
     "id": 8,
     "title": "Мобилни сили",
-    "description": "Построй Vehicle Bay до ниво 1.",
+    "description": "Построй Хангар за машини до ниво 1.",
     "titleEn": "Mobile Forces",
     "descriptionEn": "Build the Vehicle Bay to level 1.",
     "reward": 4500,
@@ -91,7 +91,7 @@ const missions = [
   {
     "id": 9,
     "title": "Тежка техника",
-    "description": "Построй Drone Factory до ниво 1.",
+    "description": "Построй Фабрика за дронове до ниво 1.",
     "titleEn": "Heavy Machinery",
     "descriptionEn": "Build the Drone Factory to level 1.",
     "reward": 5000,
@@ -113,7 +113,7 @@ const missions = [
   {
     "id": 11,
     "title": "Голям логистичен център",
-    "description": "Надстрой Cargo Depot до ниво 6.",
+    "description": "Надстрой Товарно депо до ниво 6.",
     "titleEn": "Major Logistics Hub",
     "descriptionEn": "Upgrade the Cargo Depot to level 6.",
     "reward": 8500,
@@ -124,7 +124,7 @@ const missions = [
   {
     "id": 12,
     "title": "Елитна пехота",
-    "description": "Надстрой Training Center до ниво 4 за достъп до по-силни сухопътни части.",
+    "description": "Надстрой Учебен център до ниво 4 за достъп до по-силни сухопътни части.",
     "titleEn": "Elite Infantry",
     "descriptionEn": "Upgrade the Training Center to level 4 to unlock stronger ground troops.",
     "reward": 7000,
@@ -135,7 +135,7 @@ const missions = [
   {
     "id": 13,
     "title": "Бойна формация",
-    "description": "Създай формация с име от поне 3 символа и я запази като Default.",
+    "description": "Създай формация с име от поне 3 символа и я запази като стандартна.",
     "titleEn": "Battle Formation",
     "descriptionEn": "Create a formation with a name of at least three characters and save it as the default.",
     "reward": 6500,
@@ -146,7 +146,7 @@ const missions = [
   {
     "id": 14,
     "title": "Тактическа симулация",
-    "description": "Проведи симулация срещу разузната извънземна база в Combat Simulator.",
+    "description": "Проведи симулация срещу разузната извънземна база в Бойния симулатор.",
     "titleEn": "Tactical Simulation",
     "descriptionEn": "Run a simulation against a scouted alien base in the Combat Simulator.",
     "reward": 6500,
@@ -157,7 +157,7 @@ const missions = [
   {
     "id": 15,
     "title": "Логистика за експанзия",
-    "description": "Надстрой Cargo Depot до ниво 9.",
+    "description": "Надстрой Товарно депо до ниво 9.",
     "titleEn": "Expansion Logistics",
     "descriptionEn": "Upgrade the Cargo Depot to level 9.",
     "reward": 10000,
@@ -168,7 +168,7 @@ const missions = [
   {
     "id": 16,
     "title": "Марсианска борса",
-    "description": "Развий търговския модул на Cargo Depot до ниво 3 и отключи междубазова търговия.",
+    "description": "Развий търговския модул на Товарно депо до ниво 3 и отключи междубазова търговия.",
     "titleEn": "Martian Exchange",
     "descriptionEn": "Upgrade the Cargo Depot trade module to level 3 and unlock trade between bases.",
     "reward": 8000,
@@ -190,7 +190,7 @@ const missions = [
   {
     "id": 18,
     "title": "Усъвършенствано въоръжение",
-    "description": "Развий Upgrade Lab до ниво 4 и направи едно реално подобрение на войска.",
+    "description": "Развий Лаборатория за подобрения до ниво 4 и направи едно реално подобрение на войска.",
     "titleEn": "Advanced Weapons",
     "descriptionEn": "Upgrade the Upgrade Lab to level 4 and complete one troop upgrade.",
     "reward": 12000,
@@ -201,7 +201,7 @@ const missions = [
   {
     "id": 19,
     "title": "Планетарна защита",
-    "description": "Надстрой Defense Grid до ниво 3.",
+    "description": "Надстрой Отбранителна мрежа до ниво 3.",
     "titleEn": "Planetary Defense",
     "descriptionEn": "Upgrade the Defense Grid to level 3.",
     "reward": 10000,
@@ -212,7 +212,7 @@ const missions = [
   {
     "id": 20,
     "title": "Мобилизация",
-    "description": "Обучи поне 25 Explorer Trooper, 25 Plasma Bladesman и 25 Railgunner.",
+    "description": "Обучи поне 25 войници изследователи, 25 плазмени мечоносци и 25 релсови стрелци.",
     "titleEn": "Mobilization",
     "descriptionEn": "Train at least 25 Explorer Troopers, 25 Plasma Bladesmen and 25 Railgunners.",
     "reward": 12000,
@@ -223,7 +223,7 @@ const missions = [
   {
     "id": 21,
     "title": "Умения на командир",
-    "description": "Разпредели точки за таланти на Cyber Knight в икономика, бой или разузнаване.",
+    "description": "Разпредели точки за таланти на Киберрицаря в икономика, бой или разузнаване.",
     "titleEn": "Commander Skills",
     "descriptionEn": "Spend Cyber Knight talent points on economy, combat or reconnaissance.",
     "reward": 9000,
@@ -234,7 +234,7 @@ const missions = [
   {
     "id": 22,
     "title": "Марсиански алианс",
-    "description": "Създай или се присъедини към Alliance.",
+    "description": "Създай или се присъедини към алианс.",
     "titleEn": "Martian Alliance",
     "descriptionEn": "Create or join an alliance.",
     "reward": 12000,

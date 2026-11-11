@@ -23,7 +23,7 @@ const unitCategories = {
   Elite: ["Martian Noble", "AI General", "Gene Warrior"]
 };
 
-function StructurePanel({ showNavigation = true, onProgressChange }) {
+function StructurePanel({ showNavigation = true, onProgressChange, questBuilding }) {
   const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState("structures");
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
@@ -120,7 +120,10 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
     }));
   };
 
-  const [expandedSections, setExpandedSections] = useState({ Resources: true });
+  const [expandedSections, setExpandedSections] = useState(()=>{
+    const section=Object.keys(structureTypes).find(key=>structureTypes[key].includes(questBuilding));
+    return {[section || "Resources"]:true};
+  });
   const buildingImages = { "Gold Synthesizer": goldIcon, "Iron Driller": ironIcon, "Solar Array": solarIcon, "Water Extractor": waterIcon };
   const renderStructures = () => (
     <>
@@ -132,10 +135,10 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
           `${localLabel(resource)} ${(game.productionPerHour?.[resource] ?? 0).toLocaleString("en-US", {maximumFractionDigits: 1})}`
         ).join(" · ")}
       </p>
-      <p>{t("Construction:","Строеж:")} {game.buildingJob ? game.buildingJob.name + " (" + formatTime(remaining(game.buildingJob)) + ")" : "Idle"} {t("· Queue:","· Опашка:")} {game.queuedBuildingJob ? game.queuedBuildingJob.name + " (level " + game.queuedBuildingJob.level + ")" : "Empty"}</p>
+      <p>{t("Construction:","Строеж:")} {game.buildingJob ? localLabel(game.buildingJob.name) + " (" + formatTime(remaining(game.buildingJob)) + ")" : t("Idle","Няма")} {t("· Queue:","· Опашка:")} {game.queuedBuildingJob ? localLabel(game.queuedBuildingJob.name) + t(" (level "," (ниво ") + game.queuedBuildingJob.level + ")" : t("Empty","Празна")}</p>
       {game.buildingJob&&<div style={{padding:12,margin:"12px 0",border:"1px solid #4b96ac",borderRadius:8,background:"#183449"}}>
         <strong>{t("🤝 Alliance Construction Help","🤝 Строителна помощ от алианса")}</strong>
-        <p>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {game.buildingJob.name} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</p>
+        <p>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {localLabel(game.buildingJob.name)} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</p>
         <button className="upgrade-btn" disabled={allianceHelpBusy} onClick={requestBuildingHelp}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
         {allianceHelpMessage&&<p role="status">{allianceHelpMessage}</p>}
       </div>}
@@ -143,7 +146,7 @@ function StructurePanel({ showNavigation = true, onProgressChange }) {
         <section key={section} style={{marginBottom:16}}>
           <button type="button" onClick={() => setExpandedSections(prev => ({...prev,[section]:!prev[section]}))}
             style={{width:"100%",textAlign:"left",padding:"12px 16px",background:"#333",color:"#fff",border:"1px solid #555",cursor:"pointer",fontWeight:"bold"}}>
-            {expandedSections[section] ? "▾" : "▸"} {localLabel(section)} {section === "Resources" ? "— start here" : ""}
+            {expandedSections[section] ? "▾" : "▸"} {localLabel(section)} {section === "Resources" ? t("— start here","— започни тук") : ""}
           </button>
           {expandedSections[section] && <div className="building-grid">
             {buildings.map(name => {
