@@ -85,7 +85,7 @@ function FormationBoard({ rows, setRows }) {
       </div>
     </div>
     <p style={{ margin: "4px 0" }}>{t("Drag a unit into a cell, or select a unit and click a cell.","Плъзни войник в клетка или избери войник и натисни клетка.")}</p>
-    <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6 }}>{units.map(tile)}</div>
+    <div style={{ display: "flex", gap: 6, overflowX: "auto", paddingBottom: 6 }}>{units.filter(unit => !board[unit]).map(tile)}</div>
   </div>;
 }
 
@@ -777,8 +777,15 @@ function Map() {
             <button onClick={()=>setPresetRows(defaultFormation())}>{t("Load Default Attack","Зареди стандартна атака")}</button>{" "}
             <button onClick={()=>setPresetRows(defaultFormation(true))}>{t("Load Default Defense","Зареди стандартна защита")}</button>
             <FormationBoard key={presetSlot} rows={presetRows} setRows={setPresetRows} />
-            <button disabled={formationBusy || !units.every(unit => presetRows[unit])}
-              onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}>{t("Save Formation","Запази формацията")}</button>
+            <div style={{position:"sticky",bottom:0,zIndex:5,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"12px 8px",background:"#122334",borderTop:"1px solid #69a5c2"}}>
+              <strong>{units.filter(unit => presetRows[unit]).length} / {units.length} {t("troops placed","войници подредени")}</strong>
+              <button type="button" disabled={formationBusy || !units.every(unit => presetRows[unit])}
+                onClick={()=>saveFormation({slot:presetSlot,rows:presetRows})}
+                style={{padding:"10px 20px",fontWeight:"bold",background:"#26765e",color:"white",border:"1px solid #8fe0a5",borderRadius:6,opacity:formationBusy || !units.every(unit => presetRows[unit]) ? .7 : 1}}>
+                {formationBusy ? t("Saving…","Запазване…") : t("Save Formation","Запази формацията")}
+              </button>
+            </div>
+            {!units.every(unit => presetRows[unit]) && <p>{t("Place every troop in one of the 28 cells to save this formation.","Постави всички войници в някоя от 28-те клетки, за да запазиш формацията.")}</p>}
             <p><label>{t("Active defense formation","Активна отбранителна формация")}{" "}
               <select disabled={formationBusy} value={campaign.formations?.defenseSlot || 0} onChange={event=>saveFormation({defenseSlot:Number(event.target.value)})}>
                 <option value={0}>{t("Default Defense","Стандартна защита")}</option>
