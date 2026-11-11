@@ -66,10 +66,11 @@ function Game() {
     }catch(error){setPlayerNotice(error.message);}finally{setInviting(false);}
   };
 
+  const [questBuilding,setQuestBuilding]=useState(null);
   const onProgressChange = data => setResources(data.resources);
 
   useEffect(() => {
-    const openBase = () => { setShowQuests(false); setShowPopup(true); };
+    const openBase = event => { setQuestBuilding(event.detail?.building || null); setShowQuests(false); setShowPopup(true); };
     window.addEventListener("open-base-panel", openBase);
     return () => window.removeEventListener("open-base-panel", openBase);
   }, []);
@@ -155,7 +156,7 @@ function Game() {
       </div>
 
       <div className="castle-top-bar">
-        <button className="castle-name-btn" onClick={() => setShowPopup(true)}>
+        <button className="castle-name-btn" onClick={() => {setQuestBuilding(null);setShowPopup(true);}}>
           {language === "bg" ? castleName.replace("Headquarter","Щаб") : castleName}
         </button>
       </div>
@@ -195,7 +196,7 @@ function Game() {
           </div>
           <div className="popup-content">
             <AlliancePanel constructionHelpOnly />
-            <StructurePanel onProgressChange={onProgressChange} />
+            <StructurePanel questBuilding={questBuilding} onProgressChange={onProgressChange} />
           </div>
         </div>
       )}
