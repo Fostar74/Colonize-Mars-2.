@@ -23,7 +23,8 @@ const formationTypes = {
   Elite: ["Elite", "Елитни", 2]
 };
 const formationUnitTypes = Object.fromEntries(Object.entries(unitEconomy.categories)
-  .flatMap(([category, names]) => names.map(name => [name, formationTypes[category]])));
+  .flatMap(([category, names]) => names.map(name => [name, [...formationTypes[category]]])));
+formationUnitTypes["Mech Walker"][2] = 4;
 
 function FormationBoard({ rows, setRows }) {
   const { t, label } = useLanguage();
