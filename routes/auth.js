@@ -262,6 +262,17 @@ router.post("/battle-simulator/simulate",requireSession,(req,res)=>{
   }catch(error){console.error("Battle simulation:",error);res.status(500).json({message:"Battle simulation unavailable."});}
 });
 
+router.get("/events/:userId",requireSession,(req,res)=>{
+  try{const userId=Number(req.params.userId);res.json({saturdayInvasion:db.getSaturdayAllianceInvasion(userId),motherShip:db.getMothershipEvent(userId)});}
+  catch(error){console.error("Events:",error);res.status(500).json({message:"Events unavailable."});}
+});
+router.post("/events/saturday-invasion/start",requireSession,(req,res)=>{
+  try{
+    const result=db.startSaturdayAllianceInvasion(Number(req.body.userId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Saturday invasion:",error);res.status(500).json({message:"The event could not be started."});}
+});
 router.post("/mothership/attack",requireSession,(req,res)=>{
   try{
     const result=db.launchMothershipAttack(Number(req.body.userId),req.body.army,req.body.formation,req.body.includeCyberKnight);
