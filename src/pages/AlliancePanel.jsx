@@ -70,13 +70,13 @@ export default function AlliancePanel({supportTarget,playerAction}){
     <h4>{t("Alliance Treasury","Хазна на алианса")}</h4>
     <p>{Object.entries(state.economy?.treasury||{}).map(([k,n])=>k+": "+n).join(" · ")}</p>
     <h4>{t("Alliance Market","Пазар на алианса")}</h4>
-    {Object.entries({gold:["500 Gold",30],iron:["500 Iron",30],water:["500 Water",30],solar:["500 Solar",30],landing:["1 Mars Landing Token",100],attack:["+10% Army Attack (1h)",80],health:["+10% Army Health (1h)",80],protection:["Protection (1 day)",150]}).map(([item,[label,cost]])=><div key={item} style={{marginBottom:8}}>
+    {Object.entries({gold:["500 Gold",30],iron:["500 Iron",30],water:["500 Water",30],solar:["500 Solar",30],landing:["1 Mars Landing Token",100],attack:["+10% Army Attack (1h)",80],health:["+10% Army Health (1h)",80],protection:["Plasma Shield (24h)",150]}).map(([item,[label,cost]])=><div key={item} style={{marginBottom:8}}>
       <img src={{gold:goldIcon,iron:ironIcon,water:waterIcon,solar:solarIcon}[item] || baseIcon} alt="" width="28" height="28" style={{verticalAlign:"middle",marginRight:8}} />
       {localLabel(label)} — {cost} {t("AP","ТА")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
     </div>)}
     <p style={{fontSize:12}}>{t("Army boosts apply to Alien Base missions launched while active. Protection prevents incoming player attacks for one day. Buying an active item again extends its duration.","Бойните бонуси важат за походи срещу извънземни бази, започнати докато са активни. Протекцията спира атаките от играчи за един ден. Повторната покупка удължава срока.")}</p>
     {(state.economy?.buffs||[]).filter(buff=>buff.kind==="attack"||buff.kind==="health"||buff.kind==="protection").map(buff=><p key={buff.kind}>
-      {buff.kind==="protection"?"Protection":buff.kind==="attack"?"Attack Boost":"Health Boost"} {t("active until","активен до")} {new Date(buff.expires_at).toLocaleString()}
+      {buff.kind==="protection"?t("Plasma Shield","Плазмен щит"):buff.kind==="attack"?t("Attack Boost","Бонус атака"):t("Health Boost","Бонус здраве")} {t("active until","активен до")} {new Date(buff.expires_at).toLocaleString()}
     </p>)}
    </div>}
    {tab==="reinforcements"&&<div>
