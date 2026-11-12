@@ -886,7 +886,7 @@ function Map() {
             </details>;
           })}
           {campaignTab==="reports" && !scoutMarches.length && <p>{t("No scout missions yet.","Все още няма разузнавателни походи.")}</p>}
-          {(campaignTab==="reports" || alienMarches.length>0) && <h3>{campaignTab==="reports" ? t("Alien Mission Reports","Доклади от извънземни мисии") : t("Alien Attacks","Атаки срещу извънземни")}</h3>}
+          {(alienMarches.length>0) && <h3>{campaignTab==="reports" ? t("Alien Mission Reports","Доклади от извънземни мисии") : t("Alien Attacks","Атаки срещу извънземни")}</h3>}
         {alienMarches.map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
           <summary>{t("Mission #","Мисия №")}{m.id} {t("· Alien Lv","· Извънземна база ниво")} {m.level} · {m.result ? (m.result.victory?localLabel("VICTORY"):localLabel("DEFEAT")) : localLabel("Travelling")}{!m.returned_at && ` · ${m.result ? localLabel("Returning") : localLabel("Arrival")} · ${Math.max(0,Math.ceil(((m.result ? m.returns_at : m.arrives_at)-clock)/1000))}s` }</summary>
           {m.cyberKnightLevel && <p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
@@ -899,7 +899,26 @@ function Map() {
             {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${localLabel(e.unit)} restored` : <>{localLabel(e.attacker)}: {e.units} {localLabel(e.unit)} → {localLabel(e.target)} · {e.damage} {t("damage","щети")}{Number.isInteger(e.kills) ? ` · ${e.kills} ${t("defeated","убити")}` : ""}{e.dodged ? t(" · Evaded"," · Избегнат удар") : ""}</>}</p>)}
           </details>)}</div>}
         </details>)}
-        {campaignTab==="reports" && !alienMarches.length&&<p>{t("No alien missions yet.","Все още няма извънземни мисии.")}</p>}
+        {playerMarches.length>0 && <h3>{campaignTab==="reports"?t("Player Battle Reports","Доклади от битки с играчи"):t("Player Attacks","Атаки срещу играчи")}</h3>}
+        {playerMarches.map(m=>{
+          const outcome=m.result
+            ? m.incoming
+              ? (m.result.victory?t("Base lost","Базата е превзета"):t("Defense held","Защитата устоя"))
+              : (m.result.victory?t("Victory","Победа"):t("Defeat","Загуба"))
+            : t("Travelling","На път");
+          return <details key={"player-"+m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
+            <summary>{m.incoming?t("Incoming attack from","Вражеска атака от")+" "+m.attacker_name:t("Attack on","Атака срещу")+" "+m.defender_name} · {m.target?.x}:{m.target?.y} · {outcome}{!m.returned_at&&` · ${m.result?t("Returning","Връщане"):t("Arrival","Пристигане")} · ${Math.max(0,Math.ceil(((m.result?m.returns_at:m.arrives_at)-clock)/1000))} ${t("sec.","сек.")}`}</summary>
+            <p>{t("Sent troops:","Изпратени войници:")} {Object.entries(m.units||{}).map(([unit,count])=>`${count.toLocaleString()} ${localLabel(unit)}`).join(", ")}</p>
+            {m.formation?.length>0&&<ul>{m.formation.map((group,index)=><li key={index}>{group.count.toLocaleString()} {localLabel(group.unit)} · {t("Row","Ред")} {group.row}</li>)}</ul>}
+            {m.result&&<div>
+              <p>{t("Rounds:","Рундове:")} {m.result.rounds} · {t("Attacker survivors:","Оцелели нападатели:")} {Object.values(m.result.survivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString()} · {t("Defender survivors:","Оцелели защитници:")} {Object.values(m.result.defenderSurvivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString()}</p>
+              {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
+                {round.events.map((event,index)=><p key={index} style={{fontSize:12}}>{localLabel(event.attacker)}: {event.units} {localLabel(event.unit)} → {localLabel(event.target)} · {event.damage} {t("damage","щети")}{Number.isInteger(event.kills)?` · ${event.kills} ${t("defeated","убити")}`:""}</p>)}
+              </details>)}
+            </div>}
+          </details>;
+        })}
+        {campaignTab==="reports" && !alienMarches.length&&!playerMarches.length&&<p>{t("No battle reports yet.","Все още няма бойни доклади.")}</p>}
           </>}
         </div>
       </div>}
