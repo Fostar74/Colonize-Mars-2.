@@ -470,6 +470,7 @@ function Map() {
     openMarch(type, selectedTarget, home);
   };
   const prepareMarch = async () => {
+    setPreviewOpen(false);
     const isAlienAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="alien";
     const isPlayerAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="castle"&&!targetIsOwn;
     if(selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
@@ -808,7 +809,7 @@ function Map() {
             })}</React.Fragment>)}
           </div></div>
           <div style={{margin:"12px 0",padding:10,textAlign:"center",fontWeight:"bold",background:"#897452",color:"white"}}>{t("Target wall","Стена на целта")}</div>
-          <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {marchDraft.type==="Attack"&&marchDraft.target.type==="alien" ? localLabel("Cyber Knight required") : localLabel("Saved attack formation")}: {attackNames[marchFormationSlot]||t("Standard attack","Стандартна атака")}</p>
+          <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {t("Formation:","Формация:")} {attackNames[marchFormationSlot]||t("Standard attack","Стандартна атака")}</p>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
             <button type="button" onClick={()=>setPreviewOpen(false)}>{t("Back to army selection","Назад към избора на войници")}</button>
             <button type="button" disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Send attack","Изпрати похода")}</button>
