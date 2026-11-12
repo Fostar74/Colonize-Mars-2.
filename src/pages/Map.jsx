@@ -710,7 +710,7 @@ function Map() {
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
               {(selectedTarget?.type==="alien"?["Attack"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
                 const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
-                const allowed=type==="Attack"?!own: type==="Support"?!field&&!alien&&!own&&canSupport:
+                const allowed=type==="Attack"?(alien||(selectedTarget?.type==="castle"&&!own)): type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
                   type==="Gather"?field:
