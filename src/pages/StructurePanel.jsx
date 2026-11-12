@@ -36,6 +36,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
   const [clock, setClock] = useState(Date.now());
   const [allianceHelpMessage,setAllianceHelpMessage]=useState("");
   const [allianceHelpBusy,setAllianceHelpBusy]=useState(false);
+  const [allianceHelpRequests,setAllianceHelpRequests]=useState([]);
   const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
   const userId = sessionStorage.getItem("userId");
   const apply = (data) => {
@@ -62,6 +63,28 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
     if (!response.ok) throw new Error(data.message || "Action failed");
     return data;
   };
+  const refreshAllianceHelp = async () => {
+    try {
+      const response=await fetch(base+"/alliance/"+encodeURIComponent(userId),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
+      const data=await response.json();
+      if(response.ok)setAllianceHelpRequests(data.requests||[]);
+    } catch (_) {}
+  };
+  const eligibleAllianceHelp=allianceHelpRequests.filter(item=>!item.helped&&String(item.requester_id)!==String(userId));
+  const helpAlliance=async()=>{
+    if(!eligibleAllianceHelp.length)return;
+    setAllianceHelpBusy(true);setAllianceHelpMessage("");
+    let helped=0,failed=0;
+    for(const item of eligibleAllianceHelp){
+      try {
+        const response=await fetch(base+"/alliance/help",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId,requestId:item.id})});
+        if(response.ok)helped++;else failed++;
+      } catch (_) { failed++; }
+    }
+    setAllianceHelpMessage(`Helped ${helped} alliance construction(s)${failed?`; ${failed} failed`:""}.`);
+    await refreshAllianceHelp();
+    setAllianceHelpBusy(false);
+  };
   useEffect(() => {
     let active = true;
     const refresh = async () => {
@@ -69,6 +92,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
       try {
         const data = await request("/get-progress/" + encodeURIComponent(userId));
         if (active) apply(data);
+        if (active) await refreshAllianceHelp();
       } catch (e) { if (active) setError(e.message); }
     };
     refresh();
@@ -155,8 +179,14 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
       {game.buildingJob&&<div style={{padding:12,margin:"12px 0",border:"1px solid #4b96ac",borderRadius:8,background:"#183449"}}>
         <strong>{t("🤝 Alliance Construction Help","🤝 Строителна помощ от алианса")}</strong>
         <p>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {localLabel(game.buildingJob.name)} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</p>
-        <button className="upgrade-btn" disabled={allianceHelpBusy} onClick={requestBuildingHelp}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
-        {allianceHelpMessage&&<p role="status">{allianceHelpMessage}</p>}
+        <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+          <button className="upgrade-btn" disabled={allianceHelpBusy} onClick={requestBuildingHelp}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
+          <button type="button" disabled={allianceHelpBusy||!eligibleAllianceHelp.length} onClick={helpAlliance}
+            style={{background:eligibleAllianceHelp.length?"#bd3030":"#777",color:"#fff",border:"1px solid "+(eligibleAllianceHelp.length?"#ef7777":"#999"),borderRadius:5,padding:"8px 12px",fontWeight:"bold",cursor:eligibleAllianceHelp.length?"pointer":"not-allowed"}}>
+            {allianceHelpBusy?localLabel("Helping..."):t("Help Alliance","Помогни на алианса")}{eligibleAllianceHelp.length?` (${eligibleAllianceHelp.length})`:""}
+          </button>
+        </div>
+        {allianceHelpMessage&&<p role="status">{localLabel(allianceHelpMessage)}</p>}
       </div>}
       {Object.entries(structureTypes).map(([section, buildings]) => (
         <section key={section} ref={questSection === section && !questTarget?.building ? questDestination : null} style={{marginBottom:16}}>
