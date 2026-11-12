@@ -197,7 +197,7 @@ function Game() {
             </button>
           </div>
           <div className="popup-content">
-            <AlliancePanel constructionHelpOnly />
+            
             <StructurePanel questTarget={questTarget} onProgressChange={onProgressChange} onOpenUpgrades={() => setShowUpgradeCenter(true)} />
           </div>
         </div>
