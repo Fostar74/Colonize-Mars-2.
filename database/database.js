@@ -1210,8 +1210,8 @@ class DatabaseManager {
   resolvePlayerMissions(userId) {
     return db.transaction(()=>{
       const now=Date.now();
-      const returning=db.prepare("SELECT * FROM player_missions WHERE attacker_id=? AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?")
-        .all(userId,now);
+      const returning=db.prepare("SELECT * FROM player_missions WHERE (attacker_id=? OR defender_id=?) AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?")
+        .all(userId,userId,now);
       for(const mission of returning){
         const result=JSON.parse(mission.result||"{}");
         const current=this.syncGame(mission.attacker_id);
