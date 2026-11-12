@@ -31,6 +31,16 @@ db.pragma("busy_timeout = 5000");
 db.pragma("foreign_keys = ON");
 db.pragma("journal_mode = WAL");
 
+function writeTradeNotification(tradeId,senderId,recipientId,senderName,resources,sentAt){
+  const keys=["Gold","Iron","Water","Solar"];
+  const english=keys.filter(key=>Number(resources[key]||0)>0).map(key=>`${Number(resources[key]).toLocaleString("en-US")} ${key}`).join(", ");
+  const bulgarian=keys.filter(key=>Number(resources[key]||0)>0).map(key=>`${Number(resources[key]).toLocaleString("bg-BG")} ${{Gold:"злато",Iron:"желязо",Water:"вода",Solar:"слънчева енергия"}[key]}`).join(", ");
+  const body=`Trade received from ${senderName}: ${english}. Resources were added to your base. / Получена търговия от ${senderName}: ${bulgarian}. Ресурсите са добавени към базата ти.`;
+  const result=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
+    .run(senderId,recipientId,null,body,sentAt);
+  db.prepare("INSERT INTO trade_message_notifications(trade_id,message_id) VALUES (?,?)").run(tradeId,Number(result.lastInsertRowid));
+}
+
 function initializeDatabase() {
   try {
     console.log("Initializing database...");
@@ -179,12 +189,19 @@ function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS messages_sender ON player_messages(sender_id,id);
       CREATE INDEX IF NOT EXISTS messages_recipient ON player_messages(recipient_id,id);
       CREATE INDEX IF NOT EXISTS messages_alliance ON player_messages(alliance_id,id);`);
+    db.exec("CREATE TABLE IF NOT EXISTS trade_message_notifications (trade_id INTEGER PRIMARY KEY REFERENCES interbase_trades(id), message_id INTEGER NOT NULL REFERENCES player_messages(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_invitations (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), PRIMARY KEY(user_id, alliance_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_applications (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), applied_at INTEGER NOT NULL, PRIMARY KEY(user_id,alliance_id))");
     try { db.exec("ALTER TABLE alliance_members ADD COLUMN role TEXT NOT NULL DEFAULT 'Member'"); } catch(e) { if(!String(e.message).includes("duplicate column"))throw e; }
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help (id INTEGER PRIMARY KEY AUTOINCREMENT, requester_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, requested_at INTEGER NOT NULL, job_ends_at INTEGER NOT NULL)");
     if (!db.prepare("PRAGMA table_info(alliance_help)").all().some(c=>c.name==="job_key")) db.exec("ALTER TABLE alliance_help ADD COLUMN job_key TEXT");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_clicks (request_id INTEGER NOT NULL REFERENCES alliance_help(id), helper_id INTEGER NOT NULL REFERENCES users(id), PRIMARY KEY(request_id,helper_id))");
+    const missingTradeMessages=db.prepare(`SELECT t.id,t.sender_id,t.recipient_id,t.resources,t.traded_at,s.username AS sender_name
+      FROM interbase_trades t JOIN users s ON s.id=t.sender_id
+      LEFT JOIN trade_message_notifications n ON n.trade_id=t.id WHERE n.trade_id IS NULL ORDER BY t.id`).all();
+    for(const trade of missingTradeMessages){
+      writeTradeNotification(trade.id,trade.sender_id,trade.recipient_id,trade.sender_name,JSON.parse(trade.resources),trade.traded_at);
+    }
     db.exec("CREATE TABLE IF NOT EXISTS alliance_reinforcements (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), sender_id INTEGER NOT NULL REFERENCES users(id), recipient_id INTEGER NOT NULL REFERENCES users(id), units TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, recall_at INTEGER, returned_at INTEGER)");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_treasury (alliance_id INTEGER PRIMARY KEY REFERENCES alliances(id), resources TEXT NOT NULL DEFAULT '{}', bonuses TEXT NOT NULL DEFAULT '{}')");
     db.exec(`CREATE TABLE IF NOT EXISTS alliance_research_jobs (
@@ -1312,11 +1329,7 @@ class DatabaseManager {
       const now=Date.now();
       const inserted=db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(userId,target.id,JSON.stringify(selected),now);
       const senderName=this.findUserById(userId)?.username||"Another player";
-      const received=keys.filter(key=>selected[key]>0).map(key=>`${selected[key].toLocaleString("en-US")} ${key}`).join(", ");
-      const receivedBg=keys.filter(key=>selected[key]>0).map(key=>`${selected[key].toLocaleString("bg-BG")} ${{Gold:"злато",Iron:"желязо",Water:"вода",Solar:"слънчева енергия"}[key]}`).join(", ");
-      const notification=`Trade received from ${senderName}: ${received}. Resources were added to your base. / Получена търговия от ${senderName}: ${receivedBg}. Ресурсите са добавени към базата ти.`;
-      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
-        .run(userId,target.id,null,notification,now);
+      writeTradeNotification(Number(inserted.lastInsertRowid),userId,target.id,senderName,selected,now);
       return {tradeId:Number(inserted.lastInsertRowid),tradedAt:now,target:{username:target.username,x:target.x,y:target.y},resources:selected,capacity,remaining:sender.resources};
     })();
   }
