@@ -167,7 +167,7 @@ function Game() {
 
       <div className="bottom-bar">
         <button onClick={() => setShowCyberKnight(true)}>{t("Cyber Knight","Киберрицар")}</button>
-        <button onClick={()=>setShowTalents(true)}>{t("Player Talents","Таланти")}</button>
+        <button onClick={()=>setShowTalents(true)}>{t("Commander Protocols","Протоколи на командира")}</button>
         <button onClick={() => setShowQuests(true)}>{t("Quests","Мисии")}</button>
         <button onClick={() => (window.location.href = "/#/map?campaign=1")}>{t("Campaign","Кампании")}</button>
         <button onClick={() => (window.location.href = "/#/map")}>{t("Map","Карта")}</button>
@@ -232,7 +232,7 @@ function Game() {
         </div>
       )}
 
-      {showTalents&&<div className="popup"><div className="popup-header"><span>{t("PLAYER TALENTS","ТАЛАНТИ")}</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
+      {showTalents&&<div className="popup"><div className="popup-header"><span>{t("COMMANDER PROTOCOLS","ПРОТОКОЛИ НА КОМАНДИРА")}</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
       {showAlliance&&<div className="popup"><div className="popup-header"><span>{t("ALLIANCE","АЛИАНС")}</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction}/></div></div>}
       {showRankings&&<div className="popup"><div className="popup-header"><span>{t("RANKINGS","КЛАСИРАНЕ")}</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings playerAction={playerAction}/></div></div>}
       {messageRecipient!==null&&<div className="popup" style={{zIndex:1002}}>
@@ -260,7 +260,7 @@ function Game() {
             </button>
           </div>
           <div className="popup-content">
-            <Quests onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} />
+            <Quests onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} onOpenProtocols={() => setShowTalents(true)} />
           </div>
         </div>
       )}
