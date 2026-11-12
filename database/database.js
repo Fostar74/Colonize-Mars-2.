@@ -143,6 +143,13 @@ function initializeDatabase() {
       returned_at INTEGER,
       result TEXT
     )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS interbase_trades (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      sender_id INTEGER NOT NULL REFERENCES users(id),
+      recipient_id INTEGER NOT NULL REFERENCES users(id),
+      resources TEXT NOT NULL,
+      traded_at INTEGER NOT NULL
+    )`);
     db.exec("CREATE INDEX IF NOT EXISTS player_missions_attacker ON player_missions(attacker_id,id)");
     db.exec("CREATE INDEX IF NOT EXISTS player_missions_defender ON player_missions(defender_id,id)");
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returns_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returns_at INTEGER");
@@ -1276,6 +1283,38 @@ class DatabaseManager {
       });
   }
 
+  tradeBetweenBases(userId,resources,targetCoords) {
+    if(!targetCoords||typeof targetCoords.username!=="string")return {error:"Choose a player base on the map."};
+    const target=db.prepare(`SELECT u.id,u.username,b.x,b.y FROM users u JOIN base_positions b ON b.user_id=u.id WHERE u.username=? COLLATE NOCASE AND b.x=? AND b.y=?`)
+      .get(targetCoords.username,Number(targetCoords.x),Number(targetCoords.y));
+    if(!target)return {error:"Player base not found at those coordinates."};
+    if(target.id===userId)return {error:"Choose another player's base."};
+    if(!resources||typeof resources!=="object"||Array.isArray(resources))return {error:"Enter the resources to trade."};
+    const keys=["Gold","Iron","Water","Solar"];
+    if(Object.keys(resources).some(key=>!keys.includes(key)))return {error:"Invalid resource type."};
+    return db.transaction(()=>{
+      const sender=this.syncGame(userId);
+      const recipient=this.syncGame(target.id);
+      if(!sender||!recipient)return {error:"Player base not found."};
+      const tradeLevel=Math.min(3,Number(sender.structures["Cargo Depot"]||0));
+      if(tradeLevel<3)return {error:"Upgrade the Cargo Depot to level 3 to unlock inter-base trade."};
+      const selected=Object.fromEntries(keys.map(key=>[key,Number(resources[key]||0)]));
+      for(const key of keys){
+        if(!Number.isSafeInteger(selected[key])||selected[key]<0||selected[key]>Number(sender.resources[key]||0))return {error:"Invalid amount or insufficient resources."};
+      }
+      const total=Object.values(selected).reduce((sum,amount)=>sum+amount,0);
+      if(total<=0)return {error:"Select resources to send."};
+      const capacity=tradeLevel*5000;
+      if(total>capacity)return {error:`The trade module can carry up to ${capacity.toLocaleString()} resources per trade.`};
+      for(const key of keys){sender.resources[key]-=selected[key];recipient.resources[key]=(Number(recipient.resources[key])||0)+selected[key];}
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(sender.resources),userId);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(recipient.resources),target.id);
+      const now=Date.now();
+      const inserted=db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(userId,target.id,JSON.stringify(selected),now);
+      return {tradeId:Number(inserted.lastInsertRowid),tradedAt:now,target:{username:target.username,x:target.x,y:target.y},resources:selected,capacity,remaining:sender.resources};
+    })();
+  }
+
   getAlienCampaign(userId) {
     this.resolvePlayerMissions(userId);
     this.resolveAlienMissions(userId);
@@ -1300,7 +1339,7 @@ class DatabaseManager {
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerMissions,supportRoutes,formations:this.getFormations(userId),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
+    return {scoutMissions,playerMissions,supportRoutes,formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
   simulateAlienBattle(userId,level,selectedArmy,formation) {
@@ -1510,10 +1549,11 @@ class DatabaseManager {
         progress = (simulatorBuilt ? 1 : 0) + (hasSimulation ? 1 : 0);
         target = 2;
       }
+      else if (m.kind === "trade") { progress=Math.min(level("Cargo Depot"),m.level); target=m.level; }
       else if (m.kind === "final") { progress = previous.filter(mission => claimed.has(mission.id)).length; target = previous.length; }
       const completed = progress >= target && m.kind !== "future";
       const unlocked = index === 0 || claimed.has(previous[index - 1].id);
-      return {...m,number:index+1,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":null,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
+      return {...m,number:index+1,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":m.kind==="trade"&&progress<target?"Cargo Depot":null,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
     });
     return { missions, resources:current.resources };
   }
