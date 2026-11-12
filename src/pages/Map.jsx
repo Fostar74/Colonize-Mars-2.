@@ -128,7 +128,9 @@ function Map() {
     campaignTab === "active" ? !mission.returned_at : mission.report || mission.returned_at);
   const alienMarches = (campaign.missions || []).filter(mission =>
     campaignTab === "active" ? !mission.returned_at : mission.result || mission.returned_at);
-  const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || !!campaign.supportRoutes?.length;
+  const playerMarches = (campaign.playerMissions || []).filter(mission =>
+    campaignTab === "active" ? !mission.returned_at : mission.result || mission.returned_at);
+  const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || (campaign.playerMissions||[]).some(m=>!m.returned_at) || !!campaign.supportRoutes?.length;
   useEffect(()=>{
     if(!marchHistoryOpen&&!hasRoutes)return;
     setClock(Date.now());
@@ -550,10 +552,11 @@ function Map() {
     }
   };
 
-  const attackRoutes=(campaign.missions||[]).filter(m=>m.target&&m.origin&&!m.returned_at).map(m=>({
-    id:"attack-"+m.id,color:"#ff5252",from:m.result?m.target:m.origin,to:m.result?m.origin:m.target,
-    start:m.result?m.resolved_at:m.launched_at,end:m.result?m.returns_at:m.arrives_at,
-  }));
+  const attackRoutes=[...(campaign.missions||[]),...(campaign.playerMissions||[]).map(m=>({...m,playerBattle:true}))]
+    .filter(m=>m.target&&m.origin&&!m.returned_at).map(m=>({
+      id:(m.playerBattle?"player-attack-":"attack-")+m.id,color:"#ff5252",from:m.result?m.target:m.origin,to:m.result?m.origin:m.target,
+      start:m.result?m.resolved_at:m.launched_at,end:m.result?m.returns_at:m.arrives_at,
+    }));
   const supportRoutes=(campaign.supportRoutes||[]).flatMap(m=>{
     const sender=castles.find(base=>base.username===m.sender);
     const recipient=castles.find(base=>base.username===m.recipient);
@@ -720,7 +723,7 @@ function Map() {
               })}
             </div>
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
-            {selectedTarget?.type==="alien" ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
+            {selectedTarget?.type==="alien" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
           </div>}
           {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
           {marchDraft && <div>
@@ -745,7 +748,7 @@ function Map() {
 
               </label>)}
             </div>
-            {marchDraft.type==="Attack" && marchDraft.target.type==="alien" && <div style={{margin:"10px 0"}}>
+            {marchDraft.type==="Attack" && (marchDraft.target.type==="alien" || marchDraft.target.type==="castle") && <div style={{margin:"10px 0"}}>
               <strong>{t("Choose an attack formation","Избери формация за атака")}</strong>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
                 {[1,2,3,4,5].map(slot=>{
@@ -868,7 +871,7 @@ function Map() {
             <p>{t("The selected defense formation is used for future player battles. You can change it at any time.","Избраната формация за защита се използва в бъдещи битки с играчи. Можеш да я смениш по всяко време.")}</p>
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
           </section> : <>
-          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length &&
+          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length &&
             <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
           {(campaignTab==="reports" || scoutMarches.length>0) && <h3>{t("Reconnaissance","Разузнаване")}</h3>}
           {scoutMarches.map(mission=>{
