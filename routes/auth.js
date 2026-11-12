@@ -243,6 +243,13 @@ router.post("/inventory/withdraw",requireSession,(req,res)=>{
     res.json(result);
   } catch(e){console.error(e);res.status(500).json({message:"Withdrawal unavailable."});}
 });
+router.post("/inventory/use-item",requireSession,(req,res)=>{
+  try {
+    const result=db.useInventoryItem(Number(req.body.userId),req.body.item);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch(e){console.error(e);res.status(500).json({message:"Item use failed."});}
+});
 
 router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
   try { res.json(db.getAlienCampaign(Number(req.params.userId))); }
