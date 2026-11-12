@@ -1198,7 +1198,7 @@ class DatabaseManager {
       const now=Date.now();
       const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
       const travelMs=Math.max(1000,Math.ceil(60000/(1+speedBonus)));
-      const origin={username:current.castle.username,x:current.castle.x,y:current.castle.y};
+      const origin={username:this.findUserById(userId)?.username||current.castle.username,x:current.castle.x,y:current.castle.y};
       const destination={username:target.username,x:target.x,y:target.y};
       const armyData={units:selected,formation:battleFormation,origin,target:destination};
       const mission=db.prepare("INSERT INTO player_missions(attacker_id,defender_id,army,launched_at,arrives_at) VALUES (?,?,?,?,?)")
