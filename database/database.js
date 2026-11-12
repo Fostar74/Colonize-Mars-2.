@@ -201,6 +201,15 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS player_formations (user_id INTEGER PRIMARY KEY REFERENCES users(id), presets TEXT NOT NULL, defense_slot INTEGER NOT NULL DEFAULT 0)");
     if(!db.prepare("PRAGMA table_info(player_formations)").all().some(c=>c.name==="names")) db.exec("ALTER TABLE player_formations ADD COLUMN names TEXT NOT NULL DEFAULT '{}' ");
     db.exec("CREATE TABLE IF NOT EXISTS alien_rewards (user_id INTEGER PRIMARY KEY REFERENCES users(id), victories INTEGER NOT NULL DEFAULT 0, knight_level INTEGER NOT NULL DEFAULT 1)");
+    const alienRewardColumns=db.prepare("PRAGMA table_info(alien_rewards)").all().map(c=>c.name);
+    if(!alienRewardColumns.includes("prestige"))db.exec("ALTER TABLE alien_rewards ADD COLUMN prestige INTEGER NOT NULL DEFAULT 0");
+    if(!alienRewardColumns.includes("bonus_missions"))db.exec("ALTER TABLE alien_rewards ADD COLUMN bonus_missions INTEGER NOT NULL DEFAULT 0");
+    db.exec("UPDATE alien_rewards SET prestige=victories WHERE prestige=0 AND victories>0");
+    db.exec("CREATE TABLE IF NOT EXISTS mothership_events (id INTEGER PRIMARY KEY AUTOINCREMENT, week_start INTEGER NOT NULL UNIQUE, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, hp_remaining INTEGER NOT NULL, rewards_distributed INTEGER NOT NULL DEFAULT 0)");
+    db.exec("CREATE TABLE IF NOT EXISTS mothership_attacks (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL REFERENCES mothership_events(id), user_id INTEGER NOT NULL REFERENCES users(id), army TEXT NOT NULL, formation TEXT NOT NULL, origin_x INTEGER NOT NULL, origin_y INTEGER NOT NULL, knight_level INTEGER NOT NULL DEFAULT 1, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, damage INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL DEFAULT 0)");
+    if(!db.prepare("PRAGMA table_info(mothership_attacks)").all().some(c=>c.name==="knight_level"))db.exec("ALTER TABLE mothership_attacks ADD COLUMN knight_level INTEGER NOT NULL DEFAULT 1");
+    db.exec("CREATE INDEX IF NOT EXISTS mothership_attacks_event ON mothership_attacks(event_id,id)");
+    db.exec("CREATE TABLE IF NOT EXISTS mothership_hospital (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), event_id INTEGER NOT NULL REFERENCES mothership_events(id), wounded TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'waiting', healing_cost TEXT NOT NULL, created_at INTEGER NOT NULL, heals_at INTEGER)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
     db.exec(`CREATE TABLE IF NOT EXISTS scout_missions (
       id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL,
@@ -1416,6 +1425,190 @@ class DatabaseManager {
 
   tradeBetweenBases() { return {error:"Instant transfers are disabled. Use the marketplace offer and acceptance flow."}; }
 
+  motherWeekStart(now=Date.now()) {
+    const date=new Date(now),days=(date.getUTCDay()+6)%7;
+    return Date.UTC(date.getUTCFullYear(),date.getUTCMonth(),date.getUTCDate()-days);
+  }
+
+  mothershipHealingCost(army={}) {
+    const cost={Gold:0,Iron:0,Water:0,Solar:0};
+    for(const [unit,countRaw] of Object.entries(army)){
+      const count=Math.max(0,Number(countRaw)||0),price=unitPrice(unit);
+      if(!price||!count)continue;
+      for(const key of Object.keys(cost))cost[key]+=Math.ceil(Number(price[key]||0)*0.25*count);
+    }
+    return cost;
+  }
+
+  resolveMothershipAttacks(eventId) {
+    return db.transaction(()=>{
+    const now=Date.now();
+    const due=db.prepare("SELECT * FROM mothership_attacks WHERE event_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(eventId,now);
+    for(const attack of due){
+      const current=this.syncGame(attack.user_id),army=JSON.parse(attack.army),formation=JSON.parse(attack.formation);
+      if(!current)continue;
+      const {playerTypes}=require("../shared/combatEngine");
+      const gear=this.getUserEquipment(attack.user_id),items=Object.values(gear?.equippedItems||{});
+      let gearAttack=0,gearXp=0;
+      for(const item of items)for(const stat of item?.stats||[]){
+        if(typeof stat!=="string")continue;
+        const match=stat.match(/(\d+(?:\.\d+)?)\s*%/);if(!match)continue;
+        if(/mother ship damage|army attack|attack damage/i.test(stat))gearAttack+=Number(match[1]);
+        if(/experience gain|xp gain/i.test(stat))gearXp+=Number(match[1]);
+      }
+      const alliance=current.allianceBonuses||{},buffs=db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(attack.user_id,now);
+      const buffAttack=buffs.some(b=>b.kind==="attack")?10:0,protocols={
+        infantry:this.protocolBonus(attack.user_id,"Infantry Command"),
+        ranged:this.protocolBonus(attack.user_id,"Precision Fire"),
+        mobile:this.protocolBonus(attack.user_id,"Mobile Warfare"),
+        artillery:this.protocolBonus(attack.user_id,"Heavy Artillery")
+      };
+      let damage=0;
+      for(const group of formation){
+        const type=playerTypes[group.unit];if(!type)continue;
+        const upgrades=current.unitUpgrades?.[group.unit]||{};
+        const upgradeBonus=Math.max(0,Number(upgrades.attack||1)-1)*10+Math.max(0,Number(upgrades.defense||1)-1)*3;
+        const categoryBonus=protocols[type.category]||0;
+        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+this.protocolBonus(attack.user_id,"Battle Command")+Number(attack.knight_level||1)*2;
+        damage+=Math.max(0,Number(group.count)||0)*Number(type.attack||0)*(1+attackBonus/100);
+      }
+      damage=Math.max(1,Math.floor(damage));
+      const xp=Math.max(1,Math.floor(damage/1000*(1+gearXp/100)));
+      this.awardPlayerXp(attack.user_id,xp);
+      db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(attack.user_id);
+      db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=1+CAST((prestige+1)/20 AS INTEGER) WHERE user_id=?").run(attack.user_id);
+      const wounded=army,cost=this.mothershipHealingCost(wounded);
+      const waiting=db.prepare("SELECT * FROM mothership_hospital WHERE user_id=? AND status='waiting' ORDER BY id LIMIT 1").get(attack.user_id);
+      if(waiting){
+        const merged=JSON.parse(waiting.wounded);for(const [unit,count] of Object.entries(wounded))merged[unit]=(Number(merged[unit])||0)+Number(count||0);
+        const mergedCost=this.mothershipHealingCost(merged);
+        db.prepare("UPDATE mothership_hospital SET wounded=?,healing_cost=? WHERE id=?").run(JSON.stringify(merged),JSON.stringify(mergedCost),waiting.id);
+      }else db.prepare("INSERT INTO mothership_hospital(user_id,event_id,wounded,healing_cost,status,created_at) VALUES (?,?,?,?,?,?)")
+        .run(attack.user_id,eventId,JSON.stringify(wounded),JSON.stringify(cost),"waiting",now);
+      db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=? WHERE id=?").run(now,damage,xp,attack.id);
+      db.prepare("UPDATE mothership_events SET hp_remaining=MAX(1,hp_remaining-?) WHERE id=?").run(damage,eventId);
+    }
+    return due.length;
+    })();
+  }
+
+  settleMothershipRewards(eventId) {
+    return db.transaction(()=>{
+    const event=db.prepare("SELECT * FROM mothership_events WHERE id=?").get(eventId);
+    if(!event||event.rewards_distributed||Date.now()<event.ends_at)return;
+    if(db.prepare("SELECT 1 FROM mothership_attacks WHERE event_id=? AND resolved_at IS NULL LIMIT 1").get(eventId))return;
+    const rankings=db.prepare("SELECT a.user_id,u.username,SUM(a.damage) AS damage,COUNT(*) AS attacks FROM mothership_attacks a JOIN users u ON u.id=a.user_id WHERE a.event_id=? GROUP BY a.user_id ORDER BY damage DESC,MIN(a.launched_at),a.user_id").all(eventId);
+    const participants=db.prepare("SELECT DISTINCT user_id FROM mothership_attacks WHERE event_id=?").all(eventId);
+    for(const {user_id} of participants){
+      const current=this.syncGame(user_id);if(!current)continue;
+      const hospital=db.prepare("SELECT wounded FROM mothership_hospital WHERE user_id=? AND event_id=?").all(user_id,eventId);
+      const wounded={};for(const row of hospital)for(const [unit,count] of Object.entries(JSON.parse(row.wounded)))wounded[unit]=(Number(wounded[unit])||0)+Number(count||0);
+      const resources=this.mothershipHealingCost(wounded);
+      const rank=rankings.findIndex(row=>row.user_id===user_id)+1;
+      if(rank>0&&rank<=10){
+        const amount=rank===1?30000:rank===2?25000:rank===3?20000:10000;
+        for(const key of Object.keys(resources))resources[key]+=amount;
+        db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(user_id);
+        db.prepare("UPDATE alien_rewards SET bonus_missions=bonus_missions+20 WHERE user_id=?").run(user_id);
+        const old=this.getUserEquipment(user_id),inventory=[...(old?.gearInventory||[])],slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
+        const count=rank===1?3:rank===2?2:1;
+        for(let n=0;n<count;n++){
+          const slot=slots[(event.id+rank+n)%slots.length];
+          inventory.push({id:"mothership-"+event.id+"-"+user_id+"-"+n,name:"Mother Ship Relic",slot,rarity:rank===1?"Legendary":"Epic",level:0,stats:["Mother Ship Damage +5%","Army Attack +3%","Experience Gain +5%"],bonusSlots:3,obtainedFrom:"Mother Ship Hunt · Rank "+rank});
+        }
+        this.saveUserEquipment(user_id,old?.equippedItems||{},inventory,old?.craftingPoints||{});
+      }
+      for(const key of Object.keys(resources))current.resources[key]=(Number(current.resources[key])||0)+Math.ceil(resources[key]);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),user_id);
+      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
+        .run(user_id,user_id,null,rank>0&&rank<=10?"Mother Ship Hunt reward: global rank "+rank+"; +20 Cyber Knight missions, equipment and resources. / Награда от Лова на Майчиния кораб: глобално място "+rank+"; +20 мисии на Киберрицаря, екипировка и ресурси.":"Mother Ship Hunt consolation resources were delivered to cover hospital treatment. / Получи утешителни ресурси за лечението в болницата след Лова на Майчиния кораб.",Date.now());
+    }
+    db.prepare("UPDATE mothership_events SET rewards_distributed=1 WHERE id=? AND rewards_distributed=0").run(eventId);
+    return true;
+    })();
+  }
+
+  getMothershipEvent(userId) {
+    const now=Date.now(),weekStart=this.motherWeekStart(now),startsAt=weekStart,endsAt=weekStart+86400000;
+    db.prepare("INSERT OR IGNORE INTO mothership_events(week_start,starts_at,ends_at,hp_remaining) VALUES (?,?,?,?)").run(weekStart,startsAt,endsAt,9000000000000000);
+    const event=db.prepare("SELECT * FROM mothership_events WHERE week_start=?").get(weekStart);
+    this.resolveMothershipAttacks(event.id);
+    this.settleMothershipRewards(event.id);
+    const attacks=db.prepare("SELECT a.id,a.user_id,u.username,a.origin_x,a.origin_y,a.launched_at,a.arrives_at,a.resolved_at,a.damage,a.xp FROM mothership_attacks a JOIN users u ON u.id=a.user_id WHERE a.event_id=? ORDER BY a.id").all(event.id);
+    const rankings=db.prepare("SELECT a.user_id,u.username,SUM(a.damage) AS damage,COUNT(*) AS attacks FROM mothership_attacks a JOIN users u ON u.id=a.user_id WHERE a.event_id=? GROUP BY a.user_id ORDER BY damage DESC,MIN(a.launched_at),a.user_id LIMIT 10").all(event.id);
+    const mine=db.prepare("SELECT COUNT(*) AS count FROM mothership_attacks WHERE event_id=? AND user_id=?").get(event.id,userId).count;
+    const prestige=db.prepare("SELECT prestige FROM alien_rewards WHERE user_id=?").get(userId)?.prestige||0;
+    return {id:event.id,name:"Mother Ship Hunt",startsAt:event.starts_at,endsAt:event.ends_at,active:now>=event.starts_at&&now<event.ends_at,settled:!!event.rewards_distributed,coordinates:{x:50,y:50},hp:event.hp_remaining,attacksRemaining:Math.max(0,10-mine),myAttacks:mine,prestige,attacks,rankings,nextStartsAt:event.ends_at<=now?weekStart+7*86400000:weekStart+7*86400000};
+  }
+
+  launchMothershipAttack(userId,selectedArmy,formation,includeCyberKnight) {
+    if(includeCyberKnight!==true)return {error:"Cyber Knight must lead the Mother Ship attack."};
+    return db.transaction(()=>{
+      const now=Date.now(),weekStart=this.motherWeekStart(now),event=db.prepare("SELECT * FROM mothership_events WHERE week_start=?").get(weekStart);
+      if(!event||now<event.starts_at||now>=event.ends_at)return {error:"The Mother Ship Hunt is not active."};
+      const used=db.prepare("SELECT COUNT(*) AS n FROM mothership_attacks WHERE event_id=? AND user_id=?").get(event.id,userId).n;
+      if(used>=10)return {error:"All 10 attacks for this weekly event have been used."};
+      this.getMothershipHospital(userId);
+      if(db.prepare("SELECT 1 FROM mothership_attacks WHERE event_id=? AND user_id=? AND resolved_at IS NULL").get(event.id,userId))return {error:"Your Cyber Knight is still travelling to the Mother Ship."};
+      if(db.prepare("SELECT 1 FROM mothership_hospital WHERE user_id=? AND status IN ('waiting','healing')").get(userId))return {error:"Heal the wounded units in the hospital before sending the Cyber Knight again."};
+      if(db.prepare("SELECT 1 FROM alien_missions WHERE user_id=? AND returned_at IS NULL").get(userId))return {error:"Your Cyber Knight is already on an Alien Base mission."};
+      const current=this.syncGame(userId);if(!current)return {error:"Player not found."};
+      const {playerTypes}=require("../shared/combatEngine");
+      if(!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy))return {error:"Choose troops."};
+      const selected={};let total=0;
+      for(const [unit,count] of Object.entries(selectedArmy)){
+        if(!playerTypes[unit]||!Number.isSafeInteger(count)||count<0||count>Number(current.army[unit]||0))return {error:"Invalid troop selection."};
+        if(count){selected[unit]=count;total+=count;}
+      }
+      if(!total||total>marchLimit)return {error:"Select 1 to 50,000 troops."};
+      const rows=defaultFormation(),battleFormation=formation||Object.entries(selected).map(([unit,count])=>({unit,count,row:rows[unit]})),tally={};
+      if(!Array.isArray(battleFormation)||battleFormation.length>100)return {error:"Invalid formation."};
+      for(const group of battleFormation){
+        if(!group||!playerTypes[group.unit]||!Number.isSafeInteger(group.count)||group.count<1||!Number.isInteger(group.row)||group.row<1||group.row>4)return {error:"Invalid formation."};
+        tally[group.unit]=(tally[group.unit]||0)+group.count;
+      }
+      if(Object.keys({...selected,...tally}).some(unit=>(selected[unit]||0)!==(tally[unit]||0)))return {error:"Formation does not match selected troops."};
+      for(const [unit,count] of Object.entries(selected))current.army[unit]-=count;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      const travelMs=30000,origin={x:current.castle.x,y:current.castle.y},arrivesAt=now+travelMs;
+      const attack=db.prepare("INSERT INTO mothership_attacks(event_id,user_id,army,formation,origin_x,origin_y,knight_level,launched_at,arrives_at) VALUES (?,?,?,?,?,?,?,?,?)")
+        .run(event.id,userId,JSON.stringify(selected),JSON.stringify(battleFormation),origin.x,origin.y,Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1),now,arrivesAt);
+      return {attackId:Number(attack.lastInsertRowid),launchedAt:now,arrivesAt,origin,target:{x:50,y:50},attacksRemaining:9-used,army:selected,formation:battleFormation};
+    })();
+  }
+
+  getMothershipHospital(userId) {
+    const now=Date.now();
+    return db.transaction(()=>{
+      const complete=db.prepare("SELECT * FROM mothership_hospital WHERE user_id=? AND status='healing' AND heals_at<=?").all(userId,now);
+      for(const item of complete){
+        const current=this.syncGame(userId);if(!current)continue;
+        for(const [unit,count] of Object.entries(JSON.parse(item.wounded)))current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+        db.prepare("UPDATE mothership_hospital SET status='healed' WHERE id=?").run(item.id);
+      }
+      const entries=db.prepare("SELECT * FROM mothership_hospital WHERE user_id=? AND status IN ('waiting','healing') ORDER BY id").all(userId)
+        .map(row=>({...row,wounded:JSON.parse(row.wounded),healingCost:JSON.parse(row.healing_cost)}));
+      return {entries};
+    })();
+  }
+
+  startMothershipHealing(userId) {
+    return db.transaction(()=>{
+      const now=Date.now(),current=this.syncGame(userId);if(!current)return {error:"Player not found."};
+      const active=db.prepare("SELECT 1 FROM mothership_hospital WHERE user_id=? AND status='healing'").get(userId);
+      if(active)return {error:"A hospital treatment is already underway."};
+      const row=db.prepare("SELECT * FROM mothership_hospital WHERE user_id=? AND status='waiting' ORDER BY id LIMIT 1").get(userId);
+      if(!row)return {error:"There are no wounded troops waiting for treatment."};
+      const cost=JSON.parse(row.healing_cost);
+      for(const [key,amount] of Object.entries(cost))if(Number(current.resources[key]||0)<amount)return {error:"Not enough "+key+" for hospital treatment."};
+      for(const [key,amount] of Object.entries(cost))current.resources[key]-=amount;
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
+      db.prepare("UPDATE mothership_hospital SET status='healing',heals_at=? WHERE id=? AND status='waiting'").run(now+60000,row.id);
+      return {healsAt:now+60000,cost};
+    })();
+  }
+
   getAlienCampaign(userId) {
     this.resolvePlayerMissions(userId);
     this.resolveAlienMissions(userId);
@@ -1433,14 +1626,14 @@ class DatabaseManager {
       const march=JSON.parse(army);
       return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, origin:march.origin, target:march.target, result:result?JSON.parse(result):null};
     });
-    const knight=db.prepare("SELECT victories,knight_level FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1};
+    const knight=db.prepare("SELECT victories,knight_level,prestige,bonus_missions FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1,prestige:0,bonus_missions:0};
     const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
-    const knightBusy=missions.some(m=>m.returned_at===null);
+    const knightBusy=missions.some(m=>m.returned_at===null) || !!db.prepare("SELECT 1 FROM mothership_attacks WHERE user_id=? AND resolved_at IS NULL LIMIT 1").get(userId) || !!db.prepare("SELECT 1 FROM mothership_hospital WHERE user_id=? AND status IN ('waiting','healing') LIMIT 1").get(userId);
     const supportRoutes=db.prepare(`SELECT r.id,r.launched_at,r.arrives_at,r.recall_at,s.username AS sender,t.username AS recipient
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerMissions,supportRoutes,formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
+    return {scoutMissions,playerMissions,supportRoutes,formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,mothershipEvent:this.getMothershipEvent(userId)};
   }
 
   simulateAlienBattle(userId,level,selectedArmy,formation) {
@@ -1537,6 +1730,7 @@ class DatabaseManager {
       };
       const origin={x:current.castle.x,y:current.castle.y};
       const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,origin,target}),now,arrivesAt);
+      if(campaign.used>=20&&Number(campaign.bonusMissions||0)>0)db.prepare("UPDATE alien_rewards SET bonus_missions=MAX(0,bonus_missions-1) WHERE user_id=?").run(userId);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,origin,target,remaining:campaign.remaining-1};
     })();
   }
@@ -1573,7 +1767,7 @@ class DatabaseManager {
           this.awardPlayerXp(userId,mission.level*100);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
           db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
-          db.prepare("UPDATE alien_rewards SET victories=victories+1,knight_level=1+CAST((victories+1)/20 AS INTEGER) WHERE user_id=?").run(userId);
+          db.prepare("UPDATE alien_rewards SET victories=victories+1 WHERE user_id=?").run(userId);
           const rewardType=["equipment","crafting","resources","army"][(mission.id-1)%4];
           if(rewardType==="equipment"){
             const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
@@ -1601,6 +1795,8 @@ class DatabaseManager {
             result.reward={type:"army",unit:"Explorer Trooper",amount};
           }
         }
+        db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
+        db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=1+CAST((prestige+1)/20 AS INTEGER) WHERE user_id=?").run(userId);
         db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),Date.now()+Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100))),JSON.stringify(result),mission.id);
       }
       return due.length;

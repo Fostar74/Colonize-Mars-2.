@@ -262,6 +262,25 @@ router.post("/battle-simulator/simulate",requireSession,(req,res)=>{
   }catch(error){console.error("Battle simulation:",error);res.status(500).json({message:"Battle simulation unavailable."});}
 });
 
+router.post("/mothership/attack",requireSession,(req,res)=>{
+  try{
+    const result=db.launchMothershipAttack(Number(req.body.userId),req.body.army,req.body.formation,req.body.includeCyberKnight);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Mother Ship attack:",error);res.status(500).json({message:"Mother Ship attack could not be launched."});}
+});
+router.get("/mothership/hospital/:userId",requireSession,(req,res)=>{
+  try{res.json(db.getMothershipHospital(Number(req.params.userId)));}
+  catch(error){console.error("Mother Ship hospital:",error);res.status(500).json({message:"Hospital unavailable."});}
+});
+router.post("/mothership/hospital/heal",requireSession,(req,res)=>{
+  try{
+    const result=db.startMothershipHealing(Number(req.body.userId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Hospital healing:",error);res.status(500).json({message:"Hospital treatment could not start."});}
+});
+
 router.post("/alien-campaign/attack",requireSession,(req,res)=>{
   try {
     const result=db.attackAlienBase(Number(req.body.userId),Number(req.body.level),req.body.army,req.body.formation,req.body.includeCyberKnight,req.body.target);
