@@ -112,6 +112,55 @@ function MothershipHospitalPanel() {
   </div>;
 }
 
+function EventsPanel() {
+  const {language,t}=useLanguage();
+  const [data,setData]=useState(null);
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState("");
+  const userId=sessionStorage.getItem("userId");
+  const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+  const headers={Authorization:"Bearer "+sessionStorage.getItem("authToken"),"Content-Type":"application/json"};
+  const refresh=async()=>{
+    const response=await fetch(api+"/events/"+encodeURIComponent(userId),{headers,cache:"no-store"});
+    const result=await response.json();
+    if(!response.ok)throw Error(result.message||"Events unavailable.");
+    setData(result.saturdayInvasion);
+  };
+  useEffect(()=>{refresh().catch(error=>setNotice(error.message));const timer=setInterval(()=>refresh().catch(()=>{}),10000);return()=>clearInterval(timer);},[]);
+  const start=async()=>{
+    setBusy(true);setNotice("");
+    try{
+      const response=await fetch(api+"/events/saturday-invasion/start",{method:"POST",headers,body:JSON.stringify({userId:Number(userId)})});
+      const result=await response.json();
+      if(!response.ok)throw Error(result.message||"Could not start the event.");
+      setNotice(t("Event started for your alliance.","Събитието е стартирано за алианса."));
+      await refresh();
+    }catch(error){setNotice(error.message);}
+    finally{setBusy(false);}
+  };
+  const date=value=>value?new Date(value).toLocaleString(language==="bg"?"bg-BG":"en-US",{dateStyle:"medium",timeStyle:"short",timeZone:"UTC"})+" UTC":"—";
+  if(!data)return <div><p>{notice||t("Loading events…","Зареждане на събитията…")}</p></div>;
+  return <div style={{color:"#eef6ff",padding:12,minWidth:320}}>
+    <h2>{t("Saturday Alien Invasion","Съботна извънземна инвазия")}</h2>
+    <p>{data.active?t("Event is active","Събитието е активно"):data.settled?t("Event results are final","Класирането е окончателно"):t("Scheduled for","Насрочено за")} {date(data.startsAt)} – {date(data.endsAt)}</p>
+    <p>{t("Each alliance leader can start one run on Saturday. Alien waves arrive every 30 seconds and grow stronger. Eliminated players receive no more attacks.","Лидерът на всеки алианс може да стартира едно участие в събота. Извънземните вълни пристигат през 30 секунди и стават по-силни. Елиминираните играчи повече не са атакувани.")}</p>
+    {data.alliance&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
+      <strong>{data.alliance.name}</strong>
+      {data.alliance.run&&<span> · {data.alliance.run.status==="active"?t("Participating","Участва"):t("Run complete","Участието приключи")}</span>}
+      {data.alliance.canStart&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Starting…","Стартиране…"):t("Start for my alliance","Стартирай за алианса")}</button></div>}
+      {data.myResult&&<p>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString()} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>}
+      {!data.alliance&&<p>{t("Join an alliance to participate.","Присъедини се към алианс, за да участваш.")}</p>}
+      {data.alliance&&!data.alliance.run&&!data.alliance.canStart&&<p>{t("Only the alliance leader can start the event, and only during Saturday UTC.","Само лидерът на алианса може да стартира събитието в събота по UTC.")}</p>}
+    </div>}
+    <h3>{t("Alliance standings","Класиране на алиансите")}</h3>
+    {data.alliances.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.alliances.map(row=><tr key={row.id}><td>{row.rank}</td><td>{row.name}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.status==="active"?t("Active","Активен"):t("Complete","Приключил")}</td></tr>)}</tbody></table></div>:<p>{t("No alliances have started yet.","Все още няма стартирали алианси.")}</p>}
+    <h3>{t("Individual standings","Индивидуално класиране")}</h3>
+    {data.players.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.players.slice(0,20).map(row=><tr key={row.userId}><td>{row.rank}</td><td>{row.username}</td><td>{row.alliance}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.eliminated?t("Eliminated","Елиминиран"):t("Active","Активен")}</td></tr>)}</tbody></table></div>:<p>{t("No scores yet.","Все още няма точки.")}</p>}
+    <p>{t("Top three alliances receive resources for each participating member:","Първите три алианса получават ресурси за всеки участвал член:")} 1) 50,000 · 2) 30,000 · 3) 15,000 {t("of each resource.","от всеки ресурс.")}</p>
+    {notice&&<p role="status">{notice}</p>}
+  </div>;
+}
+
 function Game() {
   const {language, choose, t, label: localLabel} = useLanguage();
   const [showUpgradeCenter, setShowUpgradeCenter] = useState(false);
@@ -124,6 +173,7 @@ function Game() {
   const [showQuests, setShowQuests] = useState(false);
   const [showAlliance,setShowAlliance]=useState(false);
   const [showRankings,setShowRankings]=useState(false);
+  const [showEvents,setShowEvents]=useState(false);
   const [showTalents,setShowTalents]=useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showMarket,setShowMarket]=useState(()=>window.location.hash.includes("market=1"));
@@ -272,6 +322,7 @@ function Game() {
         <button onClick={()=>setShowTalents(true)}>{t("Commander Protocols","Протоколи на командира")}</button>
         <button onClick={() => setShowQuests(true)}>{t("Quests","Мисии")}</button>
         <button onClick={() => (window.location.href = "/#/map?campaign=1")}>{t("Campaign","Кампании")}</button>
+        <button onClick={()=>setShowEvents(true)}>{t("Events","Събития")}</button>
         <button onClick={()=>setShowMarket(true)}>{t("Market","Пазар")}</button>
         <button onClick={()=>setShowHospital(true)}>{t("Hospital","Болница")}</button>
         <button onClick={() => (window.location.href = "/#/map")}>{t("Map","Карта")}</button>
@@ -339,6 +390,7 @@ function Game() {
       )}
 
       {showTalents&&<div className="popup"><div className="popup-header"><span>{t("COMMANDER PROTOCOLS","ПРОТОКОЛИ НА КОМАНДИРА")}</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
+      {showEvents&&<div className="popup" style={{zIndex:1004}}><div className="popup-header"><span>{t("EVENTS","СЪБИТИЯ")}</span><button className="close-button" onClick={()=>setShowEvents(false)}>X</button></div><div className="popup-content"><EventsPanel/></div></div>}
       {showAlliance&&<div className="popup"><div className="popup-header"><span>{t("ALLIANCE","АЛИАНС")}</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction}/></div></div>}
       {showRankings&&<div className="popup"><div className="popup-header"><span>{t("RANKINGS","КЛАСИРАНЕ")}</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings playerAction={playerAction}/></div></div>}
       {messageRecipient!==null&&<div className="popup" style={{zIndex:1002}}>
