@@ -87,7 +87,8 @@ const Quests = ({ onShowBase }) => {
       return;
     }
     if (mission.kind === "trade") {
-      onShowBase({ building: "Cargo Depot" });
+      if (Number(mission.tradeModuleLevel || 0) < 3) onShowBase({ building: "Cargo Depot" });
+      else window.location.hash = "/map";
       return;
     }
     if (mission.kind === "recon") {
@@ -135,6 +136,10 @@ const Quests = ({ onShowBase }) => {
             m.progress + " / " + m.target}</div>
           {m.kind==="mines" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
             {productionBuildings.map(name => {const level=Number(structures[name]?.level ?? structures[name] ?? 0);return <div key={name}>{level>=m.target?"✓ ":"○ "}{localLabel(name)}{t(": Level",": Ниво")} {level} / {m.target}</div>;})}
+          </div>}
+          {m.kind==="trade" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
+            <div>{Number(m.tradeModuleLevel||0)>=3?"✓ ":"○ "}{t("Cargo Depot trade module", "Търговски модул на Товарното депо")}{t(": Level",": Ниво")} {Number(m.tradeModuleLevel||0)} / 3</div>
+            <div>{m.tradeSent?"✓ ":"○ "}{t("Send one resource trade to another player", "Изпрати една сделка с ресурси към друг играч")}</div>
           </div>}
           <div className="quest-rewards">{t("Reward","Награда")}: {m.reward.toLocaleString()} {t("each of Gold, Iron, Water and Solar + 100 Wheel Tokens","от всеки ресурс: злато, желязо, вода и слънчева енергия + 100 жетона")}</div>
           {m.claimed ? <button disabled>{t("Reward claimed","Наградата е взета")}</button> :
