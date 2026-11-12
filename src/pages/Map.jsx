@@ -491,7 +491,6 @@ function Map() {
   const attackNames=formationSettings.attackNames || formationSettings.names || {};
   const defensePresets=formationSettings.defensePresets || {};
   const defenseNames=formationSettings.defenseNames || {};
-  const presets=attackPresets;
   const saveFormation=async payload=>{
     setFormationBusy(true);
     setFormationMessage("");
@@ -718,6 +717,18 @@ function Map() {
             {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
             </>}
             <p>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
+            {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
+            {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
+              {units.map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
+                <strong>{localLabel(unit)}</strong>
+                <span>{t("Available:","Налични:")} {Number(availableArmy[unit]||0)}</span>
+                <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
+                  onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
+                <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>{t("MAX","МАКС.")}</button>
+
+              </label>)}
+            </div>
             {marchDraft.type==="Attack" && marchDraft.target.type==="alien" && <div style={{margin:"10px 0"}}>
               <strong>{t("Choose an attack formation","Избери формация за атака")}</strong>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
@@ -737,18 +748,6 @@ function Map() {
               {!Object.keys(attackPresets).length && <p>{t("Save an attack formation in Campaigns → Formations first.","Първо запази формация за атака в Кампании → Формации.")}</p>}
             </div>
             }
-            {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
-            {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
-              {units.map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
-                <strong>{localLabel(unit)}</strong>
-                <span>{t("Available:","Налични:")} {Number(availableArmy[unit]||0)}</span>
-                <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
-                  onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
-                <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>{t("MAX","МАКС.")}</button>
-
-              </label>)}
-            </div>
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>{
                 let remaining=marchLimit;
