@@ -73,6 +73,45 @@ function MarketPanel() {
   </div>;
 }
 
+function MothershipHospitalPanel() {
+  const {t,label}=useLanguage();
+  const [entries,setEntries]=useState([]);
+  const [notice,setNotice]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [tick,setTick]=useState(Date.now());
+  const userId=sessionStorage.getItem("userId");
+  const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+  const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
+  const refresh=async()=>{
+    const r=await fetch(api+"/mothership/hospital/"+encodeURIComponent(userId),{headers,cache:"no-store"});
+    const d=await r.json();if(!r.ok)throw Error(d.message||"Hospital unavailable.");setEntries(d.entries||[]);
+  };
+  useEffect(()=>{refresh().catch(e=>setNotice(e.message));const timer=setInterval(()=>{setTick(Date.now());refresh().catch(()=>{});},5000);return()=>clearInterval(timer);},[]);
+  const start=async()=>{
+    setBusy(true);setNotice("");
+    try{
+      const r=await fetch(api+"/mothership/hospital/heal",{method:"POST",headers,body:JSON.stringify({userId})});
+      const d=await r.json();if(!r.ok)throw Error(d.message||"Could not start treatment.");
+      await refresh();setNotice(t("Treatment started. Your troops will be ready in about one minute.","Лечението започна. Войниците ще са готови след около минута."));
+      window.dispatchEvent(new Event("game-progress-updated"));
+    }catch(e){setNotice(e.message);}finally{setBusy(false);}
+  };
+  const waiting=entries.find(e=>e.status==="waiting"),active=entries.find(e=>e.status==="healing");
+  const fmt=o=>Object.entries(o||{}).filter(([,n])=>Number(n)>0).map(([k,n])=>Number(n).toLocaleString()+" "+label(k)).join(" · ")||"0";
+  return <div style={{color:"#f5f0e6"}}>
+    <p>{t("Units from Mother Ship attacks are wounded, never lost. Hospital treatment costs resources and takes 60 seconds.","Войниците от атаките срещу Майчиния кораб се раняват, но не се губят. Лечението в болницата струва ресурси и трае 60 секунди.")}</p>
+    {!entries.length&&<p>{t("No wounded troops.","Няма ранени войници.")}</p>}
+    {entries.map(entry=><article key={entry.id} style={{margin:"10px 0",padding:12,background:"#20384d",border:"1px solid #668196",borderRadius:8}}>
+      <strong>{entry.status==="healing"?t("In treatment","В лечение"):t("Waiting for treatment","Чакат лечение")}</strong>
+      <div>{t("Wounded units:","Ранени войници:")} {fmt(entry.wounded)}</div>
+      <div>{t("Treatment cost:","Цена на лечението:")} {fmt(entry.healingCost)}</div>
+      {entry.status==="healing"&&<div>{t("Time remaining:","Оставащо време:")} {Math.max(0,Math.ceil((Number(entry.heals_at)-tick)/1000))} {t("seconds","секунди")}</div>}
+    </article>)}
+    {waiting&&<button type="button" disabled={busy||!!active} onClick={start}>{busy?t("Starting…","Започване…"):t("Treat wounded · 1 minute","Лекувай ранените · 1 минута")}</button>}
+    {notice&&<p role="status">{notice}</p>}
+  </div>;
+}
+
 function Game() {
   const {language, choose, t, label: localLabel} = useLanguage();
   const [showUpgradeCenter, setShowUpgradeCenter] = useState(false);
@@ -88,6 +127,7 @@ function Game() {
   const [showTalents,setShowTalents]=useState(false);
   const [showInventory, setShowInventory] = useState(false);
   const [showMarket,setShowMarket]=useState(()=>window.location.hash.includes("market=1"));
+  const [showHospital,setShowHospital]=useState(()=>window.location.hash.includes("hospital=1"));
   const [messageRecipient,setMessageRecipient]=useState(null);
   const [supportTarget,setSupportTarget]=useState(null);
   const [playerMenu,setPlayerMenu]=useState(null);
@@ -233,6 +273,7 @@ function Game() {
         <button onClick={() => setShowQuests(true)}>{t("Quests","Мисии")}</button>
         <button onClick={() => (window.location.href = "/#/map?campaign=1")}>{t("Campaign","Кампании")}</button>
         <button onClick={()=>setShowMarket(true)}>{t("Market","Пазар")}</button>
+        <button onClick={()=>setShowHospital(true)}>{t("Hospital","Болница")}</button>
         <button onClick={() => (window.location.href = "/#/map")}>{t("Map","Карта")}</button>
         <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
@@ -288,6 +329,7 @@ function Game() {
         <CyberKnightPanel onClose={() => setShowCyberKnight(false)} />
       )}
 
+      {showHospital&&<div className="popup" style={{zIndex:1006}}><div className="popup-header"><span>{t("HOSPITAL","БОЛНИЦА")}</span><button className="close-button" onClick={()=>setShowHospital(false)}>X</button></div><div className="popup-content"><MothershipHospitalPanel/></div></div>}
       {showMarket&&<div className="popup" style={{zIndex:1005}}><div className="popup-header"><span>{t("INTERBASE MARKET","МЕЖДУБАЗОВ ПАЗАР")}</span><button className="close-button" onClick={()=>setShowMarket(false)}>X</button></div><div className="popup-content"><MarketPanel/></div></div>}
       {showInventory && (
         <div className="popup">
