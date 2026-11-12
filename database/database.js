@@ -161,7 +161,8 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS tutorial_claims (user_id INTEGER NOT NULL REFERENCES users(id), mission_id INTEGER NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, mission_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alien_campaign (user_id INTEGER PRIMARY KEY REFERENCES users(id), highest_defeated INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS daily_login_claims (user_id INTEGER NOT NULL REFERENCES users(id), day INTEGER NOT NULL CHECK(day BETWEEN 1 AND 30), claimed_date TEXT NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, day), UNIQUE(user_id, claimed_date))");
-    db.exec("CREATE TABLE IF NOT EXISTS inventory_reserves (user_id INTEGER PRIMARY KEY REFERENCES users(id), resources TEXT NOT NULL, army TEXT NOT NULL)");
+    db.exec("CREATE TABLE IF NOT EXISTS inventory_reserves (user_id INTEGER PRIMARY KEY REFERENCES users(id), resources TEXT NOT NULL, army TEXT NOT NULL, items TEXT NOT NULL DEFAULT '{}')");
+    if (!db.prepare("PRAGMA table_info(inventory_reserves)").all().some(column => column.name === "items")) db.exec("ALTER TABLE inventory_reserves ADD COLUMN items TEXT NOT NULL DEFAULT '{}'");
     db.exec("CREATE TABLE IF NOT EXISTS alien_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, army TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, result TEXT)");
     db.exec(`CREATE TABLE IF NOT EXISTS battle_simulations (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -996,19 +997,35 @@ class DatabaseManager {
       if(!member)return {error:"Join an alliance first."};
       const e=this.allianceEconomy(userId,member.alliance_id);
       if(e.points<product.cost)return {error:"Not enough alliance points."};
+      const inventory=this.getInventory(userId);
       if(["gold","iron","water","solar"].includes(item)){
         const resource=item[0].toUpperCase()+item.slice(1);
-        const progress=this.syncGame(userId);if(!progress)return {error:"Player not found."};
-        progress.resources[resource]=(progress.resources[resource]||0)+500;
-        db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
-      }else if(item==="landing"){this.creditTokens(userId,1);}
+        inventory.resources[resource]=(inventory.resources[resource]||0)+500;
+        db.prepare("UPDATE inventory_reserves SET resources=? WHERE user_id=?").run(JSON.stringify(inventory.resources),userId);
+      }else{
+        inventory.items[item]=(inventory.items[item]||0)+1;
+        db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
+      }
+      db.prepare("UPDATE alliance_wallets SET points=points-? WHERE user_id=?").run(product.cost,userId);
+      return {item,inventory:this.getInventory(userId),economy:this.allianceEconomy(userId,member.alliance_id)};
+    })();
+  }
+  useInventoryItem(userId,item){
+    const catalog={landing:"token",attack:"buff",health:"buff",protection:"buff"};
+    if(!Object.hasOwn(catalog,item))return {error:"This item cannot be used."};
+    return db.transaction(()=>{
+      const inventory=this.getInventory(userId);
+      if(Number(inventory.items[item]||0)<1)return {error:"You do not have this item."};
+      inventory.items[item]-=1;
+      if(inventory.items[item]<=0)delete inventory.items[item];
+      db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
+      if(item==="landing")this.creditTokens(userId,1);
       else{
         const duration=item==="protection"?86400000:3600000;
         db.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,?,?) ON CONFLICT(user_id,kind) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at-?)+?")
           .run(userId,item,Date.now()+duration,duration,duration);
       }
-      db.prepare("UPDATE alliance_wallets SET points=points-? WHERE user_id=?").run(product.cost,userId);
-      return {item,economy:this.allianceEconomy(userId,member.alliance_id)};
+      return {item,inventory:this.getInventory(userId)};
     })();
   }
   allianceState(userId){
@@ -1140,9 +1157,9 @@ class DatabaseManager {
   }
 
   getInventory(userId) {
-    db.prepare("INSERT OR IGNORE INTO inventory_reserves(user_id,resources,army) VALUES (?,?,?)").run(userId,JSON.stringify({Gold:10000,Iron:10000,Water:10000,Solar:10000}),"{}");
-    const row=db.prepare("SELECT resources,army FROM inventory_reserves WHERE user_id=?").get(userId);
-    return {resources:JSON.parse(row.resources),army:JSON.parse(row.army),boosters:{universalForge:this.getUserEquipment(userId)?.craftingPoints?.Universal || 0}};
+    db.prepare("INSERT OR IGNORE INTO inventory_reserves(user_id,resources,army,items) VALUES (?,?,?,?)").run(userId,JSON.stringify({Gold:10000,Iron:10000,Water:10000,Solar:10000}),"{}","{}");
+    const row=db.prepare("SELECT resources,army,items FROM inventory_reserves WHERE user_id=?").get(userId);
+    return {resources:JSON.parse(row.resources),army:JSON.parse(row.army),items:JSON.parse(row.items||"{}"),boosters:{universalForge:this.getUserEquipment(userId)?.craftingPoints?.Universal || 0}};
   }
 
   withdrawInventory(userId,kind,name,amount) {
@@ -1256,7 +1273,7 @@ class DatabaseManager {
     if (!target) return {error:"Player base not found at those coordinates."};
     if (target.id === userId) return {error:"You cannot attack your own base."};
     if(db.prepare("SELECT 1 FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(target.id,Date.now()))
-      return {error:"This player is protected."};
+      return {error:"This player is protected by an active 24-hour Plasma Shield."};
     return db.transaction(()=>{
       const current=this.syncGame(userId);
       if (!current) return {error:"Player not found."};
@@ -2176,10 +2193,12 @@ class DatabaseManager {
 
   getPublicBases() {
     return db.prepare(`
-      SELECT u.username, b.x, b.y
+      SELECT u.username, b.x, b.y,
+        (SELECT MAX(expires_at) FROM alliance_market_buffs shield
+         WHERE shield.user_id=u.id AND shield.kind='protection' AND shield.expires_at>?) AS protected_until
       FROM base_positions b JOIN users u ON u.id = b.user_id
       ORDER BY u.id
-    `).all();
+    `).all(Date.now());
   }
 
   getAllUsers() {
