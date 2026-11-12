@@ -1493,14 +1493,15 @@ class DatabaseManager {
   }
 
   settleMothershipRewards(eventId) {
+    return db.transaction(()=>{
     const event=db.prepare("SELECT * FROM mothership_events WHERE id=?").get(eventId);
     if(!event||event.rewards_distributed||Date.now()<event.ends_at)return;
     if(db.prepare("SELECT 1 FROM mothership_attacks WHERE event_id=? AND resolved_at IS NULL LIMIT 1").get(eventId))return;
-    const rankings=db.prepare("SELECT a.user_id,u.username,SUM(a.damage) AS damage,COUNT(*) AS attacks FROM mothership_attacks a JOIN users u ON u.id=a.user_id WHERE a.event_id=? GROUP BY a.user_id ORDER BY damage DESC,MIN(a.launched_at),a.user_id LIMIT 1000").all(eventId);
+    const rankings=db.prepare("SELECT a.user_id,u.username,SUM(a.damage) AS damage,COUNT(*) AS attacks FROM mothership_attacks a JOIN users u ON u.id=a.user_id WHERE a.event_id=? GROUP BY a.user_id ORDER BY damage DESC,MIN(a.launched_at),a.user_id").all(eventId);
     const participants=db.prepare("SELECT DISTINCT user_id FROM mothership_attacks WHERE event_id=?").all(eventId);
     for(const {user_id} of participants){
       const current=this.syncGame(user_id);if(!current)continue;
-      const hospital=db.prepare("SELECT wounded FROM mothership_hospital WHERE user_id=? AND event_id=? AND status IN ('waiting','healing')").all(user_id,eventId);
+      const hospital=db.prepare("SELECT wounded FROM mothership_hospital WHERE user_id=? AND event_id=?").all(user_id,eventId);
       const wounded={};for(const row of hospital)for(const [unit,count] of Object.entries(JSON.parse(row.wounded)))wounded[unit]=(Number(wounded[unit])||0)+Number(count||0);
       const resources=this.mothershipHealingCost(wounded);
       const rank=rankings.findIndex(row=>row.user_id===user_id)+1;
@@ -1523,6 +1524,8 @@ class DatabaseManager {
         .run(user_id,user_id,null,rank>0&&rank<=10?"Mother Ship Hunt reward: global rank "+rank+"; +20 Cyber Knight missions, equipment and resources. / Награда от Лова на Майчиния кораб: глобално място "+rank+"; +20 мисии на Киберрицаря, екипировка и ресурси.":"Mother Ship Hunt consolation resources were delivered to cover hospital treatment. / Получи утешителни ресурси за лечението в болницата след Лова на Майчиния кораб.",Date.now());
     }
     db.prepare("UPDATE mothership_events SET rewards_distributed=1 WHERE id=? AND rewards_distributed=0").run(eventId);
+    return true;
+    })();
   }
 
   getMothershipEvent(userId) {
@@ -1538,7 +1541,8 @@ class DatabaseManager {
     return {id:event.id,name:"Mother Ship Hunt",startsAt:event.starts_at,endsAt:event.ends_at,active:now>=event.starts_at&&now<event.ends_at,settled:!!event.rewards_distributed,coordinates:{x:50,y:50},hp:event.hp_remaining,attacksRemaining:Math.max(0,10-mine),myAttacks:mine,prestige,attacks,rankings,nextStartsAt:event.ends_at<=now?weekStart+7*86400000:weekStart+7*86400000};
   }
 
-  launchMothershipAttack(userId,selectedArmy,formation) {
+  launchMothershipAttack(userId,selectedArmy,formation,includeCyberKnight) {
+    if(includeCyberKnight!==true)return {error:"Cyber Knight must lead the Mother Ship attack."};
     return db.transaction(()=>{
       const now=Date.now(),weekStart=this.motherWeekStart(now),event=db.prepare("SELECT * FROM mothership_events WHERE week_start=?").get(weekStart);
       if(!event||now<event.starts_at||now>=event.ends_at)return {error:"The Mother Ship Hunt is not active."};
@@ -1624,7 +1628,7 @@ class DatabaseManager {
     });
     const knight=db.prepare("SELECT victories,knight_level,prestige,bonus_missions FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1,prestige:0,bonus_missions:0};
     const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
-    const knightBusy=missions.some(m=>m.returned_at===null);
+    const knightBusy=missions.some(m=>m.returned_at===null) || !!db.prepare("SELECT 1 FROM mothership_attacks WHERE user_id=? AND resolved_at IS NULL LIMIT 1").get(userId) || !!db.prepare("SELECT 1 FROM mothership_hospital WHERE user_id=? AND status IN ('waiting','healing') LIMIT 1").get(userId);
     const supportRoutes=db.prepare(`SELECT r.id,r.launched_at,r.arrives_at,r.recall_at,s.username AS sender,t.username AS recipient
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
