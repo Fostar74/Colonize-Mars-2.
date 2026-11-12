@@ -205,6 +205,7 @@ export default {
   "% siege attack": "% атака на обсадните единици",
   "% XP": "% опит",
   "% training speed": "% скорост на обучение",
+  "Plasma Shield (24h)": "Плазмен щит (24 ч.)",
   "This player is protected by an active 24-hour Plasma Shield.": "Играчът е защитен от активен 24-часов плазмен щит.",
   "Purchase added to your Inventory.": "Покупката е добавена в инвентара.",
   "Mars Landing Token added to your account.": "Жетонът за кацане на Марс е добавен към акаунта ти.",
