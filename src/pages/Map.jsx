@@ -718,18 +718,25 @@ function Map() {
             {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
             </>}
             <p>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
-            <label>{t("Load formation","Зареди формация")} <select defaultValue="" onChange={event=>{
-              setFormationRows(event.target.value==="default" ? defaultFormation() : presets[event.target.value]);
-              event.target.value="";
-            }}>
-              <option value="" disabled>{t("Choose formation","Избери формация")}</option>
-              <option value="default">{t("Default Attack","Стандартна атака")}</option>
-              {Object.keys(presets).map(slot=><option key={slot} value={slot}>{t("Formation","Формация")} {slot}</option>)}
-            </select></label>
-            <p><label>{t("Save current rows to","Запази текущите редове в")} <select value={presetSlot} onChange={event=>setPresetSlot(Number(event.target.value))}>
-              {[1,2,3,4,5].map(slot=><option key={slot} value={slot}>{t("Slot","Слот")} {slot}</option>)}
-            </select></label>{" "}
-            <button disabled={formationBusy} onClick={()=>saveFormation({slot:presetSlot,rows:formationRows})}>{t("Save Formation","Запази формацията")}</button></p>
+            {marchDraft.type==="Attack" && marchDraft.target.type==="alien" && <div style={{margin:"10px 0"}}>
+              <strong>{t("Choose an attack formation","Избери формация за атака")}</strong>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
+                {[1,2,3,4,5].map(slot=>{
+                  const saved=attackPresets[slot];
+                  return <button key={slot} type="button" disabled={!saved}
+                    aria-pressed={String(slot)===marchFormationSlot}
+                    onClick={()=>{
+                      setMarchFormationSlot(String(slot));
+                      setFormationRows(saved||{});
+                    }}
+                    style={{padding:"9px 14px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:String(slot)===marchFormationSlot?"#26765e":"#20384d",opacity:saved?1:.5}}>
+                    {attackNames[slot]||t("Attack formation","Формация за атака")+" "+slot}
+                  </button>;
+                })}
+              </div>
+              {!Object.keys(attackPresets).length && <p>{t("Save an attack formation in Campaigns → Formations first.","Първо запази формация за атака в Кампании → Формации.")}</p>}
+            </div>
+            }
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
             {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
@@ -739,10 +746,7 @@ function Map() {
                 <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
                   onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
                 <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>{t("MAX","МАКС.")}</button>
-                <span>{t("Formation row (1 front / 4 rear)","Ред във формацията (1 отпред / 4 отзад)")}</span>
-                <select value={formationRows[unit]} onChange={e=>setFormationRows(old=>({...old,[unit]:Number(e.target.value)}))}>
-                  {[1,2,3,4].map(row=><option key={row} value={row}>{t("Row","Ред")} {row}</option>)}
-                </select>
+
               </label>)}
             </div>
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
@@ -756,7 +760,7 @@ function Map() {
                 setMarchUnits(selection);
               }}>{t("Select up to 50,000","Избери до 50 000")}</button>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
-              <button disabled={marchLoading || campaign.knightBusy || !knightAdded || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Започни атака (60 сек.)")}</button>
+              <button disabled={marchLoading || campaign.knightBusy || !knightAdded || !selectedTroops || selectedTroops>marchLimit || (marchDraft.target.type==="alien" && !marchFormationSlot)} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Започни атака (60 сек.)")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
