@@ -12,6 +12,67 @@ import Inventory from "./Inventory";
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
 
+function MarketPanel() {
+  const {t,label}=useLanguage();
+  const resources=["Gold","Iron","Water","Solar"];
+  const empty=()=>({Gold:0,Iron:0,Water:0,Solar:0});
+  const [offers,setOffers]=useState([]);
+  const [offered,setOffered]=useState(empty);
+  const [requested,setRequested]=useState(empty);
+  const [busy,setBusy]=useState(false);
+  const [notice,setNotice]=useState("");
+  const [userId]=useState(()=>sessionStorage.getItem("userId"));
+  const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+  const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
+  const refresh=async()=>{
+    const response=await fetch(api+"/market/"+encodeURIComponent(userId),{headers,cache:"no-store"});
+    const data=await response.json();
+    if(!response.ok)throw Error(data.message||"Marketplace unavailable.");
+    setOffers(data.offers||[]);
+  };
+  useEffect(()=>{refresh().catch(error=>setNotice(error.message));},[]);
+  const send=async(path,body={})=>{
+    setBusy(true);setNotice("");
+    try{
+      const response=await fetch(api+path,{method:"POST",headers,body:JSON.stringify({userId,...body})});
+      const data=await response.json();if(!response.ok)throw Error(data.message||"Trade action failed.");
+      await refresh();setNotice(t("Trade completed. Both players have been notified in Messages.","Сделката приключи. И двамата играчи получиха съобщение."));
+      setOffered(empty());setRequested(empty());window.dispatchEvent(new Event("game-progress-updated"));
+    }catch(error){setNotice(error.message);}finally{setBusy(false);}
+  };
+  const total=obj=>Object.values(obj).reduce((sum,value)=>sum+Number(value||0),0);
+  const format=obj=>resources.filter(key=>Number(obj?.[key]||0)>0).map(key=>Number(obj[key]).toLocaleString()+" "+label(key)).join(" · ")||"—";
+  const inputGrid=(values,setValues,title)=><section style={{padding:10,border:"1px solid #6a8193",borderRadius:8,margin:"10px 0"}}>
+    <strong>{title}</strong><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginTop:8}}>
+      {resources.map(key=><label key={key} style={{display:"flex",flexDirection:"column",gap:4,fontSize:13}}>{label(key)}
+        <input type="number" min="0" max="15000" value={values[key]} onChange={e=>setValues(old=>({...old,[key]:Math.max(0,Math.min(15000,Math.floor(Number(e.target.value)||0)))}))}/>
+      </label>)}
+    </div><small>{t("Total","Общо")}: {total(values).toLocaleString()} / 15,000</small>
+  </section>;
+  return <div style={{color:"#f5f0e6"}}>
+    <p>{t("Create a barter offer. Offered resources are reserved until it is accepted or you cancel it. Each side is limited to 15,000 resources; both players need a level 3 Cargo Depot.","Създай бартерна оферта. Предложените ресурси се запазват, докато бъде приета или отменена. Всяка страна на сделката е ограничена до 15 000 ресурса; и двамата играчи трябва да имат Товарно депо ниво 3.")}</p>
+    {inputGrid(offered,setOffered,t("You offer","Ти предлагаш"))}
+    {inputGrid(requested,setRequested,t("You request in exchange","Искаш в замяна"))}
+    <button type="button" disabled={busy||total(offered)<=0||total(requested)<=0||total(offered)>15000||total(requested)>15000}
+      onClick={()=>send("/market/offers",{offered,requested})}>{t("Publish offer","Публикувай оферта")}</button>
+    {notice&&<p role="status">{notice}</p>}
+    <h3>{t("Marketplace offers","Оферти на пазара")}</h3>
+    {!offers.length&&<p>{t("No offers yet.","Все още няма оферти.")}</p>}
+    <div style={{display:"grid",gap:10}}>
+      {offers.map(offer=><article key={offer.id} style={{padding:12,background:"#20384d",border:"1px solid #668196",borderRadius:8}}>
+        <strong>#{offer.id} · {t("Seller:","Продавач:")} {offer.seller_name}</strong>
+        <div style={{marginTop:6}}><b>{t("Offers:","Предлага:")}</b> {format(offer.offeredResources)}</div>
+        <div><b>{t("Wants:","Иска:")}</b> {format(offer.requestedResources)}</div>
+        <div style={{display:"flex",gap:8,marginTop:8}}>
+          {offer.status==="open"&&String(offer.seller_id)!==String(userId)&&<button disabled={busy} onClick={()=>send("/market/offers/"+offer.id+"/accept")}>{t("Accept offer","Приеми офертата")}</button>}
+          {offer.status==="open"&&String(offer.seller_id)===String(userId)&&<button disabled={busy} onClick={()=>send("/market/offers/"+offer.id+"/cancel")}>{t("Cancel and return resources","Отмени и върни ресурсите")}</button>}
+          {offer.status!=="open"&&<span>{offer.status==="accepted"?t("Accepted","Приета"):t("Cancelled","Отменена")}</span>}
+        </div>
+      </article>)}
+    </div>
+  </div>;
+}
+
 function Game() {
   const {language, choose, t, label: localLabel} = useLanguage();
   const [showUpgradeCenter, setShowUpgradeCenter] = useState(false);
@@ -26,6 +87,7 @@ function Game() {
   const [showRankings,setShowRankings]=useState(false);
   const [showTalents,setShowTalents]=useState(false);
   const [showInventory, setShowInventory] = useState(false);
+  const [showMarket,setShowMarket]=useState(()=>window.location.hash.includes("market=1"));
   const [messageRecipient,setMessageRecipient]=useState(null);
   const [supportTarget,setSupportTarget]=useState(null);
   const [playerMenu,setPlayerMenu]=useState(null);
@@ -170,6 +232,7 @@ function Game() {
         <button onClick={()=>setShowTalents(true)}>{t("Commander Protocols","Протоколи на командира")}</button>
         <button onClick={() => setShowQuests(true)}>{t("Quests","Мисии")}</button>
         <button onClick={() => (window.location.href = "/#/map?campaign=1")}>{t("Campaign","Кампании")}</button>
+        <button onClick={()=>setShowMarket(true)}>{t("Market","Пазар")}</button>
         <button onClick={() => (window.location.href = "/#/map")}>{t("Map","Карта")}</button>
         <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
@@ -225,6 +288,7 @@ function Game() {
         <CyberKnightPanel onClose={() => setShowCyberKnight(false)} />
       )}
 
+      {showMarket&&<div className="popup" style={{zIndex:1005}}><div className="popup-header"><span>{t("INTERBASE MARKET","МЕЖДУБАЗОВ ПАЗАР")}</span><button className="close-button" onClick={()=>setShowMarket(false)}>X</button></div><div className="popup-content"><MarketPanel/></div></div>}
       {showInventory && (
         <div className="popup">
           <div className="popup-header"><span>{t("INVENTORY","ИНВЕНТАР")}</span><button className="close-button" onClick={() => setShowInventory(false)}>X</button></div>
