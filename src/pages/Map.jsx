@@ -107,6 +107,8 @@ function Map() {
   const [knightAdded,setKnightAdded]=useState(false);
   const [formationRows,setFormationRows]=useState({});
   const [marchLoading, setMarchLoading] = useState(false);
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [marchSuccess, setMarchSuccess] = useState("");
   const [marchNotice, setMarchNotice] = useState("");
   const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
   const [campaignTab, setCampaignTab] = useState(() => {
@@ -491,19 +493,21 @@ function Map() {
         setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
           id:data.missionId,level:data.level,arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,cyberKnightLevel:old.knightLevel||1
         },...(old.missions||[]).filter(m=>m.id!==data.missionId)]}));
-        setMapError("Mission dispatched. Check CAMPAIGNS for results.");
+        setMarchSuccess("Attack sent successfully. Track the march and its return in CAMPAIGNS.");
       }else{
         setCampaign(old=>({...old,playerMissions:[{
           id:data.missionId,attacker_name:marchDraft.origin.username,defender_name:marchDraft.target.username,
           arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,incoming:false
         },...(old.playerMissions||[]).filter(m=>m.id!==data.missionId)]}));
-        setMapError("Attack march sent to "+marchDraft.target.username+". Check CAMPAIGNS for results.");
+        setMarchSuccess("Attack sent successfully. Track the march and its return in CAMPAIGNS.");
       }
       setSelectedTarget(null);
       setMarchDraft(null);
+      setPreviewOpen(false);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
   const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+count,0);
+  const previewRows=normalizeFormation(formationRows);
   const formationSettings=campaign.formations || {};
   const attackPresets=formationSettings.attackPresets || formationSettings.presets || {};
   const attackNames=formationSettings.attackNames || formationSettings.names || {};
@@ -778,13 +782,43 @@ function Map() {
                 setMarchUnits(selection);
               }}>{t("Select up to 50,000","Избери до 50 000")}</button>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
-              <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Започни атака (60 сек.)")}</button>
+              <button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>
+              <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
             <p style={{fontSize:12,color:"#b5c7d9"}}>{t("Alien attacks reserve selected troops immediately; survivors return after the battle.","Избраните войски тръгват веднага. Оцелелите се връщат след битката.")}</p>
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{localLabel(marchNotice)}</p>}
+        </div>
+      </div>}
+      {previewOpen && marchDraft && <div role="dialog" aria-modal="true" aria-label={t("Formation preview","Преглед на строя")} style={{position:"fixed",inset:0,zIndex:55,background:"rgba(0,0,0,.86)",display:"grid",placeItems:"center",padding:16}}>
+        <div style={{width:"min(980px,96vw)",maxHeight:"90vh",overflowY:"auto",background:"#e8dec1",color:"#211c16",border:"3px solid #76664b",borderRadius:10,padding:18,boxShadow:"0 12px 50px #000"}}>
+          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
+            <div><h2 style={{margin:"0 0 4px"}}>{t("Attack formation preview","Преглед на бойната формация")}</h2><div>{marchDraft.target.username||t("Alien base","Извънземна база")} · {marchDraft.target.x}:{marchDraft.target.y}</div></div>
+            <button type="button" aria-label={t("Close preview","Затвори прегледа")} onClick={()=>setPreviewOpen(false)}>✕</button>
+          </div>
+          <div style={{overflowX:"auto",marginTop:14}}><div style={{minWidth:640,display:"grid",gridTemplateColumns:"56px repeat(7,minmax(0,1fr))",gap:6}}>
+            {[4,3,2,1].map(row=><React.Fragment key={row}><strong style={{alignSelf:"center",textAlign:"center"}}>{row}<br/>{t("ROW","РЕД")}</strong>{Array.from({length:7},(_,column)=>{
+              const unit=units.find(name=>previewRows[name]===row&&previewRows.columns[name]===column);
+              const count=unit?Number(marchUnits[unit]||0):0;
+              return <div key={column} style={{minHeight:92,display:"flex",flexDirection:"column",justifyContent:"space-between",padding:6,background:"#f6f0df",border:"1px solid #9d8b6a",borderRadius:4,textAlign:"center"}}>
+                {unit&&count>0&&<><strong style={{fontSize:12}}>{localLabel(unit)}</strong><small>{formationUnitTypes[unit]?.[1] ? t(formationUnitTypes[unit][0],formationUnitTypes[unit][1]) : ""} · {t("Range","Обхват")} {formationUnitTypes[unit]?.[2]}</small><b style={{background:"white",borderRadius:4,padding:3}}>{count.toLocaleString()}</b></>}
+              </div>;
+            })}</React.Fragment>)}
+          </div></div>
+          <div style={{margin:"12px 0",padding:10,textAlign:"center",fontWeight:"bold",background:"#897452",color:"white"}}>{t("Target wall","Стена на целта")}</div>
+          <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {marchDraft.type==="Attack"&&marchDraft.target.type==="alien" ? localLabel("Cyber Knight required") : localLabel("Saved attack formation")}: {attackNames[marchFormationSlot]||t("Standard attack","Стандартна атака")}</p>
+          <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
+            <button type="button" onClick={()=>setPreviewOpen(false)}>{t("Back to army selection","Назад към избора на войници")}</button>
+            <button type="button" disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Send attack","Изпрати похода")}</button>
+          </div>
+        </div>
+      </div>}
+      {marchSuccess && <div role="dialog" aria-modal="true" aria-label={t("March sent","Походът е изпратен")} style={{position:"fixed",inset:0,zIndex:60,background:"rgba(0,0,0,.72)",display:"grid",placeItems:"center",padding:16}}>
+        <div style={{width:"min(640px,94vw)",padding:28,textAlign:"center",background:"#f4efdf",color:"#181818",border:"3px solid #857450",borderRadius:10,boxShadow:"0 12px 50px #000"}}>
+          <h2>{t("March sent successfully!","Походът е изпратен успешно!")}</h2><p>{localLabel(marchSuccess)}</p>
+          <button type="button" onClick={()=>setMarchSuccess("")} style={{background:"#26765e",color:"white",padding:"10px 24px"}}>{t("Continue","Продължи")}</button>
         </div>
       </div>}
       <button onClick={()=>{setCampaignTab("active");setMarchHistoryOpen(true);}} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</button>
