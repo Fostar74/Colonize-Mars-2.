@@ -7,7 +7,7 @@ import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
-const Quests = ({ onShowBase }) => {
+const Quests = ({ onShowBase, onOpenUpgrades }) => {
   const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState("main");
   const [loginRewards, setLoginRewards] = useState(null);
@@ -91,6 +91,11 @@ const Quests = ({ onShowBase }) => {
       else window.location.hash = "/map";
       return;
     }
+    if (mission.kind === "weaponry") {
+      if (Number(mission.upgradeLabLevel || 0) < 4) onShowBase({ building: "Upgrade Lab" });
+      else onOpenUpgrades?.();
+      return;
+    }
     if (mission.kind === "recon") {
       window.location.hash = "/map?recon=1";
       return;
@@ -140,6 +145,10 @@ const Quests = ({ onShowBase }) => {
           {m.kind==="trade" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
             <div>{Number(m.tradeModuleLevel||0)>=3?"✓ ":"○ "}{t("Cargo Depot trade module", "Търговски модул на Товарното депо")}{t(": Level",": Ниво")} {Number(m.tradeModuleLevel||0)} / 3</div>
             <div>{m.tradeSent?"✓ ":"○ "}{t("Send one resource trade to another player", "Изпрати една сделка с ресурси към друг играч")}</div>
+          </div>}
+          {m.kind==="weaponry" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
+            <div>{Number(m.upgradeLabLevel||0)>=4?"✓ ":"○ "}{t("Upgrade Lab", "Лаборатория за подобрения")}{t(": Level",": Ниво")} {Number(m.upgradeLabLevel||0)} / 4</div>
+            <div>{m.troopUpgradeDone?"✓ ":"○ "}{t("Complete one troop upgrade", "Завърши едно подобрение на войска")}</div>
           </div>}
           <div className="quest-rewards">{t("Reward","Награда")}: {m.reward.toLocaleString()} {t("each of Gold, Iron, Water and Solar + 100 Wheel Tokens","от всеки ресурс: злато, желязо, вода и слънчева енергия + 100 жетона")}</div>
           {m.claimed ? <button disabled>{t("Reward claimed","Наградата е взета")}</button> :
