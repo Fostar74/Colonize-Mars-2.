@@ -2,7 +2,7 @@ const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {allianceUpgradeDuration,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
+const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -39,6 +39,38 @@ function writeTradeNotification(tradeId,senderId,recipientId,senderName,resource
   const result=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
     .run(senderId,recipientId,null,body,sentAt);
   db.prepare("INSERT INTO trade_message_notifications(trade_id,message_id) VALUES (?,?)").run(tradeId,Number(result.lastInsertRowid));
+}
+
+function calculateCargoCapacity(survivors={}) {
+  return Object.entries(survivors).reduce((total,[unit,count]) =>
+    total + Math.max(0,Number(count)||0) * Number(unitCargoCapacity[unit]||0),0);
+}
+
+function calculateLoot(resources={},capacity=0) {
+  const keys=["Gold","Iron","Water","Solar"];
+  const available=Object.fromEntries(keys.map(key=>[key,Math.max(0,Math.floor(Number(resources[key])||0))]));
+  const loot=Object.fromEntries(keys.map(key=>[key,0]));
+  let remaining=Math.min(Math.max(0,Math.floor(Number(capacity)||0)),Object.values(available).reduce((sum,n)=>sum+n,0));
+  while(remaining>0){
+    const active=keys.filter(key=>available[key]>0);
+    if(!active.length)break;
+    const share=Math.floor(remaining/active.length);
+    let moved=0;
+    if(share===0){
+      for(const key of active){
+        if(remaining<=0)break;
+        available[key]--;loot[key]++;remaining--;moved++;
+      }
+    }else{
+      for(const key of active){
+        if(remaining<=0)break;
+        const amount=Math.min(available[key],share,remaining);
+        available[key]-=amount;loot[key]+=amount;remaining-=amount;moved+=amount;
+      }
+    }
+    if(!moved)break;
+  }
+  return loot;
 }
 
 function initializeDatabase() {
@@ -1278,6 +1310,19 @@ class DatabaseManager {
           playerDefense:true,
           defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit])
         });
+        const cargo=calculateCargoCapacity(result.survivors||{});
+        const loot=result.victory ? calculateLoot(defender.resources,cargo) : {Gold:0,Iron:0,Water:0,Solar:0};
+        result.cargoCapacity=cargo;
+        result.loot=loot;
+        result.totalLoot=Object.values(loot).reduce((sum,amount)=>sum+amount,0);
+        if(result.totalLoot>0){
+          for(const resource of ["Gold","Iron","Water","Solar"]){
+            defender.resources[resource]=(Number(defender.resources[resource])||0)-loot[resource];
+            attacker.resources[resource]=(Number(attacker.resources[resource])||0)+loot[resource];
+          }
+          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(attacker.resources),mission.attacker_id);
+          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(defender.resources),mission.defender_id);
+        }
         for(const [unit,count] of Object.entries(result.defenderSurvivors||{})) defender.army[unit]=count;
         db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(defender.army),mission.defender_id);
         const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);

@@ -527,6 +527,7 @@ function Map() {
     finally{setMarchLoading(false);}
   };
   const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+count,0);
+  const selectedCargoCapacity=Object.entries(marchUnits).reduce((total,[unit,count])=>total+Number(count||0)*Number(unitEconomy.cargoCapacity?.[unit]||0),0);
   const previewRows=normalizeFormation(formationRows);
   const formationSettings=campaign.formations || {};
   const attackPresets=formationSettings.attackPresets || formationSettings.presets || {};
@@ -775,12 +776,14 @@ function Map() {
             {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
             </>}
             <p>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
+            {marchDraft.type==="Attack" && marchDraft.target.type==="castle" && <p>{t("Estimated cargo capacity if the surviving army wins:","Очаквана товароносимост при победа на оцелялата армия:")} {selectedCargoCapacity.toLocaleString()} {t("resources","ресурси")}</p>}
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
             {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
               {units.map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
                 <strong>{localLabel(unit)}</strong>
                 <span>{t("Available:","Налични:")} {Number(availableArmy[unit]||0)}</span>
+                <span>{t("Cargo per unit:","Товароносимост на единица:")} {Number(unitEconomy.cargoCapacity?.[unit]||0)}</span>
                 <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
                   onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
                 <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>{t("MAX","МАКС.")}</button>
@@ -982,6 +985,7 @@ function Map() {
             {m.formation?.length>0&&<ul>{m.formation.map((group,index)=><li key={index}>{group.count.toLocaleString()} {localLabel(group.unit)} · {t("Row","Ред")} {group.row}</li>)}</ul>}
             {m.result&&<div>
               <p>{t("Rounds:","Рундове:")} {m.result.rounds} · {t("Attacker survivors:","Оцелели нападатели:")} {Object.values(m.result.survivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString()} · {t("Defender survivors:","Оцелели защитници:")} {Object.values(m.result.defenderSurvivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString()}</p>
+              <p>{m.incoming?t("Resources plundered by attacker:","Ресурси, отнети от нападателя:"):t("Loot carried back:","Плячка, която се връща:")} {Object.entries(m.result.loot||{}).filter(([,amount])=>Number(amount)>0).map(([resource,amount])=>String(amount.toLocaleString())+" "+localLabel(resource)).join(", ")||t("None","Няма")} · {t("Cargo capacity:","Товароносимост:")} {Number(m.result.cargoCapacity||0).toLocaleString()}</p>
               {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
                 {round.events.map((event,index)=><p key={index} style={{fontSize:12}}>{localLabel(event.attacker)}: {event.units} {localLabel(event.unit)} → {localLabel(event.target)} · {event.damage} {t("damage","щети")}{Number.isInteger(event.kills)?` · ${event.kills} ${t("defeated","убити")}`:""}</p>)}
               </details>)}

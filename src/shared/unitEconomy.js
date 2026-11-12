@@ -7,6 +7,14 @@ const categories = {
   Elite: ["AI General","Gene Warrior"]
 };
 const tiers = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3, Elite:5 };
+// Maximum resources a single surviving unit can carry home after a player battle.
+const cargoCapacity = {
+  "Explorer Trooper":25, "Exo-Soldier":20, "Plasma Bladesman":20, "Nano Shieldman":15,
+  "Railgunner":15, "Pulse Sniper":15, "Drone Operator":15,
+  "Rover Scout":80, "Hoverbike Rider":60, "Mech Walker":25, "Hover Drone Rider":40,
+  "Demolition Bot":20, "Missile Carrier":50, "Particle Blaster":10, "Orbital Strike Beacon":10,
+  "AI General":50, "Gene Warrior":30
+};
 // Each unit has a dominant resource; rotate the emphasis within every class.
 const emphasis = [
   {Gold:100,Iron:80,Water:60,Solar:40},
@@ -67,4 +75,4 @@ function buildingPrice(name,nextLevel,discount = 0) {
   return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * nextLevel * (100 - discount) / 100)]));
 }
 
-module.exports={allianceUpgradeDuration,categories,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice};
+module.exports={allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice};
