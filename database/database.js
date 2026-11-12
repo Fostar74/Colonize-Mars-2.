@@ -1164,7 +1164,109 @@ class DatabaseManager {
     })();
   }
 
-    getAlienCampaign(userId) {
+    launchPlayerAttack(userId, selectedArmy, formation, targetCoords) {
+    if (!targetCoords || typeof targetCoords.username !== "string") return {error:"Choose a player base on the map."};
+    const target = db.prepare(`SELECT u.id,u.username,b.x,b.y
+      FROM users u JOIN base_positions b ON b.user_id=u.id
+      WHERE u.username=? AND b.x=? AND b.y=?`).get(targetCoords.username,targetCoords.x,targetCoords.y);
+    if (!target) return {error:"Player base not found at those coordinates."};
+    if (target.id === userId) return {error:"You cannot attack your own base."};
+    return db.transaction(()=>{
+      const current=this.syncGame(userId);
+      if (!current) return {error:"Player not found."};
+      if (!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy)) return {error:"Choose an army."};
+      const {playerTypes}=require("../shared/combatEngine");
+      let total=0;
+      for(const [unit,count] of Object.entries(selectedArmy)){
+        if(!playerTypes[unit]||!Number.isSafeInteger(count)||count<0||count>Number(current.army[unit]||0)) return {error:"Invalid troop selection."};
+        total+=count;
+      }
+      if(!total) return {error:"Select at least one unit."};
+      if(total>marchLimit) return {error:"A march can contain at most 50,000 troops."};
+      const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,count])=>count>0));
+      const rows=defaultFormation();
+      const battleFormation=formation||Object.entries(selected).map(([unit,count])=>({unit,count,row:rows[unit]}));
+      if(!Array.isArray(battleFormation)||battleFormation.length>100) return {error:"Invalid formation."};
+      const tally={};
+      for(const group of battleFormation){
+        if(!group||!playerTypes[group.unit]||!Number.isSafeInteger(group.count)||group.count<=0||!Number.isInteger(group.row)||group.row<1||group.row>4) return {error:"Invalid formation."};
+        tally[group.unit]=(tally[group.unit]||0)+group.count;
+      }
+      if(Object.keys({...selected,...tally}).some(unit=>(selected[unit]||0)!==(tally[unit]||0))) return {error:"Formation does not match selected troops."};
+      for(const [unit,count] of Object.entries(selected)) current.army[unit]-=count;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      const now=Date.now();
+      const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
+      const travelMs=Math.max(1000,Math.ceil(60000/(1+speedBonus)));
+      const origin={username:current.castle.username,x:current.castle.x,y:current.castle.y};
+      const destination={username:target.username,x:target.x,y:target.y};
+      const armyData={units:selected,formation:battleFormation,origin,target:destination};
+      const mission=db.prepare("INSERT INTO player_missions(attacker_id,defender_id,army,launched_at,arrives_at) VALUES (?,?,?,?,?)")
+        .run(userId,target.id,JSON.stringify(armyData),now,now+travelMs);
+      return {missionId:Number(mission.lastInsertRowid),launchedAt:now,arrivesAt:now+travelMs,origin,target:destination,units:selected,formation:battleFormation};
+    })();
+  }
+
+  resolvePlayerMissions(userId) {
+    return db.transaction(()=>{
+      const now=Date.now();
+      const returning=db.prepare("SELECT * FROM player_missions WHERE attacker_id=? AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?")
+        .all(userId,now);
+      for(const mission of returning){
+        const result=JSON.parse(mission.result||"{}");
+        const current=this.syncGame(mission.attacker_id);
+        if(current){
+          for(const [unit,count] of Object.entries(result.survivors||{})) current.army[unit]=(Number(current.army[unit])||0)+count;
+          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mission.attacker_id);
+        }
+        db.prepare("UPDATE player_missions SET returned_at=? WHERE id=?").run(now,mission.id);
+      }
+      const due=db.prepare("SELECT * FROM player_missions WHERE (attacker_id=? OR defender_id=?) AND resolved_at IS NULL AND arrives_at<=? ORDER BY id")
+        .all(userId,userId,now);
+      for(const mission of due){
+        const data=JSON.parse(mission.army);
+        const attacker=this.syncGame(mission.attacker_id);
+        const defender=this.syncGame(mission.defender_id);
+        if(!attacker||!defender){
+          const failed={victory:false,rounds:0,report:[],survivors:data.units||{},defenderSurvivors:{},defendersRemaining:0,error:"A player base is unavailable."};
+          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(now,now+60000,JSON.stringify(failed),mission.id);
+          continue;
+        }
+        const defence=this.getFormations(mission.defender_id);
+        const defenseRows=defence.defenseSlot ? defence.defensePresets[defence.defenseSlot] : null;
+        const fallback=defaultFormation(true);
+        const defenseFormation=Object.entries(defender.army).filter(([,count])=>Number(count)>0).map(([unit,count])=>({
+          unit,count,row:defenseRows?.[unit]||fallback[unit]||1
+        }));
+        const {fight,playerTypes}=require("../shared/combatEngine");
+        const validDefenders=Object.fromEntries(Object.entries(defender.army).filter(([unit,count])=>playerTypes[unit]&&Number(count)>0));
+        const result=fight(data.units||{},validDefenders,data.formation,{},{
+          playerDefense:true,
+          defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit])
+        });
+        for(const [unit,count] of Object.entries(result.defenderSurvivors||{})) defender.army[unit]=count;
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(defender.army),mission.defender_id);
+        const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
+        db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?")
+          .run(now,now+travelMs,JSON.stringify(result),mission.id);
+      }
+      return true;
+    })();
+  }
+
+  getPlayerMissions(userId) {
+    return db.prepare(`SELECT m.*,a.username AS attacker_name,d.username AS defender_name
+      FROM player_missions m
+      JOIN users a ON a.id=m.attacker_id
+      JOIN users d ON d.id=m.defender_id
+      WHERE m.attacker_id=? OR m.defender_id=?
+      ORDER BY m.id DESC LIMIT 20`).all(userId,userId).map(({army,result,...mission})=>{
+        const data=JSON.parse(army);
+        return {...mission,...data,result:result?JSON.parse(result):null,incoming:mission.defender_id===userId};
+      });
+  }
+
+  getAlienCampaign(userId) {
     this.resolveAlienMissions(userId);
     const current = this.syncGame(userId);
     const scoutMissions = db.prepare("SELECT * FROM scout_missions WHERE user_id=? AND (returned_at IS NULL OR id IN (SELECT id FROM scout_missions WHERE user_id=? ORDER BY id DESC LIMIT 20)) ORDER BY id DESC")
