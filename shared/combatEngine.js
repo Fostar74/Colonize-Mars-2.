@@ -33,8 +33,12 @@ function createGroups(army,types,formation){
   }
   return groups;
 }
-function fight(attackerArmy,defenderArmy,formation,bonuses={}){
-  const sides=[createGroups(attackerArmy,playerTypes,formation),createGroups(defenderArmy,alienTypes)];
+function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
+  const defenderIsPlayer=options.playerDefense===true;
+  const sides=[
+    createGroups(attackerArmy,playerTypes,formation),
+    createGroups(defenderArmy,defenderIsPlayer?playerTypes:alienTypes,defenderIsPlayer?options.defenderFormation:null)
+  ];
   // Player-only Commander Protocol and alliance bonuses; alien garrisons keep their base stats.
   for(const group of sides[0]){
     const categoryBonus=group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
@@ -94,7 +98,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
           shot.kills++;remainder--;
         }
       }
-      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:shot.kills});
+      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":defenderIsPlayer?"Player Defense":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:shot.kills});
     }
     // Restore a percentage of casualties at the end of each round, capped
     // at the original deployed group size. Fractions accumulate per group.
@@ -119,6 +123,6 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={}){
     }
     report.push(round);
   }
-  return {victory:alive(sides[0])&&!alive(sides[1]),rounds,report,survivors:Object.fromEntries(Object.keys(attackerArmy).map(unit=>[unit,sides[0].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defendersRemaining:sides[1].reduce((a,g)=>a+g.count,0),provisional:true};
+  return {victory:alive(sides[0])&&!alive(sides[1]),rounds,report,survivors:Object.fromEntries(Object.keys(attackerArmy).map(unit=>[unit,sides[0].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defenderSurvivors:Object.fromEntries(Object.keys(defenderArmy).map(unit=>[unit,sides[1].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defendersRemaining:sides[1].reduce((a,g)=>a+g.count,0),provisional:true};
 }
 module.exports={fight,playerTypes,alienTypes};
