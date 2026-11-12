@@ -14,10 +14,10 @@ export default function PlayerTalents(){
  const active=new Set(["Resource Management","Accelerated Training","Advanced Research","Rapid Deployment","Evasion Protocol","Combat Recovery","Precision Fire","Reinforced Armor","Infantry Command","Mobile Warfare","Heavy Artillery","Mining Operations","Battle Command","Advanced Recon"]);
  return <div style={{padding:16,color:"#eaf6ff",maxWidth:1050}}>
   <h2>{t("Commander Protocols","Протоколи на командира")}</h2>
-  <p>{t("Develop your commander with Protocol Points (PP). Each protocol has three tiers: Initiate, Advanced and Elite.","Развивай командира с точки за протоколи (ТП). Всеки протокол има три степени: начална, напреднала и елитна.")}</p>
+  <p>{t("Allocate Protocol Points (PP) to the player's protocols. Each protocol has three tiers: Initiate, Advanced and Elite.","Разпредели точки за протоколи (ТП) на играча. Всеки протокол има три степени: начална, напреднала и елитна.")}</p>
   {error&&<p role="alert" style={{color:"#ffb8aa"}}>{localLabel(error)} <button onClick={refresh}>{t("Retry","Опитай пак")}</button></p>}
   {!state?<p>{t("Loading commander protocols…","Зареждане на протоколите…")}</p>:<>
-   <p><strong>{t("Commander Level","Ниво на командира")} {state.level}</strong> {t("· XP","· Опит")} {state.xp}{state.nextLevelXp!=null?" / "+state.nextLevelXp:localLabel(" (maximum level)")} · <strong>{state.skillPoints} {t("PP available","налични ТП")}</strong></p>
+   <p><strong>{t("Player Level","Ниво на играча")} {state.level}</strong> {t("· XP","· Опит")} {state.xp}{state.nextLevelXp!=null?" / "+state.nextLevelXp:localLabel(" (maximum level)")} · <strong>{state.skillPoints} {t("PP available","налични ТП")}</strong></p>
    <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(235px,1fr))",gap:12}}>
     {(state.catalog||[]).filter(item=>names[item.name]).map(item=>{const tier=Number(state.talents?.[item.name]||0);const cost=tier+1;return <section key={item.name} style={{padding:14,border:"1px solid #3b647a",borderRadius:10,background:"#122b3c"}}>
       <h3 style={{marginTop:0}}>{localLabel(names[item.name])}</h3>
