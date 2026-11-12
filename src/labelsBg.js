@@ -15,6 +15,8 @@ export default {
   "Construction Help": "Строителна помощ",
   "Chat": "Чат",
   "Alliance Research": "Изследвания на алианса",
+  "Protection": "Протекция",
+  "Protection (1 day)": "Протекция (1 ден)",
   "Donation & Market": "Дарения и пазар",
   "Alliance Chat": "Чат на алианса",
   "Private Messages": "Лични съобщения",

@@ -999,14 +999,15 @@ function Map() {
         {playerMarches.map(m=>{
           const outcome=m.result
             ? m.incoming
-              ? (m.result.victory?t("Base lost","Базата е превзета"):t("Defense held","Защитата устоя"))
-              : (m.result.victory?t("Victory","Победа"):t("Defeat","Загуба"))
+              ? (m.result.shielded?t("Protection blocked attack","Протекцията спря атаката"):m.result.victory?t("Base lost","Базата е превзета"):t("Defense held","Защитата устоя"))
+              : (m.result.shielded?t("Target protected","Целта е под протекция"):m.result.victory?t("Victory","Победа"):t("Defeat","Загуба"))
             : t("Travelling","На път");
           return <details key={"player-"+m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
             <summary>{m.incoming?t("Incoming attack from","Вражеска атака от")+" "+m.attacker_name:t("Attack on","Атака срещу")+" "+m.defender_name} · {m.target?.x}:{m.target?.y} · {outcome}{!m.returned_at&&` · ${m.result?t("Returning","Връщане"):t("Arrival","Пристигане")} · ${Math.max(0,Math.ceil(((m.result?m.returns_at:m.arrives_at)-clock)/1000))} ${t("sec.","сек.")}`}</summary>
             <p>{t("Sent troops:","Изпратени войници:")} {Object.entries(m.units||{}).map(([unit,count])=>`${count.toLocaleString()} ${localLabel(unit)}`).join(", ")}</p>
             {m.formation?.length>0&&<ul>{m.formation.map((group,index)=><li key={index}>{group.count.toLocaleString()} {localLabel(group.unit)} · {t("Row","Ред")} {group.row}</li>)}</ul>}
             {m.result&&<div>
+              {m.result.shielded&&<p>{m.incoming?t("Your protection blocked this attack; the troops return safely.","Протекцията ти спря атаката; войските се връщат невредими."):t("The target’s protection blocked this attack; your troops return safely.","Протекцията на целта спря атаката; войските ти се връщат невредими.")}</p>}
               <p>{t("Rounds:","Рундове:")} {m.result.rounds} · {t("Attacker survivors:","Оцелели нападатели:")} {Object.values(m.result.survivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString()} · {t("Defender survivors:","Оцелели защитници:")} {Object.values(m.result.defenderSurvivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString()}</p>
               <p>{m.incoming?t("Resources plundered by attacker:","Ресурси, отнети от нападателя:"):t("Loot carried back:","Плячка, която се връща:")} {Object.entries(m.result.loot||{}).filter(([,amount])=>Number(amount)>0).map(([resource,amount])=>String(amount.toLocaleString())+" "+localLabel(resource)).join(", ")||t("None","Няма")} · {t("Cargo capacity:","Товароносимост:")} {Number(m.result.cargoCapacity||0).toLocaleString()}</p>
               {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
