@@ -78,6 +78,10 @@ const Quests = ({ onShowBase }) => {
   const [gatheredMine, setGatheredMine] = useState(false);
 
   const handleMainQuest = mission => {
+    if (mission.kind === "formation") {
+      window.location.hash = "/map?campaign=1&campaignTab=formations";
+      return;
+    }
     if (mission.kind === "recon") {
       window.location.hash = "/map?recon=1";
       return;
