@@ -1311,6 +1311,12 @@ class DatabaseManager {
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(recipient.resources),target.id);
       const now=Date.now();
       const inserted=db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(userId,target.id,JSON.stringify(selected),now);
+      const senderName=this.findUserById(userId)?.username||"Another player";
+      const received=keys.filter(key=>selected[key]>0).map(key=>`${selected[key].toLocaleString("en-US")} ${key}`).join(", ");
+      const receivedBg=keys.filter(key=>selected[key]>0).map(key=>`${selected[key].toLocaleString("bg-BG")} ${{Gold:"злато",Iron:"желязо",Water:"вода",Solar:"слънчева енергия"}[key]}`).join(", ");
+      const notification=`Trade received from ${senderName}: ${received}. Resources were added to your base. / Получена търговия от ${senderName}: ${receivedBg}. Ресурсите са добавени към базата ти.`;
+      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
+        .run(userId,target.id,null,notification,now);
       return {tradeId:Number(inserted.lastInsertRowid),tradedAt:now,target:{username:target.username,x:target.x,y:target.y},resources:selected,capacity,remaining:sender.resources};
     })();
   }
