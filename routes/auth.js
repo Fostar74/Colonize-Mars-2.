@@ -245,7 +245,7 @@ router.post("/inventory/withdraw",requireSession,(req,res)=>{
 });
 router.post("/inventory/use-item",requireSession,(req,res)=>{
   try {
-    const result=db.useInventoryItem(Number(req.body.userId),req.body.item);
+    const result=db.useInventoryItem(Number(req.body.userId),req.body.item,Number(req.body.amount));
     if(result.error)return res.status(400).json({message:result.error});
     res.json(result);
   } catch(e){console.error(e);res.status(500).json({message:"Item use failed."});}

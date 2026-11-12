@@ -211,5 +211,7 @@ export default {
   "Mars Landing Token added to your account.": "Жетонът за кацане на Марс е добавен към акаунта ти.",
   "Plasma Shield activated for 24 hours.": "Плазменият щит е активиран за 24 часа.",
   "Army Attack boost activated for 1 hour.": "Бонусът към атаката на армията е активен за 1 час.",
-  "Army Health boost activated for 1 hour.": "Бонусът към здравето на армията е активен за 1 час."
+  "Army Health boost activated for 1 hour.": "Бонусът към здравето на армията е активен за 1 час.",
+  "Enter a valid item quantity.": "Въведи валиден брой предмети.",
+  "You do not have that many items.": "Нямаш толкова предмети."
 };
