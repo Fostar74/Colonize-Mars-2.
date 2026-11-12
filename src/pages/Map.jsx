@@ -466,23 +466,38 @@ function Map() {
     openMarch(type, selectedTarget, home);
   };
   const prepareMarch = async () => {
-    if(selectedTroops>marchLimit){setMarchNotice("Cyber Knight can command at most 50,000 troops.");return;}
-    if(!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
+    const isAlienAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="alien";
+    const isPlayerAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="castle"&&!targetIsOwn;
+    if(selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
+    if(isAlienAttack&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
+    if(!isAlienAttack&&!isPlayerAttack){setMarchNotice("Choose an attackable target.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
-    if(marchDraft?.target?.type!=="alien"){setMarchNotice("Player marches are not yet enabled.");return;}
     try{
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
-      const response=await fetch(base+"/alien-campaign/attack",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}})});
+      const payload=isAlienAttack
+        ? {userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}}
+        : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
+      const response=await fetch(base+(isAlienAttack?"/alien-campaign/attack":"/player-campaign/attack"),{
+        method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
+      });
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
-        id:data.missionId,level:data.level,arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,cyberKnightLevel:old.knightLevel||1
-      },...(old.missions||[]).filter(m=>m.id!==data.missionId)]}));
+      if(isAlienAttack){
+        setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
+          id:data.missionId,level:data.level,arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,cyberKnightLevel:old.knightLevel||1
+        },...(old.missions||[]).filter(m=>m.id!==data.missionId)]}));
+        setMapError("Mission dispatched. Check CAMPAIGNS for results.");
+      }else{
+        setCampaign(old=>({...old,playerMissions:[{
+          id:data.missionId,attacker_name:marchDraft.origin.username,defender_name:marchDraft.target.username,
+          arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,incoming:false
+        },...(old.playerMissions||[]).filter(m=>m.id!==data.missionId)]}));
+        setMapError("Attack march sent to "+marchDraft.target.username+". Check CAMPAIGNS for results.");
+      }
       setSelectedTarget(null);
-      setMapError("Mission dispatched. Check CAMPAIGNS for results.");
       setMarchDraft(null);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
@@ -760,7 +775,7 @@ function Map() {
                 setMarchUnits(selection);
               }}>{t("Select up to 50,000","Избери до 50 000")}</button>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
-              <button disabled={marchLoading || campaign.knightBusy || !knightAdded || !selectedTroops || selectedTroops>marchLimit || (marchDraft.target.type==="alien" && !marchFormationSlot)} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Започни атака (60 сек.)")}</button>
+              <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Започни атака (60 сек.)")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
