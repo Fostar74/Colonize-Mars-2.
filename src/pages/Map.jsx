@@ -114,6 +114,8 @@ function Map() {
     return ["active", "reports", "formations"].includes(requestedTab) ? requestedTab : "active";
   });
   const [presetSlot,setPresetSlot]=useState(1);
+  const [formationMode,setFormationMode]=useState("attack");
+  const [marchFormationSlot,setMarchFormationSlot]=useState("");
   const [presetRows,setPresetRows]=useState({});
   const [presetName,setPresetName]=useState("");
   const [formationMessage,setFormationMessage]=useState("");
@@ -444,7 +446,8 @@ function Map() {
       const data=await response.json();
       setAvailableArmy(data.gameProgress?.army || {});
       setMarchUnits({});
-      setFormationRows(defaultFormation());
+      setFormationRows({});
+      setMarchFormationSlot("");
       setKnightAdded(false);
       setMarchDraft({type,target,origin});
       } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
@@ -483,7 +486,12 @@ function Map() {
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
   const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+count,0);
-  const presets=campaign.formations?.presets || {};
+  const formationSettings=campaign.formations || {};
+  const attackPresets=formationSettings.attackPresets || formationSettings.presets || {};
+  const attackNames=formationSettings.attackNames || formationSettings.names || {};
+  const defensePresets=formationSettings.defensePresets || {};
+  const defenseNames=formationSettings.defenseNames || {};
+  const presets=attackPresets;
   const saveFormation=async payload=>{
     setFormationBusy(true);
     setFormationMessage("");
