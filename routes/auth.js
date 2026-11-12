@@ -263,7 +263,7 @@ router.post("/battle-simulator/simulate",requireSession,(req,res)=>{
 });
 
 router.get("/events/:userId",requireSession,(req,res)=>{
-  try{res.json({saturdayInvasion:db.getSaturdayAllianceInvasion(Number(req.params.userId))});}
+  try{const userId=Number(req.params.userId);res.json({saturdayInvasion:db.getSaturdayAllianceInvasion(userId),motherShip:db.getMothershipEvent(userId)});}
   catch(error){console.error("Events:",error);res.status(500).json({message:"Events unavailable."});}
 });
 router.post("/events/saturday-invasion/start",requireSession,(req,res)=>{
