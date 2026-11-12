@@ -108,7 +108,10 @@ function Map() {
   const [marchLoading, setMarchLoading] = useState(false);
   const [marchNotice, setMarchNotice] = useState("");
   const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
-  const [campaignTab, setCampaignTab] = useState("active");
+  const [campaignTab, setCampaignTab] = useState(() => {
+    const requestedTab = new URLSearchParams(window.location.hash.split("?")[1]).get("campaignTab");
+    return ["active", "reports", "formations"].includes(requestedTab) ? requestedTab : "active";
+  });
   const [presetSlot,setPresetSlot]=useState(1);
   const [presetRows,setPresetRows]=useState({});
   const [presetName,setPresetName]=useState("");
