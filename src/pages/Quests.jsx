@@ -86,6 +86,10 @@ const Quests = ({ onShowBase }) => {
       onShowBase({ building: "Combat Simulator" });
       return;
     }
+    if (mission.kind === "trade") {
+      onShowBase({ building: "Cargo Depot" });
+      return;
+    }
     if (mission.kind === "recon") {
       window.location.hash = "/map?recon=1";
       return;

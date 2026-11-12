@@ -204,6 +204,10 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                 {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}
                 <h4 style={{margin:"6px 0"}}>{localLabel(name)}</h4>
                 <div>{t("Level","Ниво")} {level} / 20</div>
+                {name === "Cargo Depot" && <div style={{marginTop:6,padding:8,borderRadius:6,background:level>=3?"#173e32":"#263746",border:"1px solid #57846f"}}>
+                  <strong>{t("Trading Module","Търговски модул")} · {t("Level","Ниво")} {Math.min(3,level)} / 3</strong>
+                  <div style={{fontSize:12,marginTop:3}}>{level>=3?t("Inter-base trading unlocked · capacity 15,000 per trade","Междубазовата търговия е отключена · капацитет 15 000 на сделка"):t("Upgrade the Cargo Depot to develop this module and unlock inter-base trade at level 3.","Надграждай Товарното депо, за да развиеш модула и отключиш търговията между бази на ниво 3.")}</div>
+                </div>}
                 {name === "Upgrade Lab" && level > 0 && <button onClick={onOpenUpgrades}>{t("Upgrade Center","Център за подобрения")}</button>}
                 {name === "Combat Simulator" && <button type="button" disabled={level < 1} onClick={onOpenSimulator} style={{marginTop:6}}>
                   {level < 1 ? t("Build level 1 to unlock","Построй ниво 1 за отключване") : t("Open Combat Simulator","Отвори бойния симулатор")}
