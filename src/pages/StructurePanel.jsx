@@ -23,7 +23,7 @@ const unitCategories = {
   Elite: ["AI General", "Gene Warrior"]
 };
 
-function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange, questTarget }) {
+function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator, onProgressChange, questTarget }) {
   const { t , label: localLabel} = useLanguage();
   const questDestination = useRef(null);
   const focusedQuest = useRef(null);
@@ -205,6 +205,9 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onProgressChange
                 <h4 style={{margin:"6px 0"}}>{localLabel(name)}</h4>
                 <div>{t("Level","Ниво")} {level} / 20</div>
                 {name === "Upgrade Lab" && level > 0 && <button onClick={onOpenUpgrades}>{t("Upgrade Center","Център за подобрения")}</button>}
+                {name === "Combat Simulator" && <button type="button" disabled={level < 1} onClick={onOpenSimulator} style={{marginTop:6}}>
+                  {level < 1 ? t("Build level 1 to unlock","Построй ниво 1 за отключване") : t("Open Combat Simulator","Отвори бойния симулатор")}
+                </button>}
                 {game.buildingJob?.name === name && <div>{t("Construction:","Строеж:")} {formatTime(remaining(game.buildingJob))}</div>}
                 {game.queuedBuildingJob?.name === name && <div>{t("Queued: Level","На опашката: ниво")} {game.queuedBuildingJob.level}</div>}
                 <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>{t("Next:","Следващо:")} {cost.Gold} {t("Gold ·","злато ·")} {cost.Iron} {t("Iron ·","желязо ·")} {cost.Water} {t("Water ·","вода ·")} {cost.Solar} {t("Solar","слънчева енергия")}</p>

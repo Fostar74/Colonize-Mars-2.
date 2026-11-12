@@ -121,6 +121,16 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS daily_login_claims (user_id INTEGER NOT NULL REFERENCES users(id), day INTEGER NOT NULL CHECK(day BETWEEN 1 AND 30), claimed_date TEXT NOT NULL, claimed_at DATETIME DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id, day), UNIQUE(user_id, claimed_date))");
     db.exec("CREATE TABLE IF NOT EXISTS inventory_reserves (user_id INTEGER PRIMARY KEY REFERENCES users(id), resources TEXT NOT NULL, army TEXT NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS alien_missions (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, army TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, result TEXT)");
+    db.exec(`CREATE TABLE IF NOT EXISTS battle_simulations (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL REFERENCES users(id),
+      level INTEGER NOT NULL,
+      army TEXT NOT NULL,
+      formation TEXT NOT NULL,
+      simulated_at INTEGER NOT NULL,
+      result TEXT NOT NULL
+    )`);
+    db.exec("CREATE INDEX IF NOT EXISTS battle_simulations_user ON battle_simulations(user_id,simulated_at)");
     db.exec(`CREATE TABLE IF NOT EXISTS player_missions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       attacker_id INTEGER NOT NULL REFERENCES users(id),
@@ -1293,6 +1303,50 @@ class DatabaseManager {
     return {scoutMissions,playerMissions,supportRoutes,formations:this.getFormations(userId),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests};
   }
 
+  simulateAlienBattle(userId,level,selectedArmy,formation) {
+    if(!Number.isInteger(level)||level<1||level>20)return {error:"Choose an alien base level between 1 and 20."};
+    if(!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy))return {error:"Choose troops for the simulation."};
+    return db.transaction(()=>{
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      if(Number(current.structures["Combat Simulator"]||0)<1)return {error:"Build the Combat Simulator to level 1 first."};
+      const {fight,playerTypes}=require("../shared/combatEngine");
+      const selected={};
+      let total=0;
+      for(const [unit,count] of Object.entries(selectedArmy)){
+        if(!playerTypes[unit]||!Number.isSafeInteger(count)||count<0||count>Number(current.army[unit]||0))return {error:"Invalid troop selection."};
+        if(count>0){selected[unit]=count;total+=count;}
+      }
+      if(!total)return {error:"Select at least one unit."};
+      if(total>marchLimit)return {error:"A simulation can include at most 50,000 troops."};
+      if(!Array.isArray(formation)||!formation.length)return {error:"Choose a formation."};
+      const tally={};
+      for(const group of formation){
+        if(!group||!playerTypes[group.unit]||!Number.isSafeInteger(group.count)||group.count<1||!Number.isInteger(group.row)||group.row<1||group.row>4)return {error:"Invalid formation."};
+        tally[group.unit]=(tally[group.unit]||0)+group.count;
+      }
+      if(Object.keys({...selected,...tally}).some(unit=>(selected[unit]||0)!==(tally[unit]||0)))return {error:"Formation does not match the selected troops."};
+      const activeBuffs=db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,Date.now());
+      const alliance=current.allianceBonuses||{};
+      const result=fight(selected,this.getAlienArmy(level),formation,{
+        rangedAttack:this.protocolBonus(userId,"Precision Fire"),
+        allHealth:this.protocolBonus(userId,"Reinforced Armor")+(alliance.health||0)+(activeBuffs.some(buff=>buff.kind==="health")?10:0),
+        allAttack:(alliance.attack||0)+(activeBuffs.some(buff=>buff.kind==="attack")?10:0),
+        unitResearch:Object.fromEntries(Object.keys(selected).map(unit=>[unit,alliance.units?.[unit]||{}])),
+        infantryAttack:this.protocolBonus(userId,"Infantry Command"),
+        infantryHealth:this.protocolBonus(userId,"Infantry Command"),
+        mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
+        artilleryAttack:this.protocolBonus(userId,"Heavy Artillery"),
+        dodge:this.protocolBonus(userId,"Evasion Protocol"),
+        revive:this.protocolBonus(userId,"Nano Regeneration")
+      });
+      const simulatedAt=Date.now();
+      const insert=db.prepare("INSERT INTO battle_simulations(user_id,level,army,formation,simulated_at,result) VALUES (?,?,?,?,?,?)")
+        .run(userId,level,JSON.stringify(selected),JSON.stringify(formation),simulatedAt,JSON.stringify(result));
+      return {simulationId:Number(insert.lastInsertRowid),level,simulatedAt,result,troopsReturned:true};
+    })();
+  }
+
   attackAlienBase(userId,level,selectedArmy,formation,includeCyberKnight,targetCoords) {
     if(includeCyberKnight!==true)return {error:"Add Cyber Knight before launching the attack."};
     if(!Number.isInteger(level)||level<1||level>20)return {error:"Invalid alien base level."};
@@ -1449,6 +1503,12 @@ class DatabaseManager {
           formationUnits.every(unit => Number.isInteger(rows?.[unit]) && rows[unit] >= 1 && rows[unit] <= 4)
         );
         progress = savedFormation ? 1 : 0;
+      }
+      else if (m.kind === "simulation") {
+        const simulatorBuilt = level("Combat Simulator") >= 1;
+        const hasSimulation = !!db.prepare("SELECT 1 FROM battle_simulations WHERE user_id=? LIMIT 1").get(userId);
+        progress = (simulatorBuilt ? 1 : 0) + (hasSimulation ? 1 : 0);
+        target = 2;
       }
       else if (m.kind === "final") { progress = previous.filter(mission => claimed.has(mission.id)).length; target = previous.length; }
       const completed = progress >= target && m.kind !== "future";

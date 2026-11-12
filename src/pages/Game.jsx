@@ -1,6 +1,7 @@
 import { useLanguage } from "../language";
 import React, { useEffect, useState } from "react";
 import StructurePanel from "./StructurePanel";
+import BattleSimulator from "./BattleSimulator";
 import CyberKnightPanel from "./CyberKnightPanel";
 import Quests from "./Quests";
 import AlliancePanel from "./AlliancePanel";
@@ -14,6 +15,7 @@ import marsBackground from "../images/mars-background.jpg";
 function Game() {
   const {language, choose, t, label: localLabel} = useLanguage();
   const [showUpgradeCenter, setShowUpgradeCenter] = useState(false);
+  const [showBattleSimulator,setShowBattleSimulator]=useState(false);
   const [showPopup, setShowPopup] = useState(false);
   const [castleName, setCastleName] = useState("Headquarter");
   const [resources, setResources] = useState(null);
@@ -198,7 +200,7 @@ function Game() {
           </div>
           <div className="popup-content">
             
-            <StructurePanel questTarget={questTarget} onProgressChange={onProgressChange} onOpenUpgrades={() => setShowUpgradeCenter(true)} />
+            <StructurePanel questTarget={questTarget} onProgressChange={onProgressChange} onOpenUpgrades={() => setShowUpgradeCenter(true)} onOpenSimulator={()=>setShowBattleSimulator(true)} />
           </div>
         </div>
       )}
@@ -215,6 +217,10 @@ function Game() {
         </div>
       )}
 
+      {showBattleSimulator&&<div className="popup" style={{zIndex:1004}}>
+        <div className="popup-header"><span>{t("COMBAT SIMULATOR","БОЕН СИМУЛАТОР")}</span><button className="close-button" onClick={()=>setShowBattleSimulator(false)}>X</button></div>
+        <div className="popup-content"><BattleSimulator/></div>
+      </div>}
       {showCyberKnight && (
         <CyberKnightPanel onClose={() => setShowCyberKnight(false)} />
       )}

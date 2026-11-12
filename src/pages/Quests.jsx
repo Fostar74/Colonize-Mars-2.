@@ -82,6 +82,10 @@ const Quests = ({ onShowBase }) => {
       window.location.hash = "/map?campaign=1&campaignTab=formations";
       return;
     }
+    if (mission.kind === "simulation") {
+      onShowBase({ building: "Combat Simulator" });
+      return;
+    }
     if (mission.kind === "recon") {
       window.location.hash = "/map?recon=1";
       return;

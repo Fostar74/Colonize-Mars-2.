@@ -135,12 +135,12 @@ const missions = [
   {
     "id": 14,
     "title": "Тактическа симулация",
-    "description": "Проведи симулация срещу разузната извънземна база в Бойния симулатор.",
+    "description": "Построй Бойния симулатор до ниво 1 и проведи симулация срещу извънземна база.",
     "titleEn": "Tactical Simulation",
-    "descriptionEn": "Run a simulation against a scouted alien base in the Combat Simulator.",
+    "descriptionEn": "Build the Combat Simulator to level 1 and run a battle simulation against an alien base.",
     "reward": 6500,
-    "kind": "future",
-    "target": null,
+    "kind": "simulation",
+    "target": 2,
     "level": null
   },
   {
