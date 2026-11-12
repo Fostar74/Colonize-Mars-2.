@@ -278,6 +278,14 @@ router.post("/player-campaign/attack",requireSession,(req,res)=>{
   } catch(error) {console.error("Player attack:",error);res.status(500).json({message:"Player attack unavailable."});}
 });
 
+router.post("/player-campaign/trade",requireSession,(req,res)=>{
+  try{
+    const result=db.tradeBetweenBases(Number(req.body.userId),req.body.resources,req.body.target);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Inter-base trade:",error);res.status(500).json({message:"Trade could not be completed."});}
+});
+
 router.post("/alien-campaign/side-quest",requireSession,(req,res)=>{
   try{
     const result=db.claimAlienSideQuest(Number(req.body.userId),Number(req.body.milestone));
