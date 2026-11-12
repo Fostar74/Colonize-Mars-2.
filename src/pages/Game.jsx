@@ -115,6 +115,7 @@ function MothershipHospitalPanel() {
 function EventsPanel() {
   const {language,t}=useLanguage();
   const [data,setData]=useState(null);
+  const [motherShip,setMotherShip]=useState(null);
   const [busy,setBusy]=useState(false);
   const [notice,setNotice]=useState("");
   const userId=sessionStorage.getItem("userId");
@@ -125,6 +126,7 @@ function EventsPanel() {
     const result=await response.json();
     if(!response.ok)throw Error(result.message||"Events unavailable.");
     setData(result.saturdayInvasion);
+    setMotherShip(result.motherShip||null);
   };
   useEffect(()=>{refresh().catch(error=>setNotice(error.message));const timer=setInterval(()=>refresh().catch(()=>{}),10000);return()=>clearInterval(timer);},[]);
   const start=async()=>{
@@ -151,6 +153,13 @@ function EventsPanel() {
       {data.myResult&&<p>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString()} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>}
       {}
       {data.alliance&&!data.alliance.run&&!data.alliance.canStart&&<p>{t("Only the alliance leader can start the event, and only during Saturday UTC.","Само лидерът на алианса може да стартира събитието в събота по UTC.")}</p>}
+    </div>}
+    {motherShip&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
+      <h2>{t("Mother Ship Hunt","Лов на кораба майка")}</h2>
+      <p>{motherShip.active?t("Event is active","Събитието е активно"):motherShip.settled?t("Results are final","Класирането е окончателно"):t("Scheduled weekly event","Седмично събитие")}: {date(motherShip.startsAt)} – {date(motherShip.endsAt)}</p>
+      <p>{t("Attacks remaining","Оставащи атаки")}: {motherShip.attacksRemaining} · {t("Mother Ship health","Живот на кораба майка")}: {Number(motherShip.hp||0).toLocaleString()}</p>
+      {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString()}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
+      <button type="button" onClick={()=>{window.location.href="/#/map?campaign=1";}}>{t("Open campaigns","Отвори кампаниите")}</button>
     </div>}
     <h3>{t("Alliance standings","Класиране на алиансите")}</h3>
     {data.alliances.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.alliances.map(row=><tr key={row.id}><td>{row.rank}</td><td>{row.name}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.status==="active"?t("Active","Активен"):t("Complete","Приключил")}</td></tr>)}</tbody></table></div>:<p>{t("No alliances have started yet.","Все още няма стартирали алианси.")}</p>}
