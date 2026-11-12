@@ -681,12 +681,12 @@ class DatabaseManager {
   }
   upgradePlayerTalent(userId,name){
     const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery", "Mining Operations", "Battle Command", "Advanced Recon"]);
-    if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player talent."};
+    if(!this.talentCatalog().some(t=>t.name===name))return {error:"Unknown player protocol."};
     if(!activeProtocols.has(name))return {error:"This protocol is not active yet. Protocol Points have not been spent."};
     return db.transaction(()=>{
       const state=this.playerTalents(userId),tier=state.talents[name]||0;
-      if(tier>=3)return {error:"Talent already at Master."};
-      if(state.skillPoints<tier+1)return {error:"Not enough skill points."};
+      if(tier>=3)return {error:"Protocol already at Elite."};
+      if(state.skillPoints<tier+1)return {error:"Not enough Protocol Points."};
       const talents={...state.talents,[name]:tier+1};
       db.prepare("UPDATE player_talents SET talents=? WHERE user_id=?").run(JSON.stringify(talents),userId);
       return this.playerTalents(userId);
@@ -1551,6 +1551,7 @@ class DatabaseManager {
     const sentTrade=!!db.prepare("SELECT 1 FROM interbase_trades WHERE sender_id=? LIMIT 1").get(userId);
     const upgradeLabLevel=Math.min(4,level("Upgrade Lab"));
     const troopUpgradeDone=Object.values(current.unitUpgrades||{}).some(stats=>["attack","defense"].some(stat=>Number(stats?.[stat]||1)>1));
+    const allocatedProtocols=Object.values(this.playerTalents(userId).talents||{}).some(tier=>Number(tier)>0);
     const formationState = this.getFormations(userId);
     const missions = tutorialMissions.map((m, index) => {
       const previous = tutorialMissions.slice(0, index);
@@ -1574,10 +1575,11 @@ class DatabaseManager {
       }
       else if (m.kind === "trade") { progress=(tradeModuleLevel>=m.level?1:0)+(sentTrade?1:0); target=2; }
       else if (m.kind === "weaponry") { progress=(upgradeLabLevel>=m.level?1:0)+(troopUpgradeDone?1:0); target=2; }
+      else if (m.kind === "protocols") { progress=allocatedProtocols?1:0; target=1; }
       else if (m.kind === "final") { progress = previous.filter(mission => claimed.has(mission.id)).length; target = previous.length; }
       const completed = progress >= target && m.kind !== "future";
       const unlocked = index === 0 || claimed.has(previous[index - 1].id);
-      return {...m,number:index+1,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":m.kind==="trade"&&tradeModuleLevel<m.level?"Cargo Depot":m.kind==="weaponry"&&upgradeLabLevel<m.level?"Upgrade Lab":null,tradeModuleLevel,tradeSent:sentTrade,upgradeLabLevel,troopUpgradeDone,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
+      return {...m,number:index+1,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":m.kind==="trade"&&tradeModuleLevel<m.level?"Cargo Depot":m.kind==="weaponry"&&upgradeLabLevel<m.level?"Upgrade Lab":null,tradeModuleLevel,tradeSent:sentTrade,upgradeLabLevel,troopUpgradeDone,allocatedProtocols,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
     });
     return { missions, resources:current.resources };
   }

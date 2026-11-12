@@ -7,7 +7,7 @@ import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
-const Quests = ({ onShowBase, onOpenUpgrades }) => {
+const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols }) => {
   const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState("main");
   const [loginRewards, setLoginRewards] = useState(null);
@@ -96,6 +96,10 @@ const Quests = ({ onShowBase, onOpenUpgrades }) => {
       else onOpenUpgrades?.();
       return;
     }
+    if (mission.kind === "protocols") {
+      onOpenProtocols?.();
+      return;
+    }
     if (mission.kind === "recon") {
       window.location.hash = "/map?recon=1";
       return;
@@ -149,6 +153,9 @@ const Quests = ({ onShowBase, onOpenUpgrades }) => {
           {m.kind==="weaponry" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
             <div>{Number(m.upgradeLabLevel||0)>=4?"✓ ":"○ "}{t("Upgrade Lab", "Лаборатория за подобрения")}{t(": Level",": Ниво")} {Number(m.upgradeLabLevel||0)} / 4</div>
             <div>{m.troopUpgradeDone?"✓ ":"○ "}{t("Complete one troop upgrade", "Завърши едно подобрение на войска")}</div>
+          </div>}
+          {m.kind==="protocols" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
+            <div>{m.allocatedProtocols?"✓ ":"○ "}{t("Allocate at least one Commander Protocol", "Разпредели поне една точка в протоколите на командира")}</div>
           </div>}
           <div className="quest-rewards">{t("Reward","Награда")}: {m.reward.toLocaleString()} {t("each of Gold, Iron, Water and Solar + 100 Wheel Tokens","от всеки ресурс: злато, желязо, вода и слънчева енергия + 100 жетона")}</div>
           {m.claimed ? <button disabled>{t("Reward claimed","Наградата е взета")}</button> :
