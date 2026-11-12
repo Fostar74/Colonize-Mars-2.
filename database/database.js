@@ -991,7 +991,6 @@ class DatabaseManager {
   buyAllianceMarket(userId,item){
     const catalog={gold:{cost:30},iron:{cost:30},water:{cost:30},solar:{cost:30},landing:{cost:100},attack:{cost:80},health:{cost:80},protection:{cost:150}};
     const product=catalog[item];if(!Object.hasOwn(catalog,item))return {error:"Unknown market item."};
-    if(item==="protection")return {error:"PvP protection is not available yet."};
     return db.transaction(()=>{
       const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
       if(!member)return {error:"Join an alliance first."};
@@ -1004,7 +1003,9 @@ class DatabaseManager {
         db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
       }else if(item==="landing"){this.creditTokens(userId,1);}
       else{
-        db.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,?,?) ON CONFLICT(user_id,kind) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at-3600000)+3600000").run(userId,item,Date.now()+3600000);
+        const duration=item==="protection"?86400000:3600000;
+        db.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,?,?) ON CONFLICT(user_id,kind) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at-?)+?")
+          .run(userId,item,Date.now()+duration,duration,duration);
       }
       db.prepare("UPDATE alliance_wallets SET points=points-? WHERE user_id=?").run(product.cost,userId);
       return {item,economy:this.allianceEconomy(userId,member.alliance_id)};
@@ -1254,6 +1255,8 @@ class DatabaseManager {
       WHERE u.username=? AND b.x=? AND b.y=?`).get(targetCoords.username,targetCoords.x,targetCoords.y);
     if (!target) return {error:"Player base not found at those coordinates."};
     if (target.id === userId) return {error:"You cannot attack your own base."};
+    if(db.prepare("SELECT 1 FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(target.id,Date.now()))
+      return {error:"This player is protected."};
     return db.transaction(()=>{
       const current=this.syncGame(userId);
       if (!current) return {error:"Player not found."};
@@ -1313,6 +1316,16 @@ class DatabaseManager {
         if(!attacker||!defender){
           const failed={victory:false,rounds:0,report:[],survivors:data.units||{},defenderSurvivors:{},defendersRemaining:0,error:"A player base is unavailable."};
           db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(now,now+60000,JSON.stringify(failed),mission.id);
+          continue;
+        }
+        const shield=db.prepare("SELECT expires_at FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(mission.defender_id,now);
+        if(shield){
+          const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
+          const shielded={victory:false,rounds:0,report:[],survivors:data.units||{},defenderSurvivors:defender.army||{},
+            defendersRemaining:Object.values(defender.army||{}).reduce((sum,count)=>sum+Number(count||0),0),
+            loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0,cargoCapacity:0,shielded:true};
+          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?")
+            .run(now,now+travelMs,JSON.stringify(shielded),mission.id);
           continue;
         }
         const defence=this.getFormations(mission.defender_id);
