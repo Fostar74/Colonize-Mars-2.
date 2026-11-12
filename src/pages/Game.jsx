@@ -260,7 +260,7 @@ function Game() {
             </button>
           </div>
           <div className="popup-content">
-            <Quests onShowBase={openQuestTarget} />
+            <Quests onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} />
           </div>
         </div>
       )}
