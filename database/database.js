@@ -1010,22 +1010,24 @@ class DatabaseManager {
       return {item,inventory:this.getInventory(userId),economy:this.allianceEconomy(userId,member.alliance_id)};
     })();
   }
-  useInventoryItem(userId,item){
+  useInventoryItem(userId,item,amount){
     const catalog={landing:"token",attack:"buff",health:"buff",protection:"buff"};
     if(!Object.hasOwn(catalog,item))return {error:"This item cannot be used."};
+    if(!Number.isSafeInteger(amount)||amount<1||amount>10000)return {error:"Enter a valid item quantity."};
     return db.transaction(()=>{
       const inventory=this.getInventory(userId);
-      if(Number(inventory.items[item]||0)<1)return {error:"You do not have this item."};
-      inventory.items[item]-=1;
+      if(Number(inventory.items[item]||0)<amount)return {error:"You do not have that many items."};
+      inventory.items[item]-=amount;
       if(inventory.items[item]<=0)delete inventory.items[item];
       db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
-      if(item==="landing")this.creditTokens(userId,1);
+      if(item==="landing")this.creditTokens(userId,amount);
       else{
-        const duration=item==="protection"?86400000:3600000;
+        const duration=(item==="protection"?86400000:3600000)*amount;
+        const now=Date.now();
         db.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,?,?) ON CONFLICT(user_id,kind) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at-?)+?")
-          .run(userId,item,Date.now()+duration,duration,duration);
+          .run(userId,item,now+duration,duration,duration);
       }
-      return {item,inventory:this.getInventory(userId)};
+      return {item,amount,inventory:this.getInventory(userId)};
     })();
   }
   allianceState(userId){
