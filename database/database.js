@@ -1547,6 +1547,8 @@ class DatabaseManager {
     if (current.quest2Claimed) claimed.add(2);
     const mineNames = ["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"];
     const level = name => Number(current.structures[name] || 0);
+    const tradeModuleLevel=Math.min(3,level("Cargo Depot"));
+    const sentTrade=!!db.prepare("SELECT 1 FROM interbase_trades WHERE sender_id=? LIMIT 1").get(userId);
     const formationState = this.getFormations(userId);
     const missions = tutorialMissions.map((m, index) => {
       const previous = tutorialMissions.slice(0, index);
@@ -1568,11 +1570,11 @@ class DatabaseManager {
         progress = (simulatorBuilt ? 1 : 0) + (hasSimulation ? 1 : 0);
         target = 2;
       }
-      else if (m.kind === "trade") { progress=Math.min(level("Cargo Depot"),m.level); target=m.level; }
+      else if (m.kind === "trade") { progress=(tradeModuleLevel>=m.level?1:0)+(sentTrade?1:0); target=2; }
       else if (m.kind === "final") { progress = previous.filter(mission => claimed.has(mission.id)).length; target = previous.length; }
       const completed = progress >= target && m.kind !== "future";
       const unlocked = index === 0 || claimed.has(previous[index - 1].id);
-      return {...m,number:index+1,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":m.kind==="trade"&&progress<target?"Cargo Depot":null,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
+      return {...m,number:index+1,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":m.kind==="trade"&&tradeModuleLevel<m.level?"Cargo Depot":null,tradeModuleLevel,tradeSent:sentTrade,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
     });
     return { missions, resources:current.resources };
   }
