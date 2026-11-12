@@ -161,9 +161,9 @@ const missions = [
     "titleEn": "Martian Exchange",
     "descriptionEn": "Upgrade the Cargo Depot trade module to level 3 and unlock trade between bases.",
     "reward": 8000,
-    "kind": "future",
-    "target": null,
-    "level": null
+    "kind": "trade",
+    "target": "Cargo Depot",
+    "level": 3
   },
   {
     "id": 17,
