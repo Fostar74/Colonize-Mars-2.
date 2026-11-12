@@ -10,37 +10,16 @@ import React,{useEffect,useState,useCallback} from "react";
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const getUserId=()=>sessionStorage.getItem("userId");
 const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
-export default function AlliancePanel({supportTarget,playerAction,constructionHelpOnly=false}){
+export default function AlliancePanel({supportTarget,playerAction}){
   const { t , label: localLabel} = useLanguage();
  const playerName=player=>playerAction ? playerAction(player) : player.username;
  const [reinforceRecipient,setReinforceRecipient]=useState(supportTarget?.id || ""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
  const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[tab,setTab]=useState(supportTarget ? "reinforcements" : "members");
  const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
- const helpAll=async()=>{const eligible=(state?.requests||[]).filter(h=>!h.helped&&String(h.requester_id)!==String(getUserId()));if(!eligible.length)return;setBusy(true);setMessage("");let successes=0,failures=0;for(const h of eligible){try{const r=await fetch(api+"/alliance/help",{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),requestId:h.id})});if(r.ok)successes++;else failures++;}catch(e){failures++;}}setMessage(`Help All: ${successes} construction(s) accelerated, ${successes} token(s) earned${failures?`, ${failures} failed`:""}.`);await refresh();setBusy(false);};
  const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
- const constructionHelp = <div>
-   <button disabled={busy} onClick={()=>action("request-help")}>{t("🤝 Request help for my active construction","🤝 Поискай помощ за текущия строеж")}</button>
-   <h3>{t("Construction Help Requests","Заявки за строителна помощ")}</h3>
-   <p>{t("Active requests refresh automatically every 10 seconds. Each member can help each construction once.","Заявките се обновяват на всеки 10 секунди. Всеки член може да помогне веднъж за всеки строеж.")}</p>
-   <button disabled={busy||!(state?.requests||[]).some(h=>!h.helped&&String(h.requester_id)!==String(getUserId()))} onClick={helpAll}>{t("🤝 Help All Eligible Requests","🤝 Помогни на всички")}</button>
-   {!(state?.requests||[]).length&&<p>{t("No active help requests.","Няма активни заявки.")}</p>}
-   {(state?.requests||[]).map(h=><div key={h.id} style={{padding:12,border:"1px solid #47758e",borderRadius:8,marginBottom:8}}>
-    <strong>{playerName({...h,id:h.requester_id,ally:true})}</strong> · {h.building_name} {t("Lv","Ниво")} {h.building_level}
-    <p>{h.helperCount||0} {t("member(s) helped · Reduce remaining time by 1 minute or 1%, whichever is greater.","членове помогнаха · Намалява оставащото време с 1 минута или 1%, което е повече.")}</p>
-    <button disabled={busy||h.helped||String(h.requester_id)===String(getUserId())} onClick={()=>action("help",{requestId:h.id})}>{h.helped?localLabel("Already helped"):String(h.requester_id)===String(getUserId())?localLabel("Your construction"):localLabel("Help · Earn 1 Token")}</button>
-   </div>)}
-   </div>;
- if(constructionHelpOnly){
-  if(!state?.alliance && !loadError)return null;
-  return <section aria-label="Alliance construction help" style={{color:"#eef6ff",padding:12,marginBottom:12,border:"1px solid #47758e",borderRadius:8}}>
-   {message&&<p role="status">{localLabel(message)}</p>}
-   {loadError&&<p role="alert">{localLabel(loadError)} <button onClick={refresh}>{t("Retry","Опитай пак")}</button></p>}
-   {state?.alliance&&constructionHelp}
-  </section>;
- }
  return <div style={{color:"#eef6ff",padding:15,minWidth:300}}>
-  <h2>{t("Alliance Command","Командване на алианса")}</h2><p>{t("Help clanmates build faster and earn 1 wheel token per successful help.","Помагай на съюзниците да строят по-бързо и печели по 1 жетон за всяка помощ.")}</p>
+  <h2>{t("Alliance Command","Командване на алианса")}</h2>
   {message&&<p role="status">{localLabel(message)}</p>}
   {loadError&&<div role="alert" style={{padding:12,background:"#49332d",borderRadius:8}}>{localLabel(loadError)} <button onClick={refresh}>{t("Retry","Опитай пак")}</button></div>}
   {!state?<p>{loadError?"Alliance data could not be loaded.":localLabel("Loading…")}</p>:!state.alliance?<div>
@@ -60,7 +39,7 @@ export default function AlliancePanel({supportTarget,playerAction,constructionHe
   </div>:<div>
    <h3>🛡 {state.alliance.name}</h3>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-    {Object.entries({members:"Members",applications:"Applications",help:"Construction Help",chat:"Chat",research:"Alliance Research",market:"Donation & Market"}).map(([key,label])=>
+    {Object.entries({members:"Members",applications:"Applications",chat:"Chat",research:"Alliance Research",market:"Donation & Market"}).map(([key,label])=>
       <button key={key} onClick={()=>setTab(key)} style={{background:tab===key?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{localLabel(label)}</button>)}
    </div>
    {tab==="chat"&&<MessagePanel alliance playerAction={player=>playerName({...player,ally:state.members.some(member=>member.id===player.id)})}/>}
@@ -122,23 +101,7 @@ export default function AlliancePanel({supportTarget,playerAction,constructionHe
     </div>)}
     {!(state.reinforcements||[]).length&&<p>{t("No active reinforcements.","Няма активни подкрепления.")}</p>}
    </div>}
-   {tab==="help"&&<details>
-    <summary>{t("Help History","История на помощта")}</summary>
-    <p>{t("Recorded helps:","Записани помощи:")} {state.helpStats?.totalHelps||0} {t("· Total construction time saved:","· Общо спестено време:")} {Math.floor((state.helpStats?.totalTimeSavedMs||0)/60000)} {t("minutes","минути")}</p>
-    <p>{t("Shows the 50 most recent successful assists since this feature was enabled.","Показва последните 50 успешни помощи.")}</p>
-    {!(state.helpHistory||[]).length&&<p>{t("No recorded assists yet.","Няма записани помощи.")}</p>}
-    {(state.helpHistory||[]).map(h=><div key={h.id} style={{padding:10,marginBottom:8,border:"1px solid #47758e",borderRadius:6}}>
-      <strong>{playerName({username:h.helper,ally:state.members.some(member=>member.username===h.helper)})}</strong> {t("helped","помогна на")} <strong>{playerName({username:h.requester,ally:state.members.some(member=>member.username===h.requester)})}</strong> {t("with","за")} {h.building_name} {t("level","ниво")} {h.building_level}
-      <div>{t("Time saved:","Спестено време:")} {Math.ceil(h.reduction_ms/1000)} {t("seconds ·","секунди ·")} {new Date(h.helped_at).toLocaleString()}</div>
-    </div>)}
-   </details>}
-   {tab==="applications"&&<div><h3>{t("Membership Applications","Кандидатури за членство")}</h3>
-    {!(state.applications||[]).length&&<p>{t("No pending applications.","Няма чакащи кандидатури.")}</p>}
-    {(state.applications||[]).map(m=><div key={m.id} style={{padding:9,borderBottom:"1px solid #416177"}}>{playerName(m)} · {new Date(m.applied_at).toLocaleString()}
-     {["Leader","Co-Leader","Diplomat"].includes(state.alliance.role)&&<> <button disabled={busy} onClick={()=>action("application",{targetId:m.id,accept:true})}>{t("Accept","Приеми")}</button> <button disabled={busy} onClick={()=>action("application",{targetId:m.id,accept:false})}>{t("Ignore","Игнорирай")}</button></>}
-    </div>)}
-   </div>}
-   {tab==="help"&&constructionHelp}
+
   </div>}
  </div>;
 }
