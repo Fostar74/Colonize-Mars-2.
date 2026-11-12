@@ -149,13 +149,13 @@ function EventsPanel() {
       {data.alliance.run&&<span> · {data.alliance.run.status==="active"?t("Participating","Участва"):t("Run complete","Участието приключи")}</span>}
       {data.alliance.canStart&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Starting…","Стартиране…"):t("Start for my alliance","Стартирай за алианса")}</button></div>}
       {data.myResult&&<p>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString()} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>}
-      {!data.alliance&&<p>{t("Join an alliance to participate.","Присъедини се към алианс, за да участваш.")}</p>}
+      {}
       {data.alliance&&!data.alliance.run&&!data.alliance.canStart&&<p>{t("Only the alliance leader can start the event, and only during Saturday UTC.","Само лидерът на алианса може да стартира събитието в събота по UTC.")}</p>}
     </div>}
     <h3>{t("Alliance standings","Класиране на алиансите")}</h3>
     {data.alliances.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.alliances.map(row=><tr key={row.id}><td>{row.rank}</td><td>{row.name}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.status==="active"?t("Active","Активен"):t("Complete","Приключил")}</td></tr>)}</tbody></table></div>:<p>{t("No alliances have started yet.","Все още няма стартирали алианси.")}</p>}
     <h3>{t("Individual standings","Индивидуално класиране")}</h3>
-    {data.players.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.players.slice(0,20).map(row=><tr key={row.userId}><td>{row.rank}</td><td>{row.username}</td><td>{row.alliance}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.eliminated?t("Eliminated","Елиминиран"):t("Active","Активен")}</td></tr>)}</tbody></table></div>:<p>{t("No scores yet.","Все още няма точки.")}</p>}
+    {data.players.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.players.slice(0,20).map(row=><tr key={row.userId}><td>{row.rank}</td><td>{row.username}</td><td>{row.alliance}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.eliminated?t("Eliminated","Елиминиран"):row.runStatus==="active"?t("Active","Активен"):t("Survived","Оцеля")}</td></tr>)}</tbody></table></div>:<p>{t("No scores yet.","Все още няма точки.")}</p>}
     <p>{t("Top three alliances receive resources for each participating member:","Първите три алианса получават ресурси за всеки участвал член:")} 1) 50,000 · 2) 30,000 · 3) 15,000 {t("of each resource.","от всеки ресурс.")}</p>
     {notice&&<p role="status">{notice}</p>}
   </div>;
