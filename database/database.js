@@ -1303,6 +1303,7 @@ class DatabaseManager {
     if (current.quest2Claimed) claimed.add(2);
     const mineNames = ["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"];
     const level = name => Number(current.structures[name] || 0);
+    const formationState = this.getFormations(userId);
     const missions = tutorialMissions.map((m, index) => {
       const previous = tutorialMissions.slice(0, index);
       let progress = 0, target = 1;
@@ -1310,6 +1311,13 @@ class DatabaseManager {
       else if (m.kind === "building") { progress = Math.min(level(m.target),m.level); target = m.level; }
       else if (m.kind === "army") { progress = level("Training Center") >= 1 ? Math.min(10,Object.values(current.army).reduce((a,b)=>a+Number(b||0),0)) : 0; target=10; }
       else if (m.kind === "units") { progress = Math.min(25,Number(current.army["Explorer Trooper"]||0)) + Math.min(25,Number(current.army["Plasma Bladesman"]||0)) + Math.min(25,Number(current.army["Railgunner"]||0)); target=75; }
+      else if (m.kind === "formation") {
+        const savedFormation = Object.entries(formationState.presets || {}).some(([slot, rows]) =>
+          String(formationState.names?.[slot] || "").trim().length >= 3 &&
+          formationUnits.every(unit => Number.isInteger(rows?.[unit]) && rows[unit] >= 1 && rows[unit] <= 4)
+        );
+        progress = savedFormation ? 1 : 0;
+      }
       else if (m.kind === "final") { progress = previous.filter(mission => claimed.has(mission.id)).length; target = previous.length; }
       const completed = progress >= target && m.kind !== "future";
       const unlocked = index === 0 || claimed.has(previous[index - 1].id);
