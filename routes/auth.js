@@ -148,10 +148,10 @@ router.post("/barracks/mobilize",requireSession,(req,res)=>{
 });
 
 router.get("/player-talents/:userId",requireSession,(req,res)=>{
- try{res.json(db.playerTalents(Number(req.params.userId)));}catch(e){console.error(e);res.status(500).json({message:"Talents unavailable."});}
+ try{res.json(db.playerTalents(Number(req.params.userId)));}catch(e){console.error(e);res.status(500).json({message:"Protocols unavailable."});}
 });
 router.post("/player-talents/upgrade",requireSession,(req,res)=>{
- try{const result=db.upgradePlayerTalent(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Talent upgrade failed."});}
+ try{const result=db.upgradePlayerTalent(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Protocol upgrade failed."});}
 });
 router.get("/wheel/:userId",requireSession,(req,res)=>{
   try{res.json(db.getWheel(Number(req.params.userId)));}catch(e){console.error(e);res.status(500).json({message:"Wheel unavailable."});}
