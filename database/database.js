@@ -48,7 +48,7 @@ function calculateCargoCapacity(survivors={}) {
 
 function calculateLoot(resources={},capacity=0) {
   const keys=["Gold","Iron","Water","Solar"];
-  const available=Object.fromEntries(keys.map(key=>[key,Math.max(0,Math.floor(Number(resources[key])||0))]));
+  const available=Object.fromEntries(keys.map(key=>[key,Math.floor(Math.max(0,Math.floor(Number(resources[key])||0))*0.1)]));
   const loot=Object.fromEntries(keys.map(key=>[key,0]));
   let remaining=Math.min(Math.max(0,Math.floor(Number(capacity)||0)),Object.values(available).reduce((sum,n)=>sum+n,0));
   while(remaining>0){
@@ -192,6 +192,8 @@ function initializeDatabase() {
       resources TEXT NOT NULL,
       traded_at INTEGER NOT NULL
     )`);
+    db.exec(`CREATE TABLE IF NOT EXISTS market_offers (id INTEGER PRIMARY KEY AUTOINCREMENT,seller_id INTEGER NOT NULL REFERENCES users(id),offered_resources TEXT NOT NULL,requested_resources TEXT NOT NULL,status TEXT NOT NULL DEFAULT 'open',accepted_by INTEGER REFERENCES users(id),created_at INTEGER NOT NULL,resolved_at INTEGER)`);
+    db.exec("CREATE INDEX IF NOT EXISTS market_offers_status ON market_offers(status,id DESC)");
     db.exec("CREATE INDEX IF NOT EXISTS player_missions_attacker ON player_missions(attacker_id,id)");
     db.exec("CREATE INDEX IF NOT EXISTS player_missions_defender ON player_missions(defender_id,id)");
     if(!db.prepare("PRAGMA table_info(alien_missions)").all().some(c=>c.name==="returns_at")) db.exec("ALTER TABLE alien_missions ADD COLUMN returns_at INTEGER");
@@ -1345,39 +1347,74 @@ class DatabaseManager {
       });
   }
 
-  tradeBetweenBases(userId,resources,targetCoords) {
-    if(!targetCoords||typeof targetCoords.username!=="string")return {error:"Choose a player base on the map."};
-    const target=db.prepare(`SELECT u.id,u.username,b.x,b.y FROM users u JOIN base_positions b ON b.user_id=u.id WHERE u.username=? COLLATE NOCASE AND b.x=? AND b.y=?`)
-      .get(targetCoords.username,Number(targetCoords.x),Number(targetCoords.y));
-    if(!target)return {error:"Player base not found at those coordinates."};
-    if(target.id===userId)return {error:"Choose another player's base."};
-    if(!resources||typeof resources!=="object"||Array.isArray(resources))return {error:"Enter the resources to trade."};
+  getMarketOffers(userId) {
+    return db.prepare("SELECT o.*,s.username AS seller_name FROM market_offers o JOIN users s ON s.id=o.seller_id WHERE o.status='open' OR o.seller_id=? ORDER BY CASE WHEN o.status='open' THEN 0 ELSE 1 END,o.id DESC LIMIT 100").all(userId)
+      .map(o=>({...o,offeredResources:JSON.parse(o.offered_resources),requestedResources:JSON.parse(o.requested_resources)}));
+  }
+
+  createMarketOffer(userId,offeredInput,requestedInput) {
     const keys=["Gold","Iron","Water","Solar"];
-    if(Object.keys(resources).some(key=>!keys.includes(key)))return {error:"Invalid resource type."};
+    const normalize=input=>{
+      if(!input||typeof input!=="object"||Array.isArray(input)||Object.keys(input).some(k=>!keys.includes(k)))return null;
+      const result=Object.fromEntries(keys.map(k=>[k,Number(input[k]||0)]));
+      return keys.every(k=>Number.isSafeInteger(result[k])&&result[k]>=0)?result:null;
+    };
+    const offered=normalize(offeredInput),requested=normalize(requestedInput);
+    if(!offered||!requested)return {error:"Enter valid resource amounts."};
+    const sum=obj=>Object.values(obj).reduce((a,n)=>a+n,0),offeredTotal=sum(offered),requestedTotal=sum(requested);
+    if(!offeredTotal||!requestedTotal)return {error:"An offer must include both resources for sale and requested payment."};
     return db.transaction(()=>{
-      const sender=this.syncGame(userId);
-      const recipient=this.syncGame(target.id);
-      if(!sender||!recipient)return {error:"Player base not found."};
-      const tradeLevel=Math.min(3,Number(sender.structures["Cargo Depot"]||0));
-      if(tradeLevel<3)return {error:"Upgrade the Cargo Depot to level 3 to unlock inter-base trade."};
-      const selected=Object.fromEntries(keys.map(key=>[key,Number(resources[key]||0)]));
-      for(const key of keys){
-        if(!Number.isSafeInteger(selected[key])||selected[key]<0||selected[key]>Number(sender.resources[key]||0))return {error:"Invalid amount or insufficient resources."};
-      }
-      const total=Object.values(selected).reduce((sum,amount)=>sum+amount,0);
-      if(total<=0)return {error:"Select resources to send."};
-      const capacity=tradeLevel*5000;
-      if(total>capacity)return {error:`The trade module can carry up to ${capacity.toLocaleString()} resources per trade.`};
-      for(const key of keys){sender.resources[key]-=selected[key];recipient.resources[key]=(Number(recipient.resources[key])||0)+selected[key];}
-      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(sender.resources),userId);
-      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(recipient.resources),target.id);
-      const now=Date.now();
-      const inserted=db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(userId,target.id,JSON.stringify(selected),now);
-      const senderName=this.findUserById(userId)?.username||"Another player";
-      writeTradeNotification(Number(inserted.lastInsertRowid),userId,target.id,senderName,selected,now);
-      return {tradeId:Number(inserted.lastInsertRowid),tradedAt:now,target:{username:target.username,x:target.x,y:target.y},resources:selected,capacity,remaining:sender.resources};
+      const seller=this.syncGame(userId);if(!seller)return {error:"Player base not found."};
+      const level=Math.min(3,Number(seller.structures["Cargo Depot"]||0)),capacity=level*5000;
+      if(level<3)return {error:"Upgrade the Cargo Depot to level 3 to use the marketplace."};
+      if(offeredTotal>capacity||requestedTotal>capacity)return {error:"Each side of an offer is limited to "+capacity.toLocaleString()+" resources."};
+      for(const k of keys)if(offered[k]>Number(seller.resources[k]||0))return {error:"Not enough resources to reserve this offer."};
+      for(const k of keys)seller.resources[k]-=offered[k];
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(seller.resources),userId);
+      const row=db.prepare("INSERT INTO market_offers(seller_id,offered_resources,requested_resources,created_at) VALUES (?,?,?,?)").run(userId,JSON.stringify(offered),JSON.stringify(requested),Date.now());
+      return {offerId:Number(row.lastInsertRowid),offers:this.getMarketOffers(userId),remaining:seller.resources,capacity};
     })();
   }
+
+  acceptMarketOffer(userId,offerId) {
+    const keys=["Gold","Iron","Water","Solar"];
+    return db.transaction(()=>{
+      const offer=db.prepare("SELECT * FROM market_offers WHERE id=? AND status='open'").get(offerId);
+      if(!offer)return {error:"This offer is no longer available."};
+      if(Number(offer.seller_id)===Number(userId))return {error:"You cannot accept your own offer."};
+      const seller=this.syncGame(offer.seller_id),buyer=this.syncGame(userId);
+      if(!seller||!buyer)return {error:"Player base not found."};
+      if(Number(seller.structures["Cargo Depot"]||0)<3||Number(buyer.structures["Cargo Depot"]||0)<3)return {error:"Both players need a level 3 Cargo Depot to trade."};
+      const offered=JSON.parse(offer.offered_resources),requested=JSON.parse(offer.requested_resources);
+      for(const k of keys)if(Number(requested[k]||0)>Number(buyer.resources[k]||0))return {error:"You do not have enough resources to accept this offer."};
+      for(const k of keys){buyer.resources[k]=(Number(buyer.resources[k])||0)+Number(offered[k]||0)-Number(requested[k]||0);seller.resources[k]=(Number(seller.resources[k])||0)+Number(requested[k]||0);}
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(buyer.resources),userId);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(seller.resources),offer.seller_id);
+      const now=Date.now(),changed=db.prepare("UPDATE market_offers SET status='accepted',accepted_by=?,resolved_at=? WHERE id=? AND status='open'").run(userId,now,offerId);
+      if(changed.changes!==1)throw new Error("Offer was accepted by another player.");
+      const sellerName=this.findUserById(offer.seller_id)?.username||"Another player",buyerName=this.findUserById(userId)?.username||"Another player";
+      const notify=(sender,recipient,body)=>db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)").run(sender,recipient,null,body,now);
+      notify(userId,offer.seller_id,"Marketplace offer #"+offerId+" accepted by "+buyerName+". Payment received. / Офертата #"+offerId+" е приета от "+buyerName+". Плащането е получено.");
+      notify(offer.seller_id,userId,"Marketplace purchase completed from "+sellerName+". Resources added to your base. / Покупката от "+sellerName+" е завършена. Ресурсите са добавени в базата ти.");
+      db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(offer.seller_id,userId,JSON.stringify(offered),now);
+      return {offerId:Number(offerId),buyerResources:buyer.resources,sellerResources:seller.resources};
+    })();
+  }
+
+  cancelMarketOffer(userId,offerId) {
+    return db.transaction(()=>{
+      const offer=db.prepare("SELECT * FROM market_offers WHERE id=? AND seller_id=? AND status='open'").get(offerId,userId);
+      if(!offer)return {error:"Open offer not found."};
+      const seller=this.syncGame(userId);if(!seller)return {error:"Player base not found."};
+      const offered=JSON.parse(offer.offered_resources);
+      for(const k of ["Gold","Iron","Water","Solar"])seller.resources[k]=(Number(seller.resources[k])||0)+Number(offered[k]||0);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(seller.resources),userId);
+      db.prepare("UPDATE market_offers SET status='cancelled',resolved_at=? WHERE id=? AND status='open'").run(Date.now(),offerId);
+      return {offerId:Number(offerId),remaining:seller.resources};
+    })();
+  }
+
+  tradeBetweenBases() { return {error:"Instant transfers are disabled. Use the marketplace offer and acceptance flow."}; }
 
   getAlienCampaign(userId) {
     this.resolvePlayerMissions(userId);
@@ -1593,7 +1630,7 @@ class DatabaseManager {
     const mineNames = ["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"];
     const level = name => Number(current.structures[name] || 0);
     const tradeModuleLevel=Math.min(3,level("Cargo Depot"));
-    const sentTrade=!!db.prepare("SELECT 1 FROM interbase_trades WHERE sender_id=? LIMIT 1").get(userId);
+    const sentTrade=!!db.prepare("SELECT 1 FROM interbase_trades WHERE sender_id=? LIMIT 1").get(userId) || !!db.prepare("SELECT 1 FROM market_offers WHERE seller_id=? AND status=? LIMIT 1").get(userId,"accepted");
     const upgradeLabLevel=Math.min(4,level("Upgrade Lab"));
     const troopUpgradeDone=Object.values(current.unitUpgrades||{}).some(stats=>["attack","defense"].some(stat=>Number(stats?.[stat]||1)>1));
     const allocatedProtocols=Object.values(this.playerTalents(userId).talents||{}).some(tier=>Number(tier)>0);

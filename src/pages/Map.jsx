@@ -754,19 +754,9 @@ function Map() {
           {marchDraft && <div>
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
             {marchDraft.type==="Trade" ? <div>
-              <p>{t("Send resources from your base to this player. Capacity: 15,000 resources per trade.","Изпрати ресурси от базата си до този играч. Капацитет: 15 000 ресурси на сделка.")}</p>
-              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:10}}>
-                {["Gold","Iron","Water","Solar"].map(resource=><label key={resource} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6}}>
-                  <strong>{localLabel(resource)}</strong><span>{t("Available:","Налични:")} {Number(availableResources[resource]||0).toLocaleString()}</span>
-                  <input type="number" min="0" max={Number(availableResources[resource]||0)} value={tradeAmounts[resource]||0} onChange={event=>setTradeAmounts(current=>({...current,[resource]:Math.max(0,Math.min(Number(availableResources[resource]||0),Math.floor(Number(event.target.value)||0)))}))}/>
-                  <button type="button" disabled={!Number(availableResources[resource]||0)} onClick={()=>setTradeAmounts(current=>({...current,[resource]:Number(availableResources[resource]||0)}))}>{t("MAX","МАКС.")}</button>
-                </label>)}
-              </div>
-              <p>{t("Total selected:","Общо избрани:")} {Object.values(tradeAmounts).reduce((sum,amount)=>sum+Number(amount||0),0).toLocaleString()} / 15,000</p>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-                <button type="button" disabled={marchLoading||Object.values(tradeAmounts).reduce((sum,amount)=>sum+Number(amount||0),0)<=0||Object.values(tradeAmounts).reduce((sum,amount)=>sum+Number(amount||0),0)>15000} onClick={sendInterbaseTrade} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchLoading?t("Sending…","Изпращане…"):t("Complete Trade","Завърши търговията")}</button>
-                <button type="button" onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
-              </div>
+              <p>{t("Direct transfers have been replaced by the marketplace. Publish an offer from your base; the other player must accept it before resources move.","Директното изпращане е заменено с пазар. Публикувай оферта от базата си; другият играч трябва да я приеме, преди ресурсите да се преместят.")}</p>
+              <button type="button" onClick={()=>{window.location.href="/#/game?market=1";}}>{t("Open marketplace","Отвори пазара")}</button>
+              <button type="button" onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div> : <>
             {marchDraft.type === "Attack" && marchDraft.target.type === "alien" && <>
             <p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {campaign.knightLevel || 1} {t("(required)","(задължителен)")}</p>

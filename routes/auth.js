@@ -279,11 +279,33 @@ router.post("/player-campaign/attack",requireSession,(req,res)=>{
 });
 
 router.post("/player-campaign/trade",requireSession,(req,res)=>{
+  res.status(400).json({message:"Instant transfers are disabled. Use the marketplace."});
+});
+
+router.get("/market/:userId",requireSession,(req,res)=>{
+  try{res.json({offers:db.getMarketOffers(Number(req.params.userId))});}
+  catch(error){console.error("Market offers:",error);res.status(500).json({message:"Marketplace unavailable."});}
+});
+router.post("/market/offers",requireSession,(req,res)=>{
   try{
-    const result=db.tradeBetweenBases(Number(req.body.userId),req.body.resources,req.body.target);
+    const result=db.createMarketOffer(Number(req.body.userId),req.body.offered,req.body.requested);
     if(result.error)return res.status(400).json({message:result.error});
     res.json(result);
-  }catch(error){console.error("Inter-base trade:",error);res.status(500).json({message:"Trade could not be completed."});}
+  }catch(error){console.error("Create market offer:",error);res.status(500).json({message:"Offer could not be created."});}
+});
+router.post("/market/offers/:offerId/accept",requireSession,(req,res)=>{
+  try{
+    const result=db.acceptMarketOffer(Number(req.body.userId),Number(req.params.offerId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Accept market offer:",error);res.status(500).json({message:"Offer could not be accepted."});}
+});
+router.post("/market/offers/:offerId/cancel",requireSession,(req,res)=>{
+  try{
+    const result=db.cancelMarketOffer(Number(req.body.userId),Number(req.params.offerId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Cancel market offer:",error);res.status(500).json({message:"Offer could not be cancelled."});}
 });
 
 router.post("/alien-campaign/side-quest",requireSession,(req,res)=>{
