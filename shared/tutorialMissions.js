@@ -223,12 +223,12 @@ const missions = [
   {
     "id": 22,
     "title": "Марсиански алианс",
-    "description": "Създай или се присъедини към алианс.",
+    "description": "Създай алианс или се присъедини към съществуващ.",
     "titleEn": "Martian Alliance",
-    "descriptionEn": "Create or join an alliance.",
+    "descriptionEn": "Create an alliance or join an existing one.",
     "reward": 12000,
-    "kind": "future",
-    "target": null,
+    "kind": "alliance",
+    "target": 1,
     "level": null
   },
   {
