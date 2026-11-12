@@ -1103,7 +1103,7 @@ class DatabaseManager {
   }
 
   getFormations(userId) {
-    const row=db.prepare("SELECT presets,defense_slot FROM player_formations WHERE user_id=?").get(userId);
+    const row=db.prepare("SELECT presets,defense_slot,names FROM player_formations WHERE user_id=?").get(userId);
     const stored = row ? JSON.parse(row.presets) : {};
     const storedNames = row?.names ? JSON.parse(row.names) : {};
     const hasSplitPresets = !!stored.attack || !!stored.defense;
