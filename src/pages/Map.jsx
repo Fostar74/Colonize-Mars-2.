@@ -398,6 +398,18 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
+        const protectedUntil=Number(c.protected_until||c.protectedUntil||0);
+        if(protectedUntil>Date.now()){
+          ctx.save();
+          ctx.fillStyle="rgba(135,225,255,0.20)";
+          ctx.strokeStyle="rgba(194,246,255,0.95)";
+          ctx.lineWidth=Math.max(2,tileSize*0.035);
+          ctx.shadowColor="#81e8ff";
+          ctx.shadowBlur=tileSize*0.25;
+          ctx.beginPath();
+          ctx.ellipse(px+tileSize/2,py+tileSize/2,tileSize*0.76,tileSize*0.68,0,0,Math.PI*2);
+          ctx.fill();ctx.stroke();ctx.restore();
+        }
         ctx.drawImage(hqIcon, px, py, tileSize, tileSize);
         ctx.fillStyle = "white";
         ctx.font = "12px Arial";
@@ -768,18 +780,21 @@ function Map() {
               {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
                 const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
                 const mothership=selectedTarget?.type==="mothership";
-                const allowed=type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own)): type==="Support"?!field&&!alien&&!own&&canSupport:
+                const shielded=Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now();
+                const blockedByShield=shielded&&(type==="Attack"||type==="Espionage");
+                const allowed=!blockedByShield&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own)): type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
                   type==="Gather"?field:
                   type==="Trade"?!field&&!alien&&!own&&(campaign.tradeModuleLevel||0)>=3:
-                  type==="Relocation"?field:false;
+                  type==="Relocation"?field:false);
                 return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}
                   style={{padding:"12px 18px",background:allowed?(type==="Attack"?"#9e4437":"#205c78"):"#253441",color:allowed?"white":"#788796",border:"1px solid #50718b",borderRadius:7,cursor:allowed?"pointer":"not-allowed"}}>
                   {type==="Attack"?"⚔ ":type==="Espionage"?"◈ ":type==="Support"?"🛡 ":""}{localLabel(type)}
                 </button>;
               })}
             </div>
+            {selectedTarget?.type==="castle"&&!targetIsOwn&&Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now()&&<p role="status" style={{color:"#c4f4ff",background:"rgba(41,117,145,.35)",padding:10,borderRadius:7}}>{t("This player is protected by a 24-hour Plasma Shield. Attacks and espionage are blocked until it expires.","Този играч е защитен от 24-часов плазмен щит. Атаките и шпионажът са блокирани до изтичането му.")}</p>}
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
             {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
           </div>}
