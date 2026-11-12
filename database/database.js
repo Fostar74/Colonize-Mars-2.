@@ -1105,38 +1105,52 @@ class DatabaseManager {
   getFormations(userId) {
     const row=db.prepare("SELECT presets,defense_slot FROM player_formations WHERE user_id=?").get(userId);
     const stored = row ? JSON.parse(row.presets) : {};
-    const presets = Object.fromEntries(Object.entries(stored)
+    const storedNames = row?.names ? JSON.parse(row.names) : {};
+    const hasSplitPresets = !!stored.attack || !!stored.defense;
+    const legacyPresets = hasSplitPresets ? {} : stored;
+    const legacyNames = storedNames.attack || storedNames.defense ? {} : storedNames;
+    const normalizeSlots = source => Object.fromEntries(Object.entries(source || {})
       .map(([slot, formation]) => [slot, normalizeFormation(formation)]));
-    return {presets, names: row?.names ? JSON.parse(row.names) : {}, defenseSlot:row?.defense_slot || 0};
+    const attackPresets = normalizeSlots(hasSplitPresets ? stored.attack : legacyPresets);
+    const defensePresets = normalizeSlots(stored.defense || {});
+    const attackNames = hasSplitPresets ? (storedNames.attack || {}) : legacyNames;
+    const defenseNames = hasSplitPresets ? (storedNames.defense || {}) : {};
+    const defenseSlot = row?.defense_slot || 0;
+    return {presets:attackPresets,names:attackNames,attackPresets,attackNames,defensePresets,defenseNames,defenseSlot};
   }
 
-  saveFormation(userId, slot, rows, defenseSlot, name) {
+  saveFormation(userId, slot, rows, defenseSlot, name, mode="attack") {
     return db.transaction(()=>{
       const settings=this.getFormations(userId);
       if(rows!==undefined){
+        if(!["attack","defense"].includes(mode)) return {error:"Choose attack or defense formation."};
         if(!Number.isInteger(slot)||slot<1||slot>5||!rows||typeof rows!=="object"||Array.isArray(rows)
           || Object.keys(rows).some(key => key !== "columns" && !formationUnits.includes(key))
           || !formationUnits.every(unit=>Number.isInteger(rows[unit])&&rows[unit]>=1&&rows[unit]<=4)){
           return {error:"Choose formation slot 1–5 and a valid row for every unit."};
         }
         if(typeof name !== "string" || !name.trim() || name.trim().length > 32) return {error:"Enter a formation name up to 32 characters."};
-        settings.presets[slot]=normalizeFormation(rows);
-        settings.names[slot]=name.trim();
+        const presets = mode === "defense" ? settings.defensePresets : settings.attackPresets;
+        const names = mode === "defense" ? settings.defenseNames : settings.attackNames;
+        presets[slot]=normalizeFormation(rows);
+        names[slot]=name.trim();
       }
       if(defenseSlot!==undefined){
-        if(!Number.isInteger(defenseSlot)||defenseSlot<0||defenseSlot>5||(defenseSlot!==0&&!settings.presets[defenseSlot])){
-          return {error:"Choose the default defense or a saved formation."};
+        if(!Number.isInteger(defenseSlot)||defenseSlot<0||defenseSlot>5||(defenseSlot!==0&&!settings.defensePresets[defenseSlot])){
+          return {error:"Choose the default defense or a saved defense formation."};
         }
         settings.defenseSlot=defenseSlot;
       }
+      const storedPresets={attack:settings.attackPresets,defense:settings.defensePresets};
+      const storedNames={attack:settings.attackNames,defense:settings.defenseNames};
       db.prepare(`INSERT INTO player_formations(user_id,presets,defense_slot,names) VALUES (?,?,?,?)
         ON CONFLICT(user_id) DO UPDATE SET presets=excluded.presets,defense_slot=excluded.defense_slot,names=excluded.names`)
-        .run(userId,JSON.stringify(settings.presets),settings.defenseSlot,JSON.stringify(settings.names));
+        .run(userId,JSON.stringify(storedPresets),settings.defenseSlot,JSON.stringify(storedNames));
       return settings;
     })();
   }
 
-  getAlienCampaign(userId) {
+    getAlienCampaign(userId) {
     this.resolveAlienMissions(userId);
     const current = this.syncGame(userId);
     const scoutMissions = db.prepare("SELECT * FROM scout_missions WHERE user_id=? AND (returned_at IS NULL OR id IN (SELECT id FROM scout_missions WHERE user_id=? ORDER BY id DESC LIMIT 20)) ORDER BY id DESC")
