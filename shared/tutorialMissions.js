@@ -183,9 +183,9 @@ const missions = [
     "titleEn": "Advanced Weapons",
     "descriptionEn": "Upgrade the Upgrade Lab to level 4 and complete one troop upgrade.",
     "reward": 12000,
-    "kind": "future",
-    "target": null,
-    "level": null
+    "kind": "weaponry",
+    "target": "Upgrade Lab",
+    "level": 4
   },
   {
     "id": 19,
