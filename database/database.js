@@ -1552,6 +1552,7 @@ class DatabaseManager {
     const upgradeLabLevel=Math.min(4,level("Upgrade Lab"));
     const troopUpgradeDone=Object.values(current.unitUpgrades||{}).some(stats=>["attack","defense"].some(stat=>Number(stats?.[stat]||1)>1));
     const allocatedProtocols=Object.values(this.playerTalents(userId).talents||{}).some(tier=>Number(tier)>0);
+    const inAlliance=!!db.prepare("SELECT 1 FROM alliance_members WHERE user_id=? LIMIT 1").get(userId);
     const formationState = this.getFormations(userId);
     const missions = tutorialMissions.map((m, index) => {
       const previous = tutorialMissions.slice(0, index);
@@ -1576,10 +1577,11 @@ class DatabaseManager {
       else if (m.kind === "trade") { progress=(tradeModuleLevel>=m.level?1:0)+(sentTrade?1:0); target=2; }
       else if (m.kind === "weaponry") { progress=(upgradeLabLevel>=m.level?1:0)+(troopUpgradeDone?1:0); target=2; }
       else if (m.kind === "protocols") { progress=allocatedProtocols?1:0; target=1; }
+      else if (m.kind === "alliance") { progress=inAlliance?1:0; target=1; }
       else if (m.kind === "final") { progress = previous.filter(mission => claimed.has(mission.id)).length; target = previous.length; }
       const completed = progress >= target && m.kind !== "future";
       const unlocked = index === 0 || claimed.has(previous[index - 1].id);
-      return {...m,number:index+1,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":m.kind==="trade"&&tradeModuleLevel<m.level?"Cargo Depot":m.kind==="weaponry"&&upgradeLabLevel<m.level?"Upgrade Lab":null,tradeModuleLevel,tradeSent:sentTrade,upgradeLabLevel,troopUpgradeDone,allocatedProtocols,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
+      return {...m,number:index+1,building:m.kind==="building"?m.target:m.kind==="army"?"Training Center":m.kind==="trade"&&tradeModuleLevel<m.level?"Cargo Depot":m.kind==="weaponry"&&upgradeLabLevel<m.level?"Upgrade Lab":null,tradeModuleLevel,tradeSent:sentTrade,upgradeLabLevel,troopUpgradeDone,allocatedProtocols,inAlliance,progress,target,completed,claimed:claimed.has(m.id),unlocked,available:m.kind!=="future"};
     });
     return { missions, resources:current.resources };
   }

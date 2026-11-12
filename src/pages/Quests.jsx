@@ -7,7 +7,7 @@ import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
-const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols }) => {
+const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance }) => {
   const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState("main");
   const [loginRewards, setLoginRewards] = useState(null);
@@ -100,6 +100,10 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols }) => {
       onOpenProtocols?.();
       return;
     }
+    if (mission.kind === "alliance") {
+      onOpenAlliance?.();
+      return;
+    }
     if (mission.kind === "recon") {
       window.location.hash = "/map?recon=1";
       return;
@@ -156,6 +160,9 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols }) => {
           </div>}
           {m.kind==="protocols" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
             <div>{m.allocatedProtocols?"✓ ":"○ "}{t("Allocate at least one Commander Protocol", "Разпредели поне една точка в протоколите на командира")}</div>
+          </div>}
+          {m.kind==="alliance" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
+            <div>{m.inAlliance?"✓ ":"○ "}{t("Create or join an alliance", "Създай алианс или се присъедини към съществуващ")}</div>
           </div>}
           <div className="quest-rewards">{t("Reward","Награда")}: {m.reward.toLocaleString()} {t("each of Gold, Iron, Water and Solar + 100 Wheel Tokens","от всеки ресурс: злато, желязо, вода и слънчева енергия + 100 жетона")}</div>
           {m.claimed ? <button disabled>{t("Reward claimed","Наградата е взета")}</button> :

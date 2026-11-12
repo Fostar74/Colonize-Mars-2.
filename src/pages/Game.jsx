@@ -260,7 +260,7 @@ function Game() {
             </button>
           </div>
           <div className="popup-content">
-            <Quests onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} onOpenProtocols={() => setShowTalents(true)} />
+            <Quests onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} onOpenProtocols={() => setShowTalents(true)} onOpenAlliance={() => { setSupportTarget(null); setShowAlliance(true); }} />
           </div>
         </div>
       )}
