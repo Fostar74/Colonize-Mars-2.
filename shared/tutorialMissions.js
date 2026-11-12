@@ -157,9 +157,9 @@ const missions = [
   {
     "id": 16,
     "title": "Марсианска борса",
-    "description": "Развий търговския модул на Товарно депо до ниво 3 и отключи междубазова търговия.",
+    "description": "Развий търговския модул на Товарно депо до ниво 3 и изпрати ресурси към друга база.",
     "titleEn": "Martian Exchange",
-    "descriptionEn": "Upgrade the Cargo Depot trade module to level 3 and unlock trade between bases.",
+    "descriptionEn": "Upgrade the Cargo Depot trade module to level 3 and send resources to another base.",
     "reward": 8000,
     "kind": "trade",
     "target": "Cargo Depot",
