@@ -113,6 +113,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
     try{
       const response=await request("/alliance/request-help",{});
       setAllianceHelpMessage("Help request sent to your alliance. Members can now assist from Alliance → Help Requests.");
+      await refreshAllianceHelp();
       window.dispatchEvent(new Event("alliance-help-updated"));
     }catch(e){setAllianceHelpMessage(e.message);}
     finally{setAllianceHelpBusy(false);}
@@ -176,18 +177,21 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
         ).join(" · ")}
       </p>
       <p>{t("Construction:","Строеж:")} {game.buildingJob ? localLabel(game.buildingJob.name) + " (" + formatTime(remaining(game.buildingJob)) + ")" : t("Idle","Няма")} {t("· Queue:","· Опашка:")} {game.queuedBuildingJob ? localLabel(game.queuedBuildingJob.name) + t(" (level "," (ниво ") + game.queuedBuildingJob.level + ")" : t("Empty","Празна")}</p>
-      {game.buildingJob&&<div style={{padding:12,margin:"12px 0",border:"1px solid #4b96ac",borderRadius:8,background:"#183449"}}>
+      <div style={{padding:12,margin:"12px 0",border:"1px solid #4b96ac",borderRadius:8,background:"#183449"}}>
         <strong>{t("🤝 Alliance Construction Help","🤝 Строителна помощ от алианса")}</strong>
-        <p>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {localLabel(game.buildingJob.name)} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</p>
+        <p>{game.buildingJob ? <>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {localLabel(game.buildingJob.name)} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</> : t("Start a building to request construction help. You can help alliance members at any time.","Започни строеж, за да поискаш помощ. Можеш да помагаш на членовете на алианса по всяко време.")}</p>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button className="upgrade-btn" disabled={allianceHelpBusy} onClick={requestBuildingHelp}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
+          <button className="upgrade-btn" disabled={allianceHelpBusy||!game.buildingJob} onClick={requestBuildingHelp}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
           <button type="button" disabled={allianceHelpBusy||!eligibleAllianceHelp.length} onClick={helpAlliance}
             style={{background:eligibleAllianceHelp.length?"#bd3030":"#777",color:"#fff",border:"1px solid "+(eligibleAllianceHelp.length?"#ef7777":"#999"),borderRadius:5,padding:"8px 12px",fontWeight:"bold",cursor:eligibleAllianceHelp.length?"pointer":"not-allowed"}}>
             {allianceHelpBusy?localLabel("Helping..."):t("Help Alliance","Помогни на алианса")}{eligibleAllianceHelp.length?` (${eligibleAllianceHelp.length})`:""}
           </button>
         </div>
+        {eligibleAllianceHelp.length>0&&<ul style={{margin:"10px 0 0",paddingLeft:20}}>
+          {eligibleAllianceHelp.map(item=><li key={item.id}>{item.username} — {localLabel(item.building_name)} ({t("Level","Ниво")} {item.building_level})</li>)}
+        </ul>}
         {allianceHelpMessage&&<p role="status">{localLabel(allianceHelpMessage)}</p>}
-      </div>}
+      </div>
       {Object.entries(structureTypes).map(([section, buildings]) => (
         <section key={section} ref={questSection === section && !questTarget?.building ? questDestination : null} style={{marginBottom:16}}>
           <button type="button" onClick={() => setExpandedSections(prev => ({...prev,[section]:!prev[section]}))}
