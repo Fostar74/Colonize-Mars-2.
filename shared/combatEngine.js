@@ -35,14 +35,15 @@ function createGroups(army,types,formation){
 }
 function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
   const defenderIsPlayer=options.playerDefense===true;
+  const attackerIsAlien=options.attackerIsAlien===true;
+  const playerSide=attackerIsAlien?1:0;
   const sides=[
-    createGroups(attackerArmy,playerTypes,formation),
+    createGroups(attackerArmy,attackerIsAlien?alienTypes:playerTypes,formation),
     createGroups(defenderArmy,defenderIsPlayer?playerTypes:alienTypes,defenderIsPlayer?options.defenderFormation:null)
   ];
-  // Player-only Commander Protocol and alliance bonuses; alien garrisons keep their base stats.
-  for(const group of sides[0]){
+  // Apply player protocols, research, and upgrades to the player's side, including when defending.
+  for(const group of sides[playerSide]){
     const categoryBonus=group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
-    // Neural Command improves coordinated offensive effectiveness for all deployed units.
     const research = bonuses.unitResearch?.[group.unit];
     group.attack*=1+((Number(categoryBonus)||0)+(Number(bonuses.leadership)||0)+(Number(bonuses.allAttack)||0)+(research?.attack||0))/100;
     group.hp*=1+((Number(bonuses.allHealth)||0)+(research?.health||0)+(group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
@@ -70,7 +71,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
       for(const shot of shots){
         // Evasion applies to incoming alien volleys only. The target group
         // dodges the volley, not an arbitrary percentage of its casualties.
-        shot.dodged=shot.side===1&&Math.random()<dodgeChance;
+        shot.dodged=shot.side!==playerSide&&Math.random()<dodgeChance;
         if(!shot.dodged)hits.set(shot.target,(hits.get(shot.target)||0)+shot.damage);
       }
       const casualties=new Map();
@@ -98,12 +99,12 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
           shot.kills++;remainder--;
         }
       }
-      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?"Player":defenderIsPlayer?"Player Defense":"Alien Base",unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:shot.kills});
+      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?(attackerIsAlien?"Alien Base":"Player"):(defenderIsPlayer?"Player Defense":"Alien Base"),unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:shot.kills});
     }
     // Restore a percentage of casualties at the end of each round, capped
     // at the original deployed group size. Fractions accumulate per group.
     if(reviveRate>0){
-      for(const group of sides[0]){
+      for(const group of sides[playerSide]){
         const missing=group.original-group.count;
         if(missing<=0)continue;
         // Only casualties suffered during this round are eligible for
