@@ -446,8 +446,9 @@ function Map() {
       const data=await response.json();
       setAvailableArmy(data.gameProgress?.army || {});
       setMarchUnits({});
-      setFormationRows({});
-      setMarchFormationSlot("");
+      const firstAttackSlot=Object.keys(attackPresets)[0];
+      setMarchFormationSlot(firstAttackSlot || "default");
+      setFormationRows(firstAttackSlot ? attackPresets[firstAttackSlot] : defaultFormation());
       setKnightAdded(false);
       setMarchDraft({type,target,origin});
       } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
@@ -745,7 +746,7 @@ function Map() {
                   </button>;
                 })}
               </div>
-              {!Object.keys(attackPresets).length && <p>{t("Save an attack formation in Campaigns → Formations first.","Първо запази формация за атака в Кампании → Формации.")}</p>}
+              {!Object.keys(attackPresets).length && <p>{t("No saved attack formations yet. The standard attack layout is selected.","Още няма запазени формации за атака. Избрана е стандартната атака.")}</p>}
             </div>
             }
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
