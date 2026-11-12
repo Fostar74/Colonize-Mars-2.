@@ -211,13 +211,13 @@ const missions = [
   },
   {
     "id": 21,
-    "title": "Умения на командир",
-    "description": "Разпредели точки за таланти на Киберрицаря в икономика, бой или разузнаване.",
-    "titleEn": "Commander Skills",
-    "descriptionEn": "Spend Cyber Knight talent points on economy, combat or reconnaissance.",
+    "title": "Протоколи на командира",
+    "description": "Разпредели поне една точка в протоколите на играча.",
+    "titleEn": "Commander Protocols",
+    "descriptionEn": "Allocate at least one point to a player protocol.",
     "reward": 9000,
-    "kind": "future",
-    "target": null,
+    "kind": "protocols",
+    "target": 1,
     "level": null
   },
   {
