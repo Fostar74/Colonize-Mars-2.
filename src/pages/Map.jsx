@@ -371,6 +371,23 @@ function Map() {
       }
     });
 
+    const event=campaign.mothershipEvent;
+    if(event?.active){
+      const sx=(event.coordinates.x-1)*tileSize+offset.x+tileSize/2;
+      const sy=(event.coordinates.y-1)*tileSize+offset.y+tileSize/2;
+      ctx.save();ctx.strokeStyle="#ff5f44";ctx.lineWidth=Math.max(2,tileSize*.08);ctx.globalAlpha=.75;
+      for(const attack of event.attacks||[]){
+        const ax=(attack.origin_x-1)*tileSize+offset.x+tileSize/2;
+        const ay=(attack.origin_y-1)*tileSize+offset.y+tileSize/2;
+        ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(sx,sy);ctx.stroke();
+      }
+      ctx.globalAlpha=1;ctx.beginPath();ctx.arc(sx,sy,tileSize*.85,0,Math.PI*2);
+      ctx.fillStyle="rgba(220,66,44,.35)";ctx.fill();ctx.strokeStyle="#ff6347";ctx.lineWidth=3;ctx.stroke();
+      ctx.drawImage(alienIcon,sx-tileSize*.58,sy-tileSize*.58,tileSize*1.16,tileSize*1.16);
+      ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
+      ctx.fillText("МАЙЧИН КОРАБ",sx,sy+tileSize*1.05);ctx.restore();
+    }
+
     castles.forEach((c) => {
       const px = (c.x-1) * tileSize + offset.x;
       const py = (c.y-1) * tileSize + offset.y;
@@ -387,7 +404,7 @@ function Map() {
         ctx.fillText(`${c.username} (${c.x}:${c.y})`, px + 2, py + tileSize - 5);
       }
     });
-  }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom]);
+  }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom, campaign]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
@@ -431,10 +448,11 @@ function Map() {
       item,dist:Math.hypot((Number(item.x)-.5)*tileSize+offset.x-px,(Number(item.y)-.5)*tileSize+offset.y-py)
     })).filter(hit=>hit.dist<=hitRadius).sort((a,b)=>a.dist-b.dist)[0]?.item;
     const castle=nearest(castles);
-    const alien=castle?null:nearest(alienBases);
+    const event=campaign.mothershipEvent?.active?nearest([campaign.mothershipEvent.coordinates]):null;
+    const alien=castle||event?null:nearest(alienBases);
     setSelectedAlien(castle?null:alien||null);
     setMarchDraft(null);
-    setSelectedTarget(castle?{type:"castle",...castle}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
+    setSelectedTarget(castle?{type:"castle",...castle}:event?{type:"mothership",...campaign.mothershipEvent.coordinates}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
     setMarchNotice("");
   };
   const ownUsername=sessionStorage.getItem("username");
@@ -476,10 +494,11 @@ function Map() {
   const prepareMarch = async () => {
     setPreviewOpen(false);
     const isAlienAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="alien";
+    const isMothershipAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="mothership";
     const isPlayerAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="castle"&&!targetIsOwn;
     if(selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
-    if(isAlienAttack&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
-    if(!isAlienAttack&&!isPlayerAttack){setMarchNotice("Choose an attackable target.");return;}
+    if((isAlienAttack||isMothershipAttack)&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
+    if(!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack){setMarchNotice("Choose an attackable target.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
     try{
@@ -488,13 +507,16 @@ function Map() {
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
       const payload=isAlienAttack
         ? {userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}}
-        : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
-      const response=await fetch(base+(isAlienAttack?"/alien-campaign/attack":"/player-campaign/attack"),{
+        : isMothershipAttack ? {userId:sessionStorage.getItem("userId"),army:selected,formation} : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
+      const response=await fetch(base+(isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":"/player-campaign/attack"),{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
       });
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      if(isAlienAttack){
+      if(isMothershipAttack){
+        setCampaign(old=>({...old,mothershipEvent:{...old.mothershipEvent,attacksRemaining:data.attacksRemaining,myAttacks:(old.mothershipEvent?.myAttacks||0)+1,attacks:[...(old.mothershipEvent?.attacks||[]),{id:data.attackId,user_id:sessionStorage.getItem("userId"),username:sessionStorage.getItem("username"),origin_x:data.origin.x,origin_y:data.origin.y,launched_at:data.launchedAt,arrives_at:data.arrivesAt,resolved_at:null,damage:0,xp:0}]}}));
+        setMarchSuccess("Cyber Knight is heading to the Mother Ship. The attack arrives in 30 seconds. Open the Hospital after arrival to recover your troops.");
+      }else if(isAlienAttack){
         setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
           id:data.missionId,level:data.level,arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,cyberKnightLevel:old.knightLevel||1
         },...(old.missions||[]).filter(m=>m.id!==data.missionId)]}));
@@ -721,7 +743,17 @@ function Map() {
             <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?localLabel("MARCH CONTROL"):localLabel("TARGET COMMAND")}</h2>
             <button onClick={()=>{setSelectedTarget(null);setMarchDraft(null);setMarchNotice("");}}>{t("✕ Close","✕ Затвори")}</button>
           </div>
-          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
+          {selectedTarget?.type==="mothership"&&campaign.mothershipEvent&&<section style={{padding:12,margin:"10px 0",background:"#3b2632",border:"1px solid #cc684f",borderRadius:8}}>
+            <strong>{t("The global event lasts 24 hours. Every player gets 10 attacks; each march arrives in 30 seconds. Each 1,000 damage counts as one alien population killed and grants 1 XP. The Mother Ship cannot be destroyed.","Глобалното събитие трае 24 часа. Всеки играч има 10 атаки; походът пристига за 30 секунди. На всеки 1 000 щети се отчита една убита извънземна популация и се дава 1 опит. Майчиният кораб не може да бъде унищожен.")}</strong>
+            <p>{t("Top 10: 20 extra Cyber Knight missions and equipment with 3 bonuses; rank 1 gets 3 items, rank 2 gets 2. All participants receive resources for hospital treatment.","Първите 10: 20 допълнителни мисии на Киберрицаря и екипировка с 3 бонуса; първият получава 3 предмета, вторият 2. Всички участници получават ресурси за лечението в болницата.")}</p>
+            <div style={{marginTop:8}}>{t("Your attacks left:","Оставащи твои атаки:")} {campaign.mothershipEvent.attacksRemaining} · {t("Cyber Knight prestige:","Престиж на Киберрицаря:")} {campaign.mothershipEvent.prestige} · {t("Ship integrity:","Здравина на кораба:")} {Number(campaign.mothershipEvent.hp).toLocaleString()}</div>
+            <h3>{t("Global damage rankings","Глобално класиране по щети")}</h3>
+            {(campaign.mothershipEvent.rankings||[]).map((row,index)=><div key={row.user_id}>{index+1}. {row.username} · {Number(row.damage).toLocaleString()} {t("damage","щети")} · {row.attacks} {t("attacks","атаки")}</div>)}
+            <details style={{marginTop:8}}><summary>{t("All attacks from all players","Всички атаки на играчите")}</summary>
+              <div style={{maxHeight:180,overflowY:"auto"}}>{(campaign.mothershipEvent.attacks||[]).slice().reverse().map(attack=><div key={attack.id}>{attack.username} · {attack.origin_x}:{attack.origin_y} → 50:50 · {attack.resolved_at?Number(attack.damage).toLocaleString()+" "+t("damage","щети")+" · "+Number(attack.xp||0).toLocaleString()+" XP":t("en route","на път")}</div>)}</div>
+            </details>
+          </section>}
+          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Mother Ship Hunt · Global Event","Ловът на Майчиния кораб · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
           {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
             <strong>{t("Alien garrison · Level","Извънземен гарнизон · Ниво")} {selectedTarget.level}</strong>
             {campaign.garrisons?.[selectedTarget.level] ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:6,marginTop:8}}>
@@ -733,9 +765,10 @@ function Map() {
           {!marchDraft && <div>
             <p>{t("Choose mission type:","Избери вид мисия:")}</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
-              {(selectedTarget?.type==="alien"?["Attack"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
+              {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
                 const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
-                const allowed=type==="Attack"?(alien||(selectedTarget?.type==="castle"&&!own)): type==="Support"?!field&&!alien&&!own&&canSupport:
+                const mothership=selectedTarget?.type==="mothership";
+                const allowed=type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own)): type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
                   type==="Gather"?field:
@@ -748,7 +781,7 @@ function Map() {
               })}
             </div>
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
-            {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
+            {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
           </div>}
           {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
           {marchDraft && <div>
@@ -758,8 +791,8 @@ function Map() {
               <button type="button" onClick={()=>{window.location.href="/#/game?market=1";}}>{t("Open marketplace","Отвори пазара")}</button>
               <button type="button" onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div> : <>
-            {marchDraft.type === "Attack" && marchDraft.target.type === "alien" && <>
-            <p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {campaign.knightLevel || 1} {t("(required)","(задължителен)")}</p>
+            {marchDraft.type === "Attack" && (marchDraft.target.type === "alien"||marchDraft.target.type==="mothership") && <>
+            <p>{t("Cyber Knight leads this attack · Level","Киберрицарят води похода · Ниво")} {campaign.knightLevel || 1} {t("(required)","(задължителен)")}</p>
             <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
               {knightAdded ? localLabel("Remove Cyber Knight") : localLabel("Add Cyber Knight")}
             </button>
@@ -847,7 +880,7 @@ function Map() {
       {marchSuccess && <div role="dialog" aria-modal="true" aria-label={t("March sent","Походът е изпратен")} style={{position:"fixed",inset:0,zIndex:60,background:"rgba(0,0,0,.72)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(640px,94vw)",padding:28,textAlign:"center",background:"#f4efdf",color:"#181818",border:"3px solid #857450",borderRadius:10,boxShadow:"0 12px 50px #000"}}>
           <h2>{t("March sent successfully!","Походът е изпратен успешно!")}</h2><p>{localLabel(marchSuccess)}</p>
-          <button type="button" onClick={()=>setMarchSuccess("")} style={{background:"#26765e",color:"white",padding:"10px 24px"}}>{t("Continue","Продължи")}</button>
+          {marchSuccess.includes("Mother Ship")&&<button type="button" onClick={()=>{window.location.href="/#/game?hospital=1";}}>{t("Open Hospital","Отвори болницата")}</button>} <button type="button" onClick={()=>setMarchSuccess("")} style={{background:"#26765e",color:"white",padding:"10px 24px"}}>{t("Continue","Продължи")}</button>
         </div>
       </div>}
       <button onClick={()=>{setCampaignTab("active");setMarchHistoryOpen(true);}} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</button>
