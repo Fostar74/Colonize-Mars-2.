@@ -204,5 +204,11 @@ export default {
   "% mobile attack": "% атака на мобилните единици",
   "% siege attack": "% атака на обсадните единици",
   "% XP": "% опит",
-  "% training speed": "% скорост на обучение"
+  "% training speed": "% скорост на обучение",
+  "This player is protected by an active 24-hour Plasma Shield.": "Играчът е защитен от активен 24-часов плазмен щит.",
+  "Purchase added to your Inventory.": "Покупката е добавена в инвентара.",
+  "Mars Landing Token added to your account.": "Жетонът за кацане на Марс е добавен към акаунта ти.",
+  "Plasma Shield activated for 24 hours.": "Плазменият щит е активиран за 24 часа.",
+  "Army Attack boost activated for 1 hour.": "Бонусът към атаката на армията е активен за 1 час.",
+  "Army Health boost activated for 1 hour.": "Бонусът към здравето на армията е активен за 1 час."
 };
