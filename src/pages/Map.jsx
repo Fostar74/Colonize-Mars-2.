@@ -103,6 +103,8 @@ function Map() {
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [marchDraft, setMarchDraft] = useState(null);
   const [availableArmy, setAvailableArmy] = useState({});
+  const [availableResources,setAvailableResources]=useState({});
+  const [tradeAmounts,setTradeAmounts]=useState({Gold:0,Iron:0,Water:0,Solar:0});
   const [marchUnits, setMarchUnits] = useState({});
   const [knightAdded,setKnightAdded]=useState(false);
   const [formationRows,setFormationRows]=useState({});
@@ -449,7 +451,9 @@ function Map() {
       if(!response.ok) throw new Error("Could not load your army. Please log in again.");
       const data=await response.json();
       setAvailableArmy(data.gameProgress?.army || {});
+      setAvailableResources(data.gameProgress?.resources || {});
       setMarchUnits({});
+      setTradeAmounts({Gold:0,Iron:0,Water:0,Solar:0});
       const firstAttackSlot=Object.keys(attackPresets)[0];
       setMarchFormationSlot(firstAttackSlot || "default");
       setFormationRows(firstAttackSlot ? attackPresets[firstAttackSlot] : defaultFormation());
@@ -506,6 +510,21 @@ function Map() {
       setMarchDraft(null);
       setPreviewOpen(false);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
+  };
+  const sendInterbaseTrade=async()=>{
+    setMarchLoading(true);setMarchNotice("");
+    try{
+      const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+      const response=await fetch(api+"/player-campaign/trade",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({
+        userId:sessionStorage.getItem("userId"),resources:tradeAmounts,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}
+      })});
+      const data=await response.json();
+      if(!response.ok)throw Error(data.message||"Trade failed.");
+      setAvailableResources(data.remaining||{});setTradeAmounts({Gold:0,Iron:0,Water:0,Solar:0});
+      setMarchNotice("Trade completed. "+Object.entries(data.resources).filter(([,amount])=>amount>0).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" · ")+" sent to "+data.target.username+".");
+      window.dispatchEvent(new Event("game-progress-updated"));
+    }catch(error){setMarchNotice(error.message);}
+    finally{setMarchLoading(false);}
   };
   const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+count,0);
   const previewRows=normalizeFormation(formationRows);
@@ -719,7 +738,7 @@ function Map() {
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
                   type==="Gather"?field:
-                  type==="Trade"?!field&&!alien&&!own:
+                  type==="Trade"?!field&&!alien&&!own&&(campaign.tradeModuleLevel||0)>=3:
                   type==="Relocation"?field:false;
                 return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}
                   style={{padding:"12px 18px",background:allowed?(type==="Attack"?"#9e4437":"#205c78"):"#253441",color:allowed?"white":"#788796",border:"1px solid #50718b",borderRadius:7,cursor:allowed?"pointer":"not-allowed"}}>
@@ -728,11 +747,26 @@ function Map() {
               })}
             </div>
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
-            {selectedTarget?.type==="alien" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
+            {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
           </div>}
           {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
           {marchDraft && <div>
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
+            {marchDraft.type==="Trade" ? <div>
+              <p>{t("Send resources from your base to this player. Capacity: 15,000 resources per trade.","Изпрати ресурси от базата си до този играч. Капацитет: 15 000 ресурси на сделка.")}</p>
+              <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(170px,1fr))",gap:10}}>
+                {["Gold","Iron","Water","Solar"].map(resource=><label key={resource} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6}}>
+                  <strong>{localLabel(resource)}</strong><span>{t("Available:","Налични:")} {Number(availableResources[resource]||0).toLocaleString()}</span>
+                  <input type="number" min="0" max={Number(availableResources[resource]||0)} value={tradeAmounts[resource]||0} onChange={event=>setTradeAmounts(current=>({...current,[resource]:Math.max(0,Math.min(Number(availableResources[resource]||0),Math.floor(Number(event.target.value)||0)))}))}/>
+                  <button type="button" disabled={!Number(availableResources[resource]||0)} onClick={()=>setTradeAmounts(current=>({...current,[resource]:Number(availableResources[resource]||0)}))}>{t("MAX","МАКС.")}</button>
+                </label>)}
+              </div>
+              <p>{t("Total selected:","Общо избрани:")} {Object.values(tradeAmounts).reduce((sum,amount)=>sum+Number(amount||0),0).toLocaleString()} / 15,000</p>
+              <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+                <button type="button" disabled={marchLoading||Object.values(tradeAmounts).reduce((sum,amount)=>sum+Number(amount||0),0)<=0||Object.values(tradeAmounts).reduce((sum,amount)=>sum+Number(amount||0),0)>15000} onClick={sendInterbaseTrade} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchLoading?t("Sending…","Изпращане…"):t("Complete Trade","Завърши търговията")}</button>
+                <button type="button" onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
+              </div>
+            </div> : <>
             {marchDraft.type === "Attack" && marchDraft.target.type === "alien" && <>
             <p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {campaign.knightLevel || 1} {t("(required)","(задължителен)")}</p>
             <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
@@ -789,6 +823,7 @@ function Map() {
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
             <p style={{fontSize:12,color:"#b5c7d9"}}>{t("Alien attacks reserve selected troops immediately; survivors return after the battle.","Избраните войски тръгват веднага. Оцелелите се връщат след битката.")}</p>
+            </>}
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{localLabel(marchNotice)}</p>}
         </div>
