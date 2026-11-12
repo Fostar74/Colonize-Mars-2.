@@ -507,7 +507,7 @@ function Map() {
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
       const payload=isAlienAttack
         ? {userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}}
-        : isMothershipAttack ? {userId:sessionStorage.getItem("userId"),army:selected,formation} : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
+        : isMothershipAttack ? {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded} : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
       const response=await fetch(base+(isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":"/player-campaign/attack"),{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
       });
