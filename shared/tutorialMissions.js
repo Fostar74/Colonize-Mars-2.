@@ -124,11 +124,11 @@ const missions = [
   {
     "id": 13,
     "title": "Бойна формация",
-    "description": "Създай формация с име от поне 3 символа и я запази като стандартна.",
+    "description": "Създай формация с име от поне 3 символа и я запази в един от петте слота.",
     "titleEn": "Battle Formation",
-    "descriptionEn": "Create a formation with a name of at least three characters and save it as the default.",
+    "descriptionEn": "Create a formation with a name of at least three characters and save it in one of the five slots.",
     "reward": 6500,
-    "kind": "future",
+    "kind": "formation",
     "target": null,
     "level": null
   },
