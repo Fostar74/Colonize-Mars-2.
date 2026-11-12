@@ -781,7 +781,11 @@ function Map() {
             ].map(([tab,label]) => <button key={tab} type="button" aria-pressed={campaignTab===tab}
               style={{padding:"8px 14px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:campaignTab===tab?"#27657e":"#20384d"}}
               onClick={()=>{
-                if (tab==="formations" && campaignTab!==tab) setPresetRows(presets[presetSlot] || {});
+                if (tab==="formations" && campaignTab!==tab) {
+                  setPresetRows(attackPresets[presetSlot] || {});
+                  setPresetName(attackNames[presetSlot] || "");
+                  setFormationMode("attack");
+                }
                 setCampaignTab(tab);
               }}>{label}</button>)}
           </nav>
