@@ -12,18 +12,7 @@ import Inventory from "./Inventory";
 
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
-const AVATARS = [
-  ["defender-m","Defender","Защитник","👨‍🚀"],["defender-f","Defender","Защитник","👩‍🚀"],
-  ["attacker-m","Attacker","Атакуващ","👨‍🚒"],["attacker-f","Attacker","Атакуващ","👩‍🚒"],
-  ["farmer-m","Farmer","Фермер","👨‍🌾"],["farmer-f","Farmer","Фермер","👩‍🌾"],
-  ["scientist-m","Scientist","Учен","👨‍🔬"],["scientist-f","Scientist","Учен","👩‍🔬"],
-  ["pilot-m","Pilot","Пилот","👨‍✈️"],["pilot-f","Pilot","Пилот","👩‍✈️"],
-  ["doctor-m","Doctor","Лекар","👨‍⚕️"],["doctor-f","Doctor","Лекар","👩‍⚕️"],
-  ["engineer-m","Engineer","Инженер","👨‍🔧"],["engineer-f","Engineer","Инженер","👩‍🔧"],
-  ["tactician-m","Tactician","Тактик","🕵️‍♂️"],["tactician-f","Tactician","Тактик","🕵️‍♀️"],
-  ["leader-m","Leader","Лидер","👨‍🚀"],["leader-f","Leader","Лидер","👩‍🚀"]
-].map(([id,role,roleBg,icon])=>({id,role,roleBg,icon}));
-
+import AVATARS from "../shared/avatarCatalog";
 
 function MarketPanel() {
   const {t,label}=useLanguage();
@@ -300,10 +289,12 @@ function Game() {
       });
       if(!response.ok)return;
       const data=await response.json();
-      const selected=data.players.find(entry=>entry.username===player.username);
+      const selectedIndex=data.players.findIndex(entry=>entry.username===player.username);
+      const selected=data.players[selectedIndex];
       const own=data.players.find(entry=>String(entry.id)===id);
       if(selected)setPlayerMenu(current=>current===player ? {
         ...selected,
+        rank:selectedIndex+1,
         ally:!!own?.alliance && selected.alliance===own.alliance,
         canInvite:data.canInvite && !selected.alliance && String(selected.id)!==id
       } : current);
@@ -517,13 +508,24 @@ function Game() {
       </div>}
       {playerMenu&&<div className="popup" style={{zIndex:1003}}>
         <div className="popup-header"><span>{playerMenu.username}</span><button className="close-button" onClick={()=>setPlayerMenu(null)}>X</button></div>
-        <div className="popup-content" style={{display:"flex",flexWrap:"wrap",gap:8,alignContent:"flex-start"}}>
+        <div className="popup-content" style={{display:"flex",flexDirection:"column",gap:12,alignContent:"flex-start",padding:16,boxSizing:"border-box"}}>
+          <section style={{display:"flex",alignItems:"center",gap:14,background:"#172c3d",border:"1px solid #547188",borderRadius:12,padding:16}}>
+            <span aria-hidden="true" style={{width:78,height:78,flex:"0 0 78px",borderRadius:"50%",display:"grid",placeItems:"center",fontSize:44,background:"radial-gradient(circle at 35% 30%,#718a9c,#263443 72%)"}}>{AVATARS.find(avatar=>avatar.id===playerMenu.avatarId)?.icon||"👨‍🚀"}</span>
+            <div><h2 style={{margin:"0 0 6px"}}>{t("Player profile","Профил на играча")}</h2><strong style={{fontSize:20}}>{playerMenu.username}</strong><div>{(()=>{const avatar=AVATARS.find(item=>item.id===playerMenu.avatarId)||AVATARS.find(item=>item.id==="pilot-m");return t(avatar.role,avatar.roleBg);})()}</div></div>
+          </section>
+          <div style={{display:"flex",gap:18,flexWrap:"wrap"}}>
+            <span>{t("Alliance","Алианс")}: {playerMenu.alliance||"—"}</span>
+            {Number.isFinite(Number(playerMenu.rank))&&<span>{t("Rank","Място")}: {Number(playerMenu.rank)}</span>}
+            {Number.isFinite(Number(playerMenu.points))&&<span>{t("XP","Опит")}: {Number(playerMenu.points).toLocaleString()}</span>}
+          </div>
+          <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
           <button onClick={showPlayerBase}>{t("View Base","Виж базата")}</button>
           <button disabled={playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setMessageRecipient(playerMenu.username);setPlayerMenu(null);}}>{t("Message","Съобщение")}</button>
           <button disabled={!playerMenu.ally || playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setSupportTarget(playerMenu);setShowRankings(false);setShowAlliance(true);setPlayerMenu(null);}}>{t("Support","Подкрепление")}</button>
           <button disabled title={playerMenu.ally?"You cannot attack an ally.":"Player battles are not enabled yet."}>{t("Attack","Атака")}</button>
           <button disabled={!playerMenu.canInvite || inviting} onClick={invitePlayer}>{t("Invite to Alliance","Покани в алианса")}</button>
           {playerNotice&&<p role="status">{localLabel(playerNotice)}</p>}
+          </div>
         </div>
       </div>}
 
