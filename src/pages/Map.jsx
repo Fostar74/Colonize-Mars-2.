@@ -13,6 +13,7 @@ import alienBaseImg from "../images/alien-base.png";
 import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
 import alienBases from "../shared/alienBases";
+import spaceStations from "../shared/spaceStations";
 const {units, marchLimit, cellsPerRow, defaultFormation, normalizeFormation}=formations;
 
 const formationTypes = {
@@ -112,6 +113,8 @@ function Map() {
   const [previewOpen, setPreviewOpen] = useState(false);
   const [marchSuccess, setMarchSuccess] = useState("");
   const [marchNotice, setMarchNotice] = useState("");
+  const [stationBusy,setStationBusy]=useState(false);
+  const [stationNotice,setStationNotice]=useState("");
   const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
   const [campaignTab, setCampaignTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.hash.split("?")[1]).get("campaignTab");
@@ -371,6 +374,22 @@ function Map() {
       }
     });
 
+    (campaign.stations?.stations||spaceStations).forEach(station=>{
+      const sx=(station.x-1)*tileSize+offset.x+tileSize/2;
+      const sy=(station.y-1)*tileSize+offset.y+tileSize/2;
+      if(sx+tileSize<0||sy+tileSize<0||sx-tileSize>canvas.width||sy-tileSize>canvas.height)return;
+      const unlocked=!station.locked;
+      ctx.save();
+      ctx.strokeStyle=unlocked?"#7cffd2":"#9bb1c3";ctx.fillStyle=unlocked?"rgba(57,220,171,.22)":"rgba(150,177,198,.16)";
+      ctx.lineWidth=Math.max(2,tileSize*.045);ctx.shadowColor=unlocked?"#54ffc3":"#a6c4d4";ctx.shadowBlur=tileSize*.18;
+      ctx.beginPath();ctx.arc(sx,sy,tileSize*.42,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.beginPath();ctx.moveTo(sx,sy-tileSize*.28);ctx.lineTo(sx+tileSize*.28,sy);ctx.lineTo(sx,sy+tileSize*.28);ctx.lineTo(sx-tileSize*.28,sy);ctx.closePath();
+      ctx.fillStyle=unlocked?"#7affd1":"#a9c0d0";ctx.fill();ctx.stroke();
+      ctx.shadowBlur=0;ctx.fillStyle="#f3ffe8";ctx.font="bold 10px Arial";ctx.textAlign="center";
+      ctx.fillText(unlocked?"СТАНЦИЯ "+station.id:"🔒 "+station.id,sx,sy+tileSize*.67);
+      ctx.restore();
+    });
+
     const event=campaign.mothershipEvent;
     if(event?.active){
       const sx=(event.coordinates.x-1)*tileSize+offset.x+tileSize/2;
@@ -461,10 +480,12 @@ function Map() {
     })).filter(hit=>hit.dist<=hitRadius).sort((a,b)=>a.dist-b.dist)[0]?.item;
     const castle=nearest(castles);
     const event=campaign.mothershipEvent?.active?nearest([campaign.mothershipEvent.coordinates]):null;
-    const alien=castle||event?null:nearest(alienBases);
-    setSelectedAlien(castle?null:alien||null);
+    const station=castle||event?null:nearest(campaign.stations?.stations||spaceStations);
+    const alien=castle||event||station?null:nearest(alienBases);
+    setSelectedAlien(castle||station?null:alien||null);
     setMarchDraft(null);
-    setSelectedTarget(castle?{type:"castle",...castle}:event?{type:"mothership",...campaign.mothershipEvent.coordinates}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
+    setStationNotice("");
+    setSelectedTarget(castle?{type:"castle",...castle}:event?{type:"mothership",...campaign.mothershipEvent.coordinates}:station?{type:"station",stationId:station.id,x:station.x,y:station.y}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
     setMarchNotice("");
   };
   const ownUsername=sessionStorage.getItem("username");
@@ -755,6 +776,36 @@ function Map() {
             <h2 style={{margin:0,color:"#9cdbff"}}>{marchDraft?localLabel("MARCH CONTROL"):localLabel("TARGET COMMAND")}</h2>
             <button onClick={()=>{setSelectedTarget(null);setMarchDraft(null);setMarchNotice("");}}>{t("✕ Close","✕ Затвори")}</button>
           </div>
+          {selectedTarget?.type==="station"&&<section style={{padding:14,margin:"12px 0",background:"linear-gradient(135deg,#163a40,#0d202b)",border:"1px solid #4bd4ba",borderRadius:10}}>
+            {(()=>{
+              const status=campaign.stations||{};
+              const station=status.stations?.find(item=>item.id===selectedTarget.stationId);
+              const owner=station?.allianceName;
+              return <>
+                <h3 style={{color:"#83ffe0",marginTop:0}}>🛰️ {t("Orbital Station","Орбитална станция")} {selectedTarget.stationId}</h3>
+                <p>{owner?t("Unlocked for alliance:","Отключена за алианса:")+" "+owner:t("Locked · requires 10,000 green crystals and a top-four alliance.","Заключена · нужни са 10 000 зелени кристала и място в първите четири алианса.")}</p>
+                {status.allianceId&&<p>{t("Your alliance:","Твоят алианс:")} <strong>{status.allianceName}</strong> · {t("Alliance crystals:","Кристали на алианса:")} <strong>💚 {Number(status.allianceBalance||0).toLocaleString()} / 10,000</strong><br/>{t("Your crystals:","Твоите кристали:")} 💚 {Number(status.personalBalance||0).toLocaleString()}</p>}
+                {!status.allianceId&&<p>{t("Join an alliance to contribute green crystals toward a station.","Присъедини се към алианс, за да допринасяш зелени кристали за станция.")}<br/>{t("Your crystals:","Твоите кристали:")} 💚 {Number(status.personalBalance||0).toLocaleString()}</p>}
+                <p><strong>{t("Four strongest alliances","Четирите най-силни алианса")}</strong></p>
+                <ol>{(status.eligibleAlliances||[]).map(alliance=><li key={alliance.id}>{alliance.name} · {Number(alliance.points||0).toLocaleString()} {t("points","точки")} {alliance.id===status.allianceId&&<>{t("· rank","· място")} {alliance.rank}</>}</li>)}</ol>
+                {station?.locked&&status.canUnlock&&<button type="button" disabled={stationBusy} onClick={async()=>{
+                  setStationBusy(true);setStationNotice("");
+                  try{
+                    const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+                    const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
+                    const response=await fetch(api+"/alien-stations/unlock",{method:"POST",headers,body:JSON.stringify({userId:Number(sessionStorage.getItem("userId")),stationId:selectedTarget.stationId})});
+                    const result=await response.json();if(!response.ok)throw Error(result.message||"Could not unlock station.");
+                    const latest=await fetch(api+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:headers.Authorization},cache:"no-store"});
+                    if(latest.ok)setCampaign(await latest.json());
+                    setStationNotice(t("Station unlocked for your alliance.","Станцията е отключена за твоя алианс."));
+                  }catch(error){setStationNotice(error.message);}finally{setStationBusy(false);}
+                }}>{stationBusy?t("Unlocking…","Отключване…"):t("Unlock for 10,000 green crystals","Отключи за 10 000 зелени кристала")}</button>}
+                {station?.locked&&status.allianceId&&!status.eligibleAlliance&&<p>{t("Your alliance must rank among the top four to unlock a station.","Алиансът ти трябва да е сред първите четири, за да отключи станция.")}</p>}
+                {station?.locked&&status.eligibleAlliance&&!status.canUnlock&&<p>{status.ownStation?t("Your alliance already owns a station.","Алиансът ти вече има станция."):status.allianceRole!=="Leader"?t("Only the alliance leader can unlock a station.","Само лидерът на алианса може да отключи станция."):t("The alliance needs 10,000 green crystals.","На алианса му трябват 10 000 зелени кристала.")}</p>}
+                {stationNotice&&<p role="status">{stationNotice}</p>}
+              </>;
+            })()}
+          </section>}
           {selectedTarget?.type==="mothership"&&campaign.mothershipEvent&&<section style={{padding:12,margin:"10px 0",background:"#3b2632",border:"1px solid #cc684f",borderRadius:8}}>
             <strong>{t("The global event lasts 24 hours. Every player gets 10 attacks; each march arrives in 30 seconds. Each 1,000 damage counts as one alien population killed and grants 1 XP. The Mother Ship cannot be destroyed.","Глобалното събитие трае 24 часа. Всеки играч има 10 атаки; походът пристига за 30 секунди. На всеки 1 000 щети се отчита една убита извънземна популация и се дава 1 опит. Майчиният кораб не може да бъде унищожен.")}</strong>
             <p>{t("Top 10: 20 extra Cyber Knight missions and equipment with 3 bonuses; rank 1 gets 3 items, rank 2 gets 2. All participants receive resources for hospital treatment.","Първите 10: 20 допълнителни мисии на Киберрицаря и екипировка с 3 бонуса; първият получава 3 предмета, вторият 2. Всички участници получават ресурси за лечението в болницата.")}</p>
@@ -774,7 +825,7 @@ function Map() {
             </div> : <p>{t("Loading fixed garrison data...","Зареждане на гарнизона…")}</p>}
             <p style={{fontSize:12}}>{t("Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.","По-високите нива имат по-големи и по-силни гарнизони. Крепостта на ниво 20 има извънземен владетел.")}</p>
           </div>}
-          {!marchDraft && <div>
+          {!marchDraft && selectedTarget?.type!=="station" && <div>
             <p>{t("Choose mission type:","Избери вид мисия:")}</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
               {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
@@ -1005,6 +1056,7 @@ function Map() {
             : m.units && <p>{t("Dispatched:","Изпратени:")} {Object.entries(m.units).map(([unit,count])=>`${count} ${localLabel(unit)}`).join(", ")}</p>}
           {m.result&&<div><p>{t("Rounds:","Рундове:")} {m.result.rounds} {t("· Remaining alien defenders:","· Оставащи извънземни защитници:")} {m.result.defendersRemaining}</p>
           <p>{t("Reward:","Награда:")} {m.result.reward?.item?.name || (m.result.reward?.type==="crafting" ? `${m.result.reward.amount} ${t("Universal Forge points","универсални точки за изковаване")}` : m.result.reward?.type==="resources" ? `${m.result.reward.amount} ${t("of each resource","от всеки ресурс")}` : m.result.reward?.type==="army" ? `${m.result.reward.amount} ${localLabel(m.result.reward.unit)}` : "None")}</p>
+          {m.result.greenCrystals>0&&<p>💚 {t("Green crystals earned:","Спечелени зелени кристали:")} {Number(m.result.greenCrystals).toLocaleString()} {t("· credited to your balance","· добавени към личния ти баланс")}</p>
           <p>{t("Survivors:","Оцелели:")} {Object.entries(m.result.survivors||{}).map(([u,n])=>localLabel(u)+": "+n).join(", ") || "None"}</p>
           {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
             {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${localLabel(e.unit)} restored` : <>{localLabel(e.attacker)}: {e.units} {localLabel(e.unit)} → {localLabel(e.target)} · {e.damage} {t("damage","щети")}{Number.isInteger(e.kills) ? ` · ${e.kills} ${t("defeated","убити")}` : ""}{e.dodged ? t(" · Evaded"," · Избегнат удар") : ""}</>}</p>)}
