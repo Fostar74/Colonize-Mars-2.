@@ -1293,11 +1293,14 @@ class DatabaseManager {
 
     launchPlayerAttack(userId, selectedArmy, formation, targetCoords) {
     if (!targetCoords || typeof targetCoords.username !== "string") return {error:"Choose a player base on the map."};
-    const target = db.prepare(`SELECT u.id,u.username,b.x,b.y
+    const target = db.prepare(`SELECT u.id,u.username,b.x,b.y,m.alliance_id
       FROM users u JOIN base_positions b ON b.user_id=u.id
+      LEFT JOIN alliance_members m ON m.user_id=u.id
       WHERE u.username=? AND b.x=? AND b.y=?`).get(targetCoords.username,targetCoords.x,targetCoords.y);
     if (!target) return {error:"Player base not found at those coordinates."};
     if (target.id === userId) return {error:"You cannot attack your own base."};
+    const attackerAlliance=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId)?.alliance_id;
+    if(attackerAlliance&&target.alliance_id&&Number(attackerAlliance)===Number(target.alliance_id))return {error:"You cannot attack a member of your alliance."};
     if(db.prepare("SELECT 1 FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(target.id,Date.now()))
       return {error:"This player is protected by an active 24-hour Plasma Shield."};
     return db.transaction(()=>{
@@ -2571,10 +2574,11 @@ class DatabaseManager {
 
   getPublicBases() {
     return db.prepare(`
-      SELECT u.username, b.x, b.y,
+      SELECT u.username, b.x, b.y, m.alliance_id,
         (SELECT MAX(expires_at) FROM alliance_market_buffs shield
          WHERE shield.user_id=u.id AND shield.kind='protection' AND shield.expires_at>?) AS protected_until
       FROM base_positions b JOIN users u ON u.id = b.user_id
+      LEFT JOIN alliance_members m ON m.user_id=u.id
       ORDER BY u.id
     `).all(Date.now());
   }
