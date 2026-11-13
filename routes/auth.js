@@ -7,6 +7,10 @@ const DatabaseManager = require("../database/database");
 const db = new DatabaseManager();
 const sessions = new Map();
 const SESSION_MS = 24 * 60 * 60 * 1000;
+const RESET_TOKEN_MS = 30 * 60 * 1000;
+const RESET_REQUEST_INTERVAL_MS = 60 * 1000;
+const passwordResetRequests = new Map();
+const passwordResetMessage = "If an account exists for that email, a password reset link will be sent.";
 let settlingEndedEvents=false;
 const eventSettlementTimer=setInterval(()=>{
   if(settlingEndedEvents)return;
@@ -104,6 +108,79 @@ router.post("/login", async (req, res) => {
   } catch (error) {
     console.error("Login error:", error);
     res.status(500).json({ message: "Internal server error during login." });
+  }
+});
+
+router.post("/forgot-password", async (req, res) => {
+  const email = typeof req.body?.email === "string" ? req.body.email.trim().toLowerCase() : "";
+  if (!/^\S+@\S+\.\S+$/.test(email) || email.length > 254) {
+    return res.status(400).json({ message: "Enter a valid email address." });
+  }
+
+  const apiKey = process.env.RESEND_API_KEY;
+  const from = process.env.RESEND_FROM_EMAIL;
+  if (!apiKey || !from) {
+    return res.status(503).json({ message: "Password reset email is not configured yet." });
+  }
+
+  const now = Date.now();
+  for (const [requestedEmail, requestedAt] of passwordResetRequests) {
+    if (now - requestedAt >= 60 * 60 * 1000) passwordResetRequests.delete(requestedEmail);
+  }
+  const lastRequestedAt = passwordResetRequests.get(email) || 0;
+  if (now - lastRequestedAt < RESET_REQUEST_INTERVAL_MS) {
+    return res.status(202).json({ message: passwordResetMessage });
+  }
+  passwordResetRequests.set(email, now);
+  res.status(202).json({ message: passwordResetMessage });
+
+  try {
+    const user = db.findUserByEmail(email);
+    if (!user) return;
+
+    const token = crypto.randomBytes(32).toString("hex");
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    db.createPasswordResetToken(user.id, tokenHash, now + RESET_TOKEN_MS, now);
+
+    const appBaseUrl = (process.env.APP_BASE_URL || "https://colonize-mars-2.onrender.com").replace(/\/$/, "");
+    const resetUrl = `${appBaseUrl}/#/reset-password?token=${token}`;
+    const response = await fetch(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      body: JSON.stringify({
+        from,
+        to: [email],
+        subject: "Reset your Colonize Mars password",
+        text: `Use this one-time link to choose a new password. It expires in 30 minutes: ${resetUrl}\n\nIf you did not request this change, ignore this email.`,
+        html: `<p>Use this one-time link to choose a new password. It expires in 30 minutes.</p><p><a href="${resetUrl}">Reset password</a></p><p>If you did not request this change, ignore this email.</p>`,
+      }),
+    });
+    if (!response.ok) {
+      console.error("Password reset email delivery failed with status", response.status);
+    }
+  } catch (error) {
+    console.error("Password reset request failed:", error.message);
+  }
+});
+
+router.post("/reset-password", async (req, res) => {
+  const { token, password } = req.body || {};
+  if (typeof token !== "string" || !/^[a-f0-9]{64}$/.test(token) ||
+      typeof password !== "string" || password.length < 8) {
+    return res.status(400).json({ message: "Use a valid reset link and a password with at least 8 characters." });
+  }
+
+  try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+    const userId = db.resetPasswordWithToken(tokenHash, await bcrypt.hash(password, 10));
+    if (!userId) return res.status(400).json({ message: "This password reset link is invalid or expired." });
+    for (const [sessionToken, session] of sessions) {
+      if (Number(session.userId) === userId) sessions.delete(sessionToken);
+    }
+    return res.json({ message: "Password changed. You can now log in with your new password." });
+  } catch (error) {
+    console.error("Password reset failed:", error.message);
+    return res.status(500).json({ message: "Could not reset the password. Please request a new link." });
   }
 });
 
