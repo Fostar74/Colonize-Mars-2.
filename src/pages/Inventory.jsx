@@ -65,7 +65,7 @@ export default function Inventory(){
   return <div style={{color:"white"}}>
     <p>{t("Inventory is your separate emergency reserve. Building, training and combat use only resources and troops already in your base.","Инвентарът е отделен резерв. Строежът, обучението и битките използват само ресурсите и войските в базата.")}</p>
     <div style={{display:"flex",gap:8,marginBottom:16}}>
-      {["resources","army","items","boosters"].map(t=><button key={t} style={{...button,background:tab===t?"#26765e":"#20384d"}} onClick={()=>setTab(t)}>{t==="resources"?localLabel("Resources"):t==="army"?localLabel("Army"):t==="items"?t("Market Items","Предмети от пазара"):localLabel("Boosters")}</button>)}
+      {["resources","army","items","boosters"].map(tabKey=><button key={tabKey} style={{...button,background:tab===tabKey?"#26765e":"#20384d"}} onClick={()=>setTab(tabKey)}>{tabKey==="resources"?localLabel("Resources"):tabKey==="army"?localLabel("Army"):tabKey==="items"?t("Market Items","Предмети от пазара"):localLabel("Boosters")}</button>)}
     </div>
     {message&&<p role="status">{localLabel(message)}</p>}
     {!reserve&&<p>{t("Loading inventory...","Зареждане на инвентара…")}</p>}
