@@ -74,7 +74,7 @@ export default function AlliancePanel({supportTarget,playerAction}){
       <img src={{gold:goldIcon,iron:ironIcon,water:waterIcon,solar:solarIcon}[item] || baseIcon} alt="" width="28" height="28" style={{verticalAlign:"middle",marginRight:8}} />
       {localLabel(label)} — {cost} {t("AP","ТА")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
     </div>)}
-    <p style={{fontSize:12}}>{t("Army boosts apply to Alien Base missions launched while active. Protection prevents incoming player attacks for one day. Buying an active item again extends its duration.","Бойните бонуси важат за походи срещу извънземни бази, започнати докато са активни. Протекцията спира атаките от играчи за един ден. Повторната покупка удължава срока.")}</p>
+    <p style={{fontSize:12}}>{t("Purchased items are added to Inventory and stay inactive until you use them. Use attack and health boosts for Alien Base missions; protection blocks incoming player attacks for one day. Using another boost while one is active adds its duration.","Купените предмети отиват в инвентара и остават неактивни, докато не ги използваш. Бонусите за атака и живот важат за походи срещу извънземни бази; щитът спира атаките от играчи за един ден. Ако използваш още един бонус, докато действа предишен, срокът му се удължава.")}</p>
     {(state.economy?.buffs||[]).filter(buff=>buff.kind==="attack"||buff.kind==="health"||buff.kind==="protection").map(buff=><p key={buff.kind}>
       {buff.kind==="protection"?t("Plasma Shield","Плазмен щит"):buff.kind==="attack"?t("Attack Boost","Бонус атака"):t("Health Boost","Бонус здраве")} {t("active until","активен до")} {new Date(buff.expires_at).toLocaleString()}
     </p>)}

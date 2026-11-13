@@ -8,6 +8,7 @@ import solarIcon from "../images/solar.png";
 import marketItemIcon from "../images/hq-icon.png";
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const names=["Gold","Iron","Water","Solar"];
+const headers=()=>({Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 const resourceIcons={Gold:goldIcon,Iron:ironIcon,Water:waterIcon,Solar:solarIcon};
 const marketItems=[
   {id:"landing",label:"Mars Landing Token",description:"Adds one Mars Landing Token to your account.",bulgarianLabel:"Жетон за кацане на Марс",bulgarianDescription:"Добавя жетон за кацане на Марс към акаунта ти.",icon:marketItemIcon},
@@ -26,11 +27,11 @@ export default function Inventory(){
   const [selectedItem,setSelectedItem]=useState(null);
   const [itemAmount,setItemAmount]=useState("1");
   const userId=sessionStorage.getItem("userId");
-  const headers={Authorization:"Bearer "+sessionStorage.getItem("authToken")};
   const refresh=useCallback(async()=>{
     if(!userId)return;
     try{
-      const [a,b]=await Promise.all([fetch(api+"/inventory/"+encodeURIComponent(userId),{headers,cache:"no-store"}),fetch(api+"/get-progress/"+encodeURIComponent(userId),{headers,cache:"no-store"})]);
+      const requestHeaders=headers();
+      const [a,b]=await Promise.all([fetch(api+"/inventory/"+encodeURIComponent(userId),{headers:requestHeaders,cache:"no-store"}),fetch(api+"/get-progress/"+encodeURIComponent(userId),{headers:requestHeaders,cache:"no-store"})]);
       if(!a.ok||!b.ok)throw Error("Unable to load inventory.");
       setReserve(await a.json());setProgress((await b.json()).gameProgress);
     }catch(e){setMessage(e.message);}
@@ -41,7 +42,7 @@ export default function Inventory(){
     if(!Number.isSafeInteger(amount)||amount<1||amount>available){setMessage("Enter a valid amount within your reserve.");return;}
     setBusy(true);setMessage("");
     try{
-      const r=await fetch(api+"/inventory/withdraw",{method:"POST",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify({userId,kind,name,amount})});
+      const r=await fetch(api+"/inventory/withdraw",{method:"POST",headers:{...headers(),"Content-Type":"application/json"},body:JSON.stringify({userId,kind,name,amount})});
       const d=await r.json();if(!r.ok)throw Error(d.message||"Withdrawal failed.");
       setReserve(d.inventory);setProgress(p=>({...p,resources:d.resources,army:d.army}));
       sessionStorage.setItem("resources",JSON.stringify(d.resources));
@@ -49,10 +50,10 @@ export default function Inventory(){
       setAmounts(p=>({...p,[kind+name]:""}));setMessage(amount+" "+name+" transferred to your base.");
     }catch(e){setMessage(e.message);}finally{setBusy(false);}
   };
-  const useItem=async(item,amount)=>{
+  const activateItem=async(item,amount)=>{
     setBusy(true);setMessage("");
     try{
-      const r=await fetch(api+"/inventory/use-item",{method:"POST",headers:{...headers,"Content-Type":"application/json"},body:JSON.stringify({userId,item,amount})});
+      const r=await fetch(api+"/inventory/use-item",{method:"POST",headers:{...headers(),"Content-Type":"application/json"},body:JSON.stringify({userId,item,amount})});
       const d=await r.json();if(!r.ok)throw Error(d.message||"Item could not be used.");
       setReserve(d.inventory);setSelectedItem(null);setItemAmount("1");setMessage(t(amount===1?"1 item activated.":amount+" items activated.",amount===1?"Предметът е активиран.":amount+" предмета са активирани."));
       window.dispatchEvent(new Event("game-progress-updated"));
@@ -101,7 +102,7 @@ export default function Inventory(){
           <input type="number" min="1" max={count} step="1" value={itemAmount} onChange={event=>setItemAmount(event.target.value)} style={{display:"block",width:130,padding:8,marginTop:6}}/>
         </label>
         <p>{t("Available:","Налични:")} {count.toLocaleString()}</p>
-        <button type="button" disabled={busy||!Number.isSafeInteger(amount)||amount<1||amount>count} style={button} onClick={()=>useItem(selectedItem,amount)}>{t("Confirm and activate","Потвърди и активирай")}</button>
+        <button type="button" disabled={busy||!Number.isSafeInteger(amount)||amount<1||amount>count} style={button} onClick={()=>activateItem(selectedItem,amount)}>{t("Confirm and activate","Потвърди и активирай")}</button>
       </section>})()}
     </div>}
     {reserve&&tab==="boosters"&&<div style={card}>
