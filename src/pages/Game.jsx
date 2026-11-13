@@ -1,5 +1,5 @@
 import { useLanguage } from "../language";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import StructurePanel from "./StructurePanel";
 import BattleSimulator from "./BattleSimulator";
 import CyberKnightPanel from "./CyberKnightPanel";
@@ -257,6 +257,7 @@ function Game() {
   const [unreadIncoming,setUnreadIncoming]=useState(0);
   const [incomingAlert,setIncomingAlert]=useState(false);
   const lastUnreadRef=useRef(0);
+  const handleReportsRead=useCallback(()=>{setUnreadIncoming(0);lastUnreadRef.current=0;setIncomingAlert(false);},[]);
   const [showAlliance,setShowAlliance]=useState(false);
   const [showRankings,setShowRankings]=useState(false);
   const [showEvents,setShowEvents]=useState(false);
@@ -270,7 +271,7 @@ function Game() {
   const [playerNotice,setPlayerNotice]=useState("");
   const [inviting,setInviting]=useState(false);
 
-  const api=(process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
+  const api=useMemo(()=> (process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,""),[]);
   useEffect(()=>{
     let active=true;
     const refreshAttackAlerts=async()=>{
@@ -555,7 +556,7 @@ function Game() {
       </div>}
 
       {incomingAlert&&unreadIncoming>0&&<div className="incoming-attack-alert" role="alert"><span className="incoming-attack-lamp" />{t("Incoming attack! Open battle reports.","Входяща атака! Отвори бойните доклади.")}<button onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("View reports","Виж докладите")}</button><button aria-label={t("Dismiss","Затвори")} onClick={()=>setIncomingAlert(false)}>×</button></div>}
-      {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={()=>{setUnreadIncoming(0);lastUnreadRef.current=0;setIncomingAlert(false);}}/>}
+      {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}
       {showQuests && (
         <div className="popup">
           <div className="popup-header">
