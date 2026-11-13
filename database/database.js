@@ -88,6 +88,7 @@ function initializeDatabase() {
       )
     `);
     console.log("Users table created/verified");
+    db.exec("CREATE TABLE IF NOT EXISTS player_profiles (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, avatar_id TEXT NOT NULL DEFAULT 'pilot-m')");
 
     db.exec(`
       CREATE TABLE IF NOT EXISTS game_stats (
@@ -2640,6 +2641,18 @@ class DatabaseManager {
     } catch (error) {
       throw error;
     }
+  }
+
+  getPlayerProfile(userId) {
+    db.prepare("INSERT OR IGNORE INTO player_profiles (user_id, avatar_id) VALUES (?, 'pilot-m')").run(Number(userId));
+    return db.prepare("SELECT avatar_id AS avatarId FROM player_profiles WHERE user_id=?").get(Number(userId));
+  }
+
+  setPlayerAvatar(userId, avatarId) {
+    const allowed = new Set(["defender-m","defender-f","attacker-m","attacker-f","farmer-m","farmer-f","scientist-m","scientist-f","pilot-m","pilot-f","doctor-m","doctor-f","engineer-m","engineer-f","tactician-m","tactician-f","leader-m","leader-f"]);
+    if (!allowed.has(avatarId)) return {error:"Choose a valid avatar."};
+    db.prepare("INSERT INTO player_profiles (user_id, avatar_id) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET avatar_id=excluded.avatar_id").run(Number(userId), avatarId);
+    return {avatarId};
   }
 
   getEquipmentCount() {
