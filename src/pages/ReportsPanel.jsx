@@ -7,7 +7,7 @@ const diff=(initial,remaining)=>Object.fromEntries(Object.entries(initial||{}).m
 const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>unit+": "+Number(count).toLocaleString()).join(", ")||"—";
 
 export default function ReportsPanel({onClose,onRead}) {
-  const {t,label}=useLanguage();
+  const {t}=useLanguage();
   const userId=sessionStorage.getItem("userId");
   const [data,setData]=useState(null);
   const [error,setError]=useState("");
