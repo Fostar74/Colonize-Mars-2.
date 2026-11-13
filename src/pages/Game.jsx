@@ -13,16 +13,16 @@ import Inventory from "./Inventory";
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
 const AVATARS = [
-  ["defender-m","Defender","Защитник","👨‍🚀","Male","Мъж"],["defender-f","Defender","Защитник","👩‍🚀","Female","Жена"],
-  ["attacker-m","Attacker","Атакуващ","👨‍🚒","Male","Мъж"],["attacker-f","Attacker","Атакуващ","👩‍🚒","Female","Жена"],
-  ["farmer-m","Farmer","Фермер","👨‍🌾","Male","Мъж"],["farmer-f","Farmer","Фермер","👩‍🌾","Female","Жена"],
-  ["scientist-m","Scientist","Учен","👨‍🔬","Male","Мъж"],["scientist-f","Scientist","Учен","👩‍🔬","Female","Жена"],
-  ["pilot-m","Pilot","Пилот","👨‍✈️","Male","Мъж"],["pilot-f","Pilot","Пилот","👩‍✈️","Female","Жена"],
-  ["doctor-m","Doctor","Лекар","👨‍⚕️","Male","Мъж"],["doctor-f","Doctor","Лекар","👩‍⚕️","Female","Жена"],
-  ["engineer-m","Engineer","Инженер","👨‍🔧","Male","Мъж"],["engineer-f","Engineer","Инженер","👩‍🔧","Female","Жена"],
-  ["tactician-m","Tactician","Тактик","🕵️‍♂️","Male","Мъж"],["tactician-f","Tactician","Тактик","🕵️‍♀️","Female","Жена"],
-  ["leader-m","Leader","Лидер","👨‍🚀","Male","Мъж"],["leader-f","Leader","Лидер","👩‍🚀","Female","Жена"]
-].map(([id,role,roleBg,icon,gender,genderBg])=>({id,role,roleBg,icon,gender,genderBg}));
+  ["defender-m","Defender","Защитник","👨‍🚀"],["defender-f","Defender","Защитник","👩‍🚀"],
+  ["attacker-m","Attacker","Атакуващ","👨‍🚒"],["attacker-f","Attacker","Атакуващ","👩‍🚒"],
+  ["farmer-m","Farmer","Фермер","👨‍🌾"],["farmer-f","Farmer","Фермер","👩‍🌾"],
+  ["scientist-m","Scientist","Учен","👨‍🔬"],["scientist-f","Scientist","Учен","👩‍🔬"],
+  ["pilot-m","Pilot","Пилот","👨‍✈️"],["pilot-f","Pilot","Пилот","👩‍✈️"],
+  ["doctor-m","Doctor","Лекар","👨‍⚕️"],["doctor-f","Doctor","Лекар","👩‍⚕️"],
+  ["engineer-m","Engineer","Инженер","👨‍🔧"],["engineer-f","Engineer","Инженер","👩‍🔧"],
+  ["tactician-m","Tactician","Тактик","🕵️‍♂️"],["tactician-f","Tactician","Тактик","🕵️‍♀️"],
+  ["leader-m","Leader","Лидер","👨‍🚀"],["leader-f","Leader","Лидер","👩‍🚀"]
+].map(([id,role,roleBg,icon])=>({id,role,roleBg,icon}));
 
 
 function MarketPanel() {
@@ -455,7 +455,7 @@ function Game() {
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(105px,1fr))",gap:8}}>
               {AVATARS.map(avatar=><button key={avatar.id} type="button" disabled={avatarSaving} aria-pressed={avatarId===avatar.id} onClick={()=>saveAvatar(avatar)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"9px 6px",borderRadius:10,border:avatarId===avatar.id?"2px solid #43c8b3":"1px solid #547188",background:avatarId===avatar.id?"#174c53":"#1c3143",color:"white",cursor:"pointer"}}>
                 <span aria-hidden="true" style={{width:50,height:50,borderRadius:"50%",display:"grid",placeItems:"center",fontSize:29,background:"radial-gradient(circle at 35% 30%,#718a9c,#263443 72%)"}}>{avatar.icon}</span>
-                <span>{t(avatar.role,avatar.roleBg)}</span><small>{t(avatar.gender,avatar.genderBg)}</small>
+                <span>{t(avatar.role,avatar.roleBg)}</span>
               </button>)}
             </div>
             {avatarNotice&&<p role="status">{avatarNotice}</p>}
