@@ -266,6 +266,34 @@ router.post("/alien-stations/unlock",requireSession,(req,res)=>{
     res.json(result);
   }catch(error){console.error("Station unlock:",error);res.status(500).json({message:"Station could not be unlocked."});}
 });
+router.post("/alien-stations/donate",requireSession,(req,res)=>{
+  try{
+    const result=db.donateAlienCrystals(Number(req.body.userId),req.body.kind,Number(req.body.amount));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Station crystal donation:",error);res.status(500).json({message:"Crystal donation failed."});}
+});
+router.post("/alien-stations/build",requireSession,(req,res)=>{
+  try{
+    const result=db.buildAlienStation(Number(req.body.userId),req.body.kind);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Station construction:",error);res.status(500).json({message:"Station construction failed."});}
+});
+router.post("/alien-stations/defend",requireSession,(req,res)=>{
+  try{
+    const result=db.sendStationDefense(Number(req.body.userId),Number(req.body.stationId),req.body.army);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Station defense march:",error);res.status(500).json({message:"Station defense march failed."});}
+});
+router.post("/alien-stations/recall",requireSession,(req,res)=>{
+  try{
+    const result=db.recallStationDefense(Number(req.body.userId),Number(req.body.stationId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Station defense recall:",error);res.status(500).json({message:"Station defense recall failed."});}
+});
 router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
   try { res.json(db.getAlienCampaign(Number(req.params.userId))); }
   catch(error) { console.error(error);res.status(500).json({message:"Campaign unavailable."}); }

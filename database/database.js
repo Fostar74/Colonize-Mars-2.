@@ -236,7 +236,17 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
     db.exec("CREATE TABLE IF NOT EXISTS player_green_crystals (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, total_earned INTEGER NOT NULL DEFAULT 0)");
+    db.exec("CREATE TABLE IF NOT EXISTS player_red_crystals (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, total_earned INTEGER NOT NULL DEFAULT 0)");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_crystal_bank (alliance_id INTEGER PRIMARY KEY REFERENCES alliances(id), green_balance INTEGER NOT NULL DEFAULT 0, red_balance INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_space_stations (station_id INTEGER PRIMARY KEY CHECK(station_id BETWEEN 1 AND 4), alliance_id INTEGER NOT NULL UNIQUE REFERENCES alliances(id), unlocked_at INTEGER NOT NULL)");
+    const stationColumns=db.prepare("PRAGMA table_info(alliance_space_stations)").all().map(column=>column.name);
+    if(!stationColumns.includes("protection_until"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN protection_until INTEGER NOT NULL DEFAULT 0");
+    if(!stationColumns.includes("plasma_wall_status"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN plasma_wall_status TEXT NOT NULL DEFAULT 'not_started'");
+    if(!stationColumns.includes("plasma_wall_started_at"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN plasma_wall_started_at INTEGER");
+    if(!stationColumns.includes("spaceport_status"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN spaceport_status TEXT NOT NULL DEFAULT 'not_started'");
+    if(!stationColumns.includes("spaceport_started_at"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN spaceport_started_at INTEGER");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_station_defenders (station_id INTEGER NOT NULL REFERENCES alliance_space_stations(station_id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), user_id INTEGER NOT NULL REFERENCES users(id), army TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'travelling', sent_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, PRIMARY KEY(station_id,user_id))");
+    db.exec("CREATE INDEX IF NOT EXISTS station_defenders_user ON alliance_station_defenders(user_id,status)");
     db.exec(`CREATE TABLE IF NOT EXISTS player_messages (
       id INTEGER PRIMARY KEY, sender_id INTEGER NOT NULL REFERENCES users(id),
       recipient_id INTEGER REFERENCES users(id), alliance_id INTEGER REFERENCES alliances(id),
@@ -1886,23 +1896,133 @@ class DatabaseManager {
   }
 
   getAlienStationStatus(userId){
+    const now=Date.now();
+    this.resolveStationProjects(now);
+    this.resolveStationDefenders(now);
     const ranked=db.prepare("SELECT a.id,a.name,COUNT(m.user_id) AS memberCount,COALESCE(SUM(p.xp),0) AS points FROM alliances a LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents p ON p.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
     const eligible=ranked.slice(0,4).map((row,index)=>({...row,rank:index+1}));
     const member=db.prepare("SELECT m.alliance_id,m.role,a.name FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId)||null;
-    const personalBalance=Number(db.prepare("SELECT balance FROM player_green_crystals WHERE user_id=?").get(userId)?.balance||0);
-    const allianceBalance=member?Number(db.prepare("SELECT COALESCE(SUM(c.balance),0) AS balance FROM alliance_members m LEFT JOIN player_green_crystals c ON c.user_id=m.user_id WHERE m.alliance_id=?").get(member.alliance_id)?.balance||0):0;
-    const owned=db.prepare("SELECT s.station_id,s.alliance_id,a.name AS alliance_name,s.unlocked_at FROM alliance_space_stations s JOIN alliances a ON a.id=s.alliance_id").all();
+    const personalGreen=Number(db.prepare("SELECT balance FROM player_green_crystals WHERE user_id=?").get(userId)?.balance||0);
+    const personalRed=Number(db.prepare("SELECT balance FROM player_red_crystals WHERE user_id=?").get(userId)?.balance||0);
+    const bank=member?db.prepare("SELECT green_balance,red_balance FROM alliance_crystal_bank WHERE alliance_id=?").get(member.alliance_id)||{green_balance:0,red_balance:0}:{green_balance:0,red_balance:0};
+    const owned=db.prepare("SELECT s.*,a.name AS alliance_name FROM alliance_space_stations s JOIN alliances a ON a.id=s.alliance_id").all();
     const ownerByStation=Object.fromEntries(owned.map(row=>[row.station_id,row]));
     const ownStation=owned.find(row=>row.alliance_id===member?.alliance_id)||null;
     const eligibleAlliance=!!member&&eligible.some(row=>row.id===member.alliance_id);
+    const defenders=db.prepare("SELECT d.station_id,d.user_id,u.username,d.army,d.status,d.sent_at,d.arrives_at FROM alliance_station_defenders d JOIN users u ON u.id=d.user_id ORDER BY d.station_id,d.status,d.user_id").all().map(row=>({...row,army:JSON.parse(row.army||"{}")}));
+    const myDefense=ownStation?defenders.find(row=>row.station_id===ownStation.station_id&&row.user_id===userId)||null:null;
     return {
-      required:10000,personalBalance,allianceBalance,allianceId:member?.alliance_id||null,allianceName:member?.name||null,allianceRole:member?.role||null,
+      required:10000,personalGreen,personalRed,allianceGreen:Number(bank.green_balance||0),allianceRed:Number(bank.red_balance||0),
+      allianceId:member?.alliance_id||null,allianceName:member?.name||null,allianceRole:member?.role||null,
       eligibleAlliance,rank:eligible.find(row=>row.id===member?.alliance_id)?.rank||null,ownStation:ownStation?.station_id||null,
-      canUnlock:!!member&&member.role==="Leader"&&eligibleAlliance&&!ownStation&&allianceBalance>=10000,
+      canUnlock:!!member&&member.role==="Leader"&&eligibleAlliance&&!ownStation&&Number(bank.green_balance||0)>=10000,
+      canDonate:!!member,canDefend:!!member&&!!ownStation,
       eligibleAlliances:eligible.map(({id,name,points,memberCount,rank})=>({id,name,points:Number(points||0),memberCount:Number(memberCount||0),rank})),
-      stations:spaceStations.map(station=>{const owner=ownerByStation[station.id];return {...station,locked:!owner,allianceId:owner?.alliance_id||null,allianceName:owner?.alliance_name||null,unlockedAt:owner?.unlocked_at||null};})
+      myDefense,
+      stations:spaceStations.map(station=>{
+        const owner=ownerByStation[station.id];
+        return {...station,locked:!owner,allianceId:owner?.alliance_id||null,allianceName:owner?.alliance_name||null,
+          unlockedAt:owner?.unlocked_at||null,protectionUntil:Number(owner?.protection_until||0),protected:Number(owner?.protection_until||0)>now,
+          plasmaWallStatus:owner?.plasma_wall_status||"not_started",plasmaWallStartedAt:owner?.plasma_wall_started_at||null,
+          spaceportStatus:owner?.spaceport_status||"not_started",spaceportStartedAt:owner?.spaceport_started_at||null,
+          defenders:defenders.filter(defender=>defender.station_id===station.id)};
+      })
     };
   }
+
+  donateAlienCrystals(userId,kind,amount){
+    if(!["green","red"].includes(kind)||!Number.isSafeInteger(amount)||amount<1)return {error:"Choose a positive amount of green or red crystals."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance before donating crystals."};
+      const table=kind==="green"?"player_green_crystals":"player_red_crystals";
+      const column=kind==="green"?"green_balance":"red_balance";
+      const personal=db.prepare("SELECT balance FROM "+table+" WHERE user_id=?").get(userId);
+      const balance=Number(personal?.balance||0);
+      if(amount>balance)return {error:"You do not have that many crystals."};
+      db.prepare("UPDATE "+table+" SET balance=balance-? WHERE user_id=?").run(amount,userId);
+      db.prepare("INSERT INTO alliance_crystal_bank(alliance_id,"+column+") VALUES (?,?) ON CONFLICT(alliance_id) DO UPDATE SET "+column+"="+column+"+excluded."+column).run(member.alliance_id,amount);
+      const bank=db.prepare("SELECT green_balance,red_balance FROM alliance_crystal_bank WHERE alliance_id=?").get(member.alliance_id);
+      return {success:true,kind,amount,personalBalance:balance-amount,allianceGreen:Number(bank.green_balance||0),allianceRed:Number(bank.red_balance||0)};
+    })();
+  }
+
+  resolveStationProjects(now=Date.now()){
+    const rows=db.prepare("SELECT station_id,plasma_wall_status,plasma_wall_started_at,spaceport_status,spaceport_started_at FROM alliance_space_stations").all();
+    for(const row of rows){
+      if(row.plasma_wall_status==="building"&&Number(row.plasma_wall_started_at||0)+3600000<=now)db.prepare("UPDATE alliance_space_stations SET plasma_wall_status='built' WHERE station_id=? AND plasma_wall_status='building'").run(row.station_id);
+      if(row.spaceport_status==="building"&&Number(row.spaceport_started_at||0)+3600000<=now)db.prepare("UPDATE alliance_space_stations SET spaceport_status='built' WHERE station_id=? AND spaceport_status='building'").run(row.station_id);
+    }
+    return rows.length;
+  }
+
+  buildAlienStation(userId,kind){
+    if(!["plasma-wall","spaceport"].includes(kind))return {error:"Choose the plasma wall or spaceport."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance first."};
+      if(member.role!=="Leader")return {error:"Only the alliance leader can start construction."};
+      const station=db.prepare("SELECT * FROM alliance_space_stations WHERE alliance_id=?").get(member.alliance_id);
+      if(!station)return {error:"Unlock a station before starting construction."};
+      const statusColumn=kind==="plasma-wall"?"plasma_wall_status":"spaceport_status";
+      const startColumn=kind==="plasma-wall"?"plasma_wall_started_at":"spaceport_started_at";
+      const bankColumn=kind==="plasma-wall"?"green_balance":"red_balance";
+      const status=station[statusColumn];
+      if(status==="building")return {error:"This structure is already under construction."};
+      if(status==="built")return {error:"This structure has already been completed."};
+      const cost=10000;
+      const bank=db.prepare("SELECT "+bankColumn+" AS balance FROM alliance_crystal_bank WHERE alliance_id=?").get(member.alliance_id);
+      if(Number(bank?.balance||0)<cost)return {error:"The alliance needs 10,000 "+(kind==="plasma-wall"?"green":"red")+" crystals."};
+      const now=Date.now();
+      db.prepare("UPDATE alliance_crystal_bank SET "+bankColumn+"="+bankColumn+"-? WHERE alliance_id=?").run(cost,member.alliance_id);
+      db.prepare("UPDATE alliance_space_stations SET "+statusColumn+"='building',"+startColumn+"=? WHERE station_id=?").run(now,station.station_id);
+      return {success:true,kind,startedAt:now,completesAt:now+3600000,cost};
+    })();
+  }
+
+  resolveStationDefenders(now=Date.now()){
+    const result=db.prepare("UPDATE alliance_station_defenders SET status='garrison' WHERE status='travelling' AND arrives_at<=?").run(now);
+    return result.changes;
+  }
+
+  sendStationDefense(userId,stationId,selectedArmy){
+    if(!Number.isInteger(stationId)||stationId<1||stationId>4)return {error:"Choose a valid station."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      const station=db.prepare("SELECT alliance_id,protection_until FROM alliance_space_stations WHERE station_id=?").get(stationId);
+      if(!member||!station||member.alliance_id!==station.alliance_id)return {error:"Only members of the owning alliance can reinforce this station."};
+      if(db.prepare("SELECT 1 FROM alliance_station_defenders WHERE station_id=? AND user_id=?").get(stationId,userId))return {error:"You already have troops assigned to this station."};
+      const current=this.syncGame(userId);if(!current)return {error:"Player not found."};
+      if(!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy))return {error:"Choose troops."};
+      const {playerTypes}=require("../shared/combatEngine");
+      const selected={};let total=0;
+      for(const [unit,count] of Object.entries(selectedArmy)){
+        if(!playerTypes[unit]||!Number.isSafeInteger(count)||count<0||count>Number(current.army[unit]||0))return {error:"Invalid troop selection."};
+        if(count){selected[unit]=count;total+=count;}
+      }
+      if(!total||total>marchLimit)return {error:"Choose 1 to 50,000 troops."};
+      for(const [unit,count] of Object.entries(selected))current.army[unit]-=count;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      const now=Date.now(),travelMs=Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100)));
+      db.prepare("INSERT INTO alliance_station_defenders(station_id,alliance_id,user_id,army,status,sent_at,arrives_at) VALUES (?,?,?,?,'travelling',?,?)")
+        .run(stationId,member.alliance_id,userId,JSON.stringify(selected),now,now+travelMs);
+      return {success:true,stationId,army:selected,sentAt:now,arrivesAt:now+travelMs,protectedUntil:Number(station.protection_until||0)};
+    })();
+  }
+
+  recallStationDefense(userId,stationId){
+    return db.transaction(()=>{
+      const row=db.prepare("SELECT * FROM alliance_station_defenders WHERE station_id=? AND user_id=?").get(stationId,userId);
+      if(!row)return {error:"No troops from your base are stationed here."};
+      const current=this.syncGame(userId);if(!current)return {error:"Player not found."};
+      const army=JSON.parse(row.army||"{}");
+      for(const [unit,count] of Object.entries(army))current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      db.prepare("DELETE FROM alliance_station_defenders WHERE station_id=? AND user_id=?").run(stationId,userId);
+      return {success:true,army};
+    })();
+  }
+
 
   unlockAlienStation(userId,stationId){
     if(!Number.isInteger(stationId)||stationId<1||stationId>4)return {error:"Choose one of the four stations."};
@@ -1914,19 +2034,12 @@ class DatabaseManager {
       if(!ranked.slice(0,4).some(row=>row.id===member.alliance_id))return {error:"Only one of the four highest-ranked alliances can unlock a station."};
       if(db.prepare("SELECT 1 FROM alliance_space_stations WHERE alliance_id=?").get(member.alliance_id))return {error:"Your alliance has already unlocked a station."};
       if(db.prepare("SELECT 1 FROM alliance_space_stations WHERE station_id=?").get(stationId))return {error:"That station has already been claimed."};
-      const donors=db.prepare("SELECT m.user_id,c.balance FROM alliance_members m JOIN player_green_crystals c ON c.user_id=m.user_id WHERE m.alliance_id=? AND c.balance>0 ORDER BY m.user_id").all(member.alliance_id);
-      const total=donors.reduce((sum,row)=>sum+Number(row.balance||0),0);
-      if(total<10000)return {error:"Your alliance needs 10,000 green crystals."};
-      let remaining=10000;
-      for(const donor of donors){
-        if(!remaining)break;
-        const spent=Math.min(remaining,Number(donor.balance)||0);
-        db.prepare("UPDATE player_green_crystals SET balance=balance-? WHERE user_id=?").run(spent,donor.user_id);
-        remaining-=spent;
-      }
-      const unlockedAt=Date.now();
-      db.prepare("INSERT INTO alliance_space_stations(station_id,alliance_id,unlocked_at) VALUES (?,?,?)").run(stationId,member.alliance_id,unlockedAt);
-      return {success:true,stationId,allianceId:member.alliance_id,allianceName:member.name,unlockedAt};
+      const bank=db.prepare("SELECT green_balance FROM alliance_crystal_bank WHERE alliance_id=?").get(member.alliance_id);
+      if(Number(bank?.green_balance||0)<10000)return {error:"Your alliance needs 10,000 donated green crystals."};
+      const now=Date.now(),protectionUntil=now+86400000;
+      db.prepare("UPDATE alliance_crystal_bank SET green_balance=green_balance-10000 WHERE alliance_id=?").run(member.alliance_id);
+      db.prepare("INSERT INTO alliance_space_stations(station_id,alliance_id,unlocked_at,protection_until) VALUES (?,?,?,?)").run(stationId,member.alliance_id,now,protectionUntil);
+      return {success:true,stationId,allianceId:member.alliance_id,allianceName:member.name,unlockedAt:now,protectionUntil};
     })();
   }
 
@@ -2060,9 +2173,14 @@ class DatabaseManager {
         if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
         if(result.victory){
           const greenCrystals=mission.level>=11&&mission.level<=19?100+(mission.level-11)*50:0;
+          const redCrystals=mission.level===20?500:0;
           if(greenCrystals){
             db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,greenCrystals,greenCrystals);
             result.greenCrystals=greenCrystals;
+          }
+          if(redCrystals){
+            db.prepare("INSERT INTO player_red_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,redCrystals,redCrystals);
+            result.redCrystals=redCrystals;
           }
           this.awardPlayerXp(userId,mission.level*100);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
