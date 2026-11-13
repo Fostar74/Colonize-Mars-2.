@@ -224,6 +224,28 @@ function initializeDatabase() {
     db.exec("CREATE INDEX IF NOT EXISTS labyrinth_rank ON labyrinth_players(medicine_found,deepest_depth,rooms_opened,total_moves)");
 
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
+    db.exec(`CREATE TABLE IF NOT EXISTS resource_mines (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, x INTEGER NOT NULL, y INTEGER NOT NULL,
+      resource TEXT NOT NULL CHECK(resource IN ('Gold','Iron','Water','Solar')),
+      production_per_hour INTEGER NOT NULL, remaining INTEGER NOT NULL,
+      owner_id INTEGER REFERENCES users(id), army TEXT NOT NULL DEFAULT '{}',
+      depleted_at INTEGER, UNIQUE(x,y)
+    );
+    CREATE TABLE IF NOT EXISTS resource_mine_missions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id),
+      mine_id INTEGER NOT NULL REFERENCES resource_mines(id), kind TEXT NOT NULL CHECK(kind IN ('gather','attack')),
+      status TEXT NOT NULL DEFAULT 'travelling', army TEXT NOT NULL, launched_at INTEGER NOT NULL,
+      arrives_at INTEGER NOT NULL, gather_amount INTEGER NOT NULL DEFAULT 0, gathered INTEGER NOT NULL DEFAULT 0,
+      returns_at INTEGER, returned_at INTEGER, result TEXT, target_x INTEGER, target_y INTEGER
+    );
+    `);
+    const mineMissionColumns=db.prepare("PRAGMA table_info(resource_mine_missions)").all().map(column=>column.name);
+    if(!mineMissionColumns.includes("target_x"))db.exec("ALTER TABLE resource_mine_missions ADD COLUMN target_x INTEGER");
+    if(!mineMissionColumns.includes("target_y"))db.exec("ALTER TABLE resource_mine_missions ADD COLUMN target_y INTEGER");
+    db.exec(`
+    CREATE TABLE IF NOT EXISTS resource_mine_spawn_state (id INTEGER PRIMARY KEY CHECK(id=1), last_slot INTEGER NOT NULL);
+    CREATE INDEX IF NOT EXISTS resource_mine_missions_user ON resource_mine_missions(user_id,id);
+    CREATE INDEX IF NOT EXISTS resource_mine_missions_due ON resource_mine_missions(status,arrives_at,returns_at);`);
     db.exec(`CREATE TABLE IF NOT EXISTS scout_missions (
       id INTEGER PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL,
       quantity INTEGER NOT NULL, origin TEXT NOT NULL, target TEXT NOT NULL, launched_at INTEGER NOT NULL,
@@ -1658,7 +1680,7 @@ class DatabaseManager {
         const amount=rank===1?30000:rank===2?25000:rank===3?20000:10000;
         for(const key of Object.keys(resources))resources[key]+=amount;
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(user_id);
-        db.prepare("UPDATE alien_rewards SET bonus_missions=bonus_missions+20 WHERE user_id=?").run(user_id);
+        db.prepare("UPDATE alien_rewards SET bonus_missions=bonus_missions+20,prestige=prestige+1,knight_level=1+CAST((prestige+1)/20 AS INTEGER) WHERE user_id=?").run(user_id);
         const old=this.getUserEquipment(user_id),inventory=[...(old?.gearInventory||[])],slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
         const count=rank===1?3:rank===2?2:1;
         for(let n=0;n<count;n++){
@@ -1925,7 +1947,154 @@ class DatabaseManager {
       const item={id:"labyrinth-"+userId+"-"+now+"-"+missionNo,name:"Labyrinth "+slot,slot,rarity,level:Math.max(1,status.knightLevel),stats:[],bonusSlots:rarity==="Epic"?4:rarity==="Rare"?3:rarity==="Uncommon"?2:1,obtainedFrom:"Labyrinth"};
       const gear=this.getUserEquipment(userId);this.saveUserEquipment(userId,gear?.equippedItems||{},[...(gear?.gearInventory||[]),item],gear?.craftingPoints||{});
       db.prepare("UPDATE labyrinth_players SET missions_today=?,last_mission_at=?,crystals=? WHERE user_id=?").run(missionNo,now,JSON.stringify(crystals),userId);
-      return {success:true,mission:missionNo,item,crystal,status:this.getLabyrinthStatus(userId)};
+      db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
+      db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=1+CAST((prestige+1)/20 AS INTEGER) WHERE user_id=?").run(userId);
+      return {success:true,mission:missionNo,item,crystal,status:this.getLabyrinthStatus(userId),prestige:Number(db.prepare("SELECT prestige FROM alien_rewards WHERE user_id=?").get(userId)?.prestige||0)};
+    })();
+  }
+
+  ensureResourceMines(now=Date.now()){
+    const total=db.prepare("SELECT COUNT(*) AS n FROM resource_mines").get().n;
+    const pickLocation=()=>{
+      for(let attempt=0;attempt<2000;attempt++){
+        const x=1+require("crypto").randomInt(100),y=1+require("crypto").randomInt(100);
+        if(db.prepare("SELECT 1 FROM resource_mines WHERE x=? AND y=?").get(x,y))continue;
+        if(db.prepare("SELECT 1 FROM base_positions WHERE x=? AND y=?").get(x,y))continue;
+        if(alienBases.some(base=>base.x===x&&base.y===y))continue;
+        if(spaceStations.some(base=>base.x===x&&base.y===y))continue;
+        return {x,y};
+      }
+      throw new Error("Could not find an open map tile for a resource mine.");
+    };
+    const addMine=(resource)=>{
+      const {x,y}=pickLocation(),production=5000+require("crypto").randomInt(10001),remaining=25000+require("crypto").randomInt(75001);
+      db.prepare("INSERT INTO resource_mines(x,y,resource,production_per_hour,remaining) VALUES (?,?,?,?,?)").run(x,y,resource,production,remaining);
+    };
+    if(total===0){
+      for(let i=0;i<36;i++)addMine(["Gold","Iron","Water","Solar"][i%4]);
+    }
+    const slot=Math.floor(now/(4*60*60*1000));
+    const state=db.prepare("SELECT last_slot FROM resource_mine_spawn_state WHERE id=1").get();
+    if(!state)db.prepare("INSERT INTO resource_mine_spawn_state(id,last_slot) VALUES (1,?)").run(slot);
+    else if(slot>state.last_slot){
+      const depleted=db.prepare("SELECT id,resource FROM resource_mines WHERE remaining<=0 AND depleted_at IS NOT NULL AND owner_id IS NULL ORDER BY id").all();
+      for(const mine of depleted){
+        const {x,y}=pickLocation(),production=5000+require("crypto").randomInt(10001),remaining=25000+require("crypto").randomInt(75001);
+        db.prepare("UPDATE resource_mines SET x=?,y=?,production_per_hour=?,remaining=?,owner_id=NULL,army='{}',depleted_at=NULL WHERE id=?")
+          .run(x,y,production,remaining,mine.id);
+      }
+      db.prepare("UPDATE resource_mine_spawn_state SET last_slot=? WHERE id=1").run(slot);
+    }
+  }
+
+  resolveResourceMineMissions(now=Date.now()){
+    return db.transaction(()=>{
+      const arriving=db.prepare("SELECT * FROM resource_mine_missions WHERE status='travelling' AND arrives_at<=? ORDER BY id").all(now);
+      for(const mission of arriving){
+        const march=JSON.parse(mission.army||"{}"),mine=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(mission.mine_id);
+        if(!mine){db.prepare("UPDATE resource_mine_missions SET status='returning',returns_at=?,result=? WHERE id=?").run(now+60000,JSON.stringify({survivors:march.units||{},error:"Mine no longer exists."}),mission.id);continue;}
+        let survivors=march.units||{},gatheringOwner=Number(mine.owner_id||0);
+        if(mission.kind==="attack"){
+          if(gatheringOwner===mission.user_id){survivors=march.units||{};}
+          else if(!gatheringOwner){survivors=march.units||{};}
+          else{
+            const defender=JSON.parse(mine.army||"{}");
+            const {fight}=require("../shared/combatEngine");
+            const battle=fight(march.units,defender,march.formation,{}, {playerDefense:true});
+            survivors=battle.survivors;
+            db.prepare("UPDATE resource_mines SET army=?,owner_id=? WHERE id=?").run(JSON.stringify(battle.defenderSurvivors),battle.defendersRemaining?mine.owner_id:null,mine.id);
+            gatheringOwner=battle.defendersRemaining?Number(mine.owner_id):0;
+            if(!battle.victory){
+              db.prepare("UPDATE resource_mine_missions SET status='returning',returns_at=?,gathered=0,result=? WHERE id=?").run(now+Math.max(1000,mission.arrives_at-mission.launched_at),JSON.stringify({survivors,battle:{victory:false,rounds:battle.rounds}}),mission.id);
+              continue;
+            }
+          }
+        }
+        if(gatheringOwner&&gatheringOwner!==mission.user_id){
+          db.prepare("UPDATE resource_mine_missions SET status='returning',returns_at=?,gathered=0,result=? WHERE id=?").run(now+Math.max(1000,mission.arrives_at-mission.launched_at),JSON.stringify({survivors,attackFailed:true}),mission.id);
+          continue;
+        }
+        const capacity=calculateCargoCapacity(survivors),amount=Math.min(Number(mine.remaining),capacity);
+        if(amount<=0){
+          db.prepare("UPDATE resource_mine_missions SET status='returning',returns_at=?,gather_amount=0,result=? WHERE id=?").run(now+Math.max(1000,mission.arrives_at-mission.launched_at),JSON.stringify({survivors}),mission.id);
+          continue;
+        }
+        const duration=Math.ceil(amount/Number(mine.production_per_hour)*3600000),travel=Math.max(5000,mission.arrives_at-mission.launched_at);
+        const remaining=Math.max(0,Number(mine.remaining)-amount);
+        db.prepare("UPDATE resource_mines SET remaining=?,depleted_at=? WHERE id=?").run(remaining,remaining===0?now:null,mine.id);
+        db.prepare("UPDATE resource_mines SET owner_id=?,army=? WHERE id=?").run(mission.user_id,JSON.stringify(survivors),mine.id);
+        db.prepare("UPDATE resource_mine_missions SET status='gathering',army=?,gather_amount=?,gathered=?,returns_at=?,result=? WHERE id=?")
+          .run(JSON.stringify({units:survivors,formation:march.formation}),amount,amount,now+duration+travel,JSON.stringify({survivors,resource:mine.resource}),mission.id);
+      }
+      const returning=db.prepare("SELECT * FROM resource_mine_missions WHERE status IN ('gathering','returning') AND returns_at<=? AND returned_at IS NULL ORDER BY id").all(now);
+      for(const mission of returning){
+        const result=JSON.parse(mission.result||"{}"),current=this.syncGame(mission.user_id);
+        if(current){
+          for(const [unit,count] of Object.entries(result.survivors||{}))current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
+          if(mission.gathered>0&&result.resource)current.resources[result.resource]=(Number(current.resources[result.resource])||0)+Number(mission.gathered);
+          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mission.user_id);
+          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),mission.user_id);
+        }
+        if(Number(mission.gathered)>0&&!db.prepare("SELECT 1 FROM resource_mine_missions WHERE user_id=? AND gathered>0 AND returned_at IS NOT NULL LIMIT 1").get(mission.user_id)){
+          const gear=this.getUserEquipment(mission.user_id),points={...(gear?.craftingPoints||{})};
+          points.Universal=(Number(points.Universal)||0)+50;
+          this.saveUserEquipment(mission.user_id,gear?.equippedItems||{},gear?.gearInventory||[],points);
+        }
+        const mine=db.prepare("SELECT owner_id,army FROM resource_mines WHERE id=?").get(mission.mine_id);
+        if(mine&&Number(mine.owner_id)===mission.user_id)db.prepare("UPDATE resource_mines SET owner_id=NULL,army='{}' WHERE id=?").run(mission.mine_id);
+        db.prepare("UPDATE resource_mine_missions SET status='completed',returned_at=? WHERE id=?").run(now,mission.id);
+      }
+      return returning.length+arriving.length;
+    })();
+  }
+
+  getResourceMineData(userId,now=Date.now()){
+    this.resolveResourceMineMissions(now);
+    this.ensureResourceMines(now);
+    const mines=db.prepare("SELECT m.*,u.username AS owner_name FROM resource_mines m LEFT JOIN users u ON u.id=m.owner_id WHERE m.remaining>0 ORDER BY m.id").all()
+      .map(m=>({...m,resource:m.resource,ownerId:m.owner_id||null,ownerName:m.owner_name||null,army:JSON.parse(m.army||"{}")}));
+    const missions=db.prepare("SELECT mm.*,m.resource,COALESCE(mm.target_x,m.x) AS x,COALESCE(mm.target_y,m.y) AS y,m.production_per_hour FROM resource_mine_missions mm JOIN resource_mines m ON m.id=mm.mine_id WHERE mm.user_id=? ORDER BY mm.id DESC LIMIT 20").all(userId)
+      .map(m=>({...m,army:JSON.parse(m.army||"{}"),result:m.result?JSON.parse(m.result):null}));
+    const completed=db.prepare("SELECT 1 FROM resource_mine_missions WHERE user_id=? AND gathered>0 AND returned_at IS NOT NULL LIMIT 1").get(userId);
+    return {mines,missions,gatheredMine:!!completed};
+  }
+
+  launchResourceMineMission(userId,mineId,selectedArmy,kind="gather",formation=[]){
+    if(!["gather","attack"].includes(kind))return {error:"Invalid mine march."};
+    return db.transaction(()=>{
+      const current=this.syncGame(userId),mine=db.prepare("SELECT * FROM resource_mines WHERE id=? AND remaining>0").get(mineId);
+      if(!current||!mine)return {error:"This resource mine is unavailable."};
+      if(!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy))return {error:"Choose an army."};
+      const {playerTypes}=require("../shared/combatEngine");
+      let total=0;
+      for(const [unit,count] of Object.entries(selectedArmy)){
+        if(!playerTypes[unit]||!Number.isSafeInteger(count)||count<0||count>Number(current.army[unit]||0))return {error:"Invalid troop selection."};
+        total+=count;
+      }
+      if(!total||total>marchLimit)return {error:"Choose between 1 and 50,000 troops."};
+      const mineBusy=db.prepare("SELECT 1 FROM resource_mine_missions WHERE mine_id=? AND status='travelling' AND kind='attack' LIMIT 1").get(mineId);
+      if(kind==="gather"&&(mine.owner_id||mineBusy))return {error:"This mine is occupied. Choose Attack."};
+      if(kind==="attack"&&(!mine.owner_id||Number(mine.owner_id)===userId))return {error:"Choose an occupied mine owned by another player."};
+      if(kind==="attack"&&mineBusy)return {error:"Another attack is already approaching this mine."};
+      const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,n])=>n>0));
+      if(Array.isArray(formation)&&formation.length){
+        const tally={};for(const f of formation){if(!playerTypes[f.unit]||!Number.isSafeInteger(f.count)||f.count<=0||!Number.isInteger(f.row)||f.row<1||f.row>4)return {error:"Invalid formation."};tally[f.unit]=(tally[f.unit]||0)+f.count;}
+        if(Object.keys({...selected,...tally}).some(unit=>(selected[unit]||0)!==(tally[unit]||0)))return {error:"Formation does not match selected troops."};
+      }
+      const speeds=require("../src/shared/unitEconomy").marchSpeed;
+      const speed=Math.min(...Object.keys(selected).map(unit=>Number(speeds[unit]||1)));
+      const home=db.prepare("SELECT x,y FROM base_positions WHERE user_id=?").get(userId);
+      const progress=this.progressQueries.getProgress.get(userId);
+      const castle=progress?JSON.parse(progress.castle_data):{x:1,y:1};
+      const origin=home||castle;
+      const travel=Math.max(5000,Math.ceil(Math.hypot(Number(mine.x)-Number(origin.x),Number(mine.y)-Number(origin.y))*60000/speed));
+      const now=Date.now();
+      for(const [unit,count]of Object.entries(selected))current.army[unit]-=count;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      if(kind==="gather")db.prepare("UPDATE resource_mines SET owner_id=?,army=? WHERE id=?").run(userId,JSON.stringify(selected),mineId);
+      const result=db.prepare("INSERT INTO resource_mine_missions(user_id,mine_id,kind,army,launched_at,arrives_at,target_x,target_y) VALUES (?,?,?,?,?,?,?,?)")
+        .run(userId,mineId,kind,JSON.stringify({units:selected,formation}),now,now+travel,mine.x,mine.y);
+      return {missionId:Number(result.lastInsertRowid),mineId,kind,launchedAt:now,arrivesAt:now+travel,origin:{x:Number(origin.x),y:Number(origin.y)},target:{x:mine.x,y:mine.y},units:selected,travelMs:travel};
     })();
   }
 
@@ -1980,7 +2149,7 @@ class DatabaseManager {
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerMissions,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,mothershipEvent:this.getMothershipEvent(userId)};
+    return {scoutMissions,playerMissions,supportRoutes,resourceMines:this.getResourceMineData(userId),stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,mothershipEvent:this.getMothershipEvent(userId)};
   }
 
   getAlienStationStatus(userId){
