@@ -213,5 +213,14 @@ export default {
   "Army Attack boost activated for 1 hour.": "Бонусът към атаката на армията е активен за 1 час.",
   "Army Health boost activated for 1 hour.": "Бонусът към здравето на армията е активен за 1 час.",
   "Enter a valid item quantity.": "Въведи валиден брой предмети.",
-  "You do not have that many items.": "Нямаш толкова предмети."
+  "You do not have that many items.": "Нямаш толкова предмети.",
+  "Enter a valid email address.": "Въведи валиден имейл адрес.",
+  "Password reset email is not configured yet.": "Изпращането на линкове за смяна на парола още не е настроено.",
+  "This password reset link is missing its token.": "В линка за смяна липсва кодът за потвърждение.",
+  "Use a valid reset link and a password with at least 8 characters.": "Използвай валиден линк и парола с поне 8 знака.",
+  "This password reset link is invalid or expired.": "Линкът за смяна е невалиден или е изтекъл.",
+  "Could not reset the password. Please request a new link.": "Паролата не беше сменена. Поискай нов линк.",
+  "Enter the email address used for your account.": "Въведи имейла, използван при регистрацията.",
+  "Please enter your email and username and a password with at least 8 characters.": "Въведи имейл, потребителско име и парола с поне 8 знака.",
+  "❌ Error connecting to server": "❌ Няма връзка със сървъра."
 };

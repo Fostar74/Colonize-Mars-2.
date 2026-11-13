@@ -90,6 +90,17 @@ function initializeDatabase() {
     console.log("Users table created/verified");
 
     db.exec(`
+      CREATE TABLE IF NOT EXISTS password_reset_tokens (
+        token_hash TEXT PRIMARY KEY,
+        user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+        expires_at INTEGER NOT NULL,
+        created_at INTEGER NOT NULL,
+        used_at INTEGER
+      );
+      CREATE INDEX IF NOT EXISTS password_reset_user_idx ON password_reset_tokens(user_id, used_at);
+    `);
+
+    db.exec(`
       CREATE TABLE IF NOT EXISTS game_stats (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         user_id INTEGER NOT NULL,
@@ -452,6 +463,25 @@ class DatabaseManager {
 
   findUserById(id) {
     return this.userQueries.findById.get(id);
+  }
+
+  createPasswordResetToken(userId, tokenHash, expiresAt, now = Date.now()) {
+    return db.transaction(() => {
+      db.prepare("DELETE FROM password_reset_tokens WHERE user_id = ? OR expires_at <= ?").run(userId, now);
+      db.prepare("INSERT INTO password_reset_tokens (token_hash, user_id, expires_at, created_at) VALUES (?, ?, ?, ?)")
+        .run(tokenHash, userId, expiresAt, now);
+    })();
+  }
+
+  resetPasswordWithToken(tokenHash, hashedPassword, now = Date.now()) {
+    return db.transaction(() => {
+      const token = db.prepare("SELECT user_id FROM password_reset_tokens WHERE token_hash = ? AND used_at IS NULL AND expires_at > ?")
+        .get(tokenHash, now);
+      if (!token) return null;
+      db.prepare("UPDATE users SET password = ? WHERE id = ?").run(hashedPassword, token.user_id);
+      db.prepare("UPDATE password_reset_tokens SET used_at = ? WHERE user_id = ? AND used_at IS NULL").run(now, token.user_id);
+      return Number(token.user_id);
+    })();
   }
 
   saveGameProgress(userId, castleData, resources, structures) {

@@ -11,6 +11,7 @@ function App() {
     <Router>
       <Routes>
         <Route path="/" element={<LoginRegister />} />
+        <Route path="/reset-password" element={<LoginRegister />} />
         <Route path="/game" element={<Game />} />
         <Route path="/map" element={<Map />} /> {/* ✅ lowercase path */}
       </Routes>
