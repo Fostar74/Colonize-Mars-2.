@@ -1,5 +1,6 @@
 import { useLanguage } from "../language";
 import React, { useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import "./LoginRegister.css";
 import background from "../images/mars-background.jpg"; // ✅ Correct image path
 
@@ -7,23 +8,43 @@ const API_BASE = (process.env.REACT_APP_API_URL || (window.location.hostname ===
 
 function LoginRegister() {
   const { t , label: localLabel} = useLanguage();
+  const location = useLocation();
+  const navigate = useNavigate();
+  const isResetPassword = location.pathname === "/reset-password";
+  const resetToken = new URLSearchParams(location.search).get("token") || "";
   const [isRegister, setIsRegister] = useState(false);
+  const [isForgotPassword, setIsForgotPassword] = useState(false);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [message, setMessage] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    const endpoint = isRegister ? "/register" : "/login";
-
     const cleanUsername = username.trim();
     const cleanEmail = email.trim().toLowerCase();
+    let endpoint = "/login";
+    let payload = { username: cleanUsername, password };
+
     if (isRegister && (!cleanEmail || !cleanUsername || password.length < 8)) {
       setMessage("Please enter your email and username and a password with at least 8 characters.");
       return;
     }
-    const payload = isRegister ? { email: cleanEmail, username: cleanUsername, password } : { username: cleanUsername, password };
+    if (isResetPassword) {
+      if (!resetToken) { setMessage(t("This password reset link is missing its token.","В линка за смяна липсва кодът за потвърждение.")); return; }
+      if (password.length < 8) { setMessage(t("Use a password with at least 8 characters.","Новата парола трябва да е поне 8 знака.")); return; }
+      if (password !== confirmPassword) { setMessage(t("The passwords do not match.","Паролите не съвпадат.")); return; }
+      endpoint = "/reset-password";
+      payload = { token: resetToken, password };
+    } else if (isForgotPassword) {
+      if (!cleanEmail) { setMessage("Enter the email address used for your account."); return; }
+      endpoint = "/forgot-password";
+      payload = { email: cleanEmail };
+    } else if (isRegister) {
+      endpoint = "/register";
+      payload = { email: cleanEmail, username: cleanUsername, password };
+    }
 
     try {
       const response = await fetch(`${API_BASE}${endpoint}`, {
@@ -35,7 +56,14 @@ function LoginRegister() {
       const data = await response.json();
 
       if (response.ok) {
-        if (isRegister) {
+        if (isForgotPassword) {
+          setMessage(t("If an account exists for that email, a password reset link will be sent.","Ако има акаунт с този имейл, ще бъде изпратен линк за смяна на паролата."));
+        } else if (isResetPassword) {
+          setMessage(t("Password changed. You can now log in with your new password.","Паролата е сменена. Вече можеш да влезеш с новата парола."));
+          setPassword("");
+          setConfirmPassword("");
+          window.setTimeout(() => navigate("/"), 1800);
+        } else if (isRegister) {
           setMessage("✅ Registration successful. Please log in to continue.");
           setIsRegister(false);
           setPassword("");
@@ -90,7 +118,7 @@ function LoginRegister() {
         boxSizing: "border-box",
       }}
     >
-      <h1>{isRegister ? t("Create Account","Създай акаунт") : t("Log In","Вход")}</h1>
+      <h1>{isResetPassword?t("Choose a new password","Избери нова парола"):isForgotPassword?t("Forgot password?","Забравена парола?"):isRegister ? t("Create Account","Създай акаунт") : t("Log In","Вход")}</h1>
 
       <form
         onSubmit={handleSubmit}
@@ -105,6 +133,7 @@ function LoginRegister() {
           boxShadow: "0 0 10px black",
         }}
       >
+        {isResetPassword && !resetToken && <p role="alert">{t("This password reset link is missing its token.","В линка за смяна липсва кодът за потвърждение.")}</p>}
         {isRegister && (
           <>
             <input
@@ -136,7 +165,7 @@ function LoginRegister() {
           </>
         )}
 
-        {!isRegister && (
+        {!isRegister && !isForgotPassword && !isResetPassword && (
           <input
             type="text"
             placeholder={t("Username or email","Потребителско име или имейл")}
@@ -153,23 +182,39 @@ function LoginRegister() {
           />
         )}
 
-        <input
+        {isForgotPassword && <input
+          type="email"
+          placeholder={t("Account email","Имейлът на акаунта")}
+          value={email}
+          required
+          autoComplete="email"
+          onChange={(e) => setEmail(e.target.value)}
+          style={{padding:"10px",marginBottom:"10px",borderRadius:"5px",border:"none"}}
+        />}
+
+        {!isForgotPassword && <input
           type="password"
-          minLength={isRegister ? 8 : undefined}
-          autoComplete={isRegister ? "new-password" : "current-password"}
-          placeholder={isRegister ? t("Password (at least 8 characters)","Парола (поне 8 знака)") : t("Password","Парола")}
+          minLength={isRegister || isResetPassword ? 8 : undefined}
+          autoComplete={isRegister || isResetPassword ? "new-password" : "current-password"}
+          placeholder={isResetPassword?t("New password (at least 8 characters)","Нова парола (поне 8 знака)"):isRegister ? t("Password (at least 8 characters)","Парола (поне 8 знака)") : t("Password","Парола")}
           value={password}
           required
           onChange={(e) => setPassword(e.target.value)}
-          style={{
-            padding: "10px",
-            marginBottom: "10px",
-            borderRadius: "5px",
-            border: "none",
-          }}
-        />
+          style={{padding:"10px",marginBottom:"10px",borderRadius:"5px",border:"none"}}
+        />}
+        {isResetPassword && <input
+          type="password"
+          minLength={8}
+          autoComplete="new-password"
+          placeholder={t("Confirm new password","Потвърди новата парола")}
+          value={confirmPassword}
+          required
+          onChange={(e) => setConfirmPassword(e.target.value)}
+          style={{padding:"10px",marginBottom:"10px",borderRadius:"5px",border:"none"}}
+        />}
         <button
           type="submit"
+          disabled={isResetPassword && !resetToken}
           style={{
             padding: "10px",
             marginBottom: "10px",
@@ -177,16 +222,24 @@ function LoginRegister() {
             color: "white",
             border: "none",
             borderRadius: "5px",
-            cursor: "pointer",
+            cursor: isResetPassword && !resetToken ? "not-allowed" : "pointer",
           }}
         >
-          {isRegister ? t("Register","Регистрация") : t("Login","Вход")}
+          {isResetPassword?t("Save new password","Запази новата парола"):isForgotPassword?t("Send reset link","Изпрати линк за смяна"):isRegister ? t("Register","Регистрация") : t("Login","Вход")}
         </button>
+        {!isRegister && !isForgotPassword && !isResetPassword && <button
+          type="button"
+          onClick={() => { setIsForgotPassword(true); setMessage(""); setPassword(""); }}
+          style={{padding:"8px",marginBottom:"10px",background:"transparent",color:"white",border:"none",textDecoration:"underline",cursor:"pointer"}}
+        >{t("Forgot password?","Забравена парола?")}</button>}
         <button
           type="button"
           onClick={() => {
-            setIsRegister(!isRegister);
+            if (isForgotPassword || isResetPassword) navigate("/");
+            else setIsRegister(!isRegister);
+            setIsForgotPassword(false);
             setPassword("");
+            setConfirmPassword("");
             setMessage("");
           }}
           style={{
@@ -198,7 +251,7 @@ function LoginRegister() {
             cursor: "pointer",
           }}
         >
-          {isRegister ? "Have an account? Log In" : "No account? Register"}
+          {isForgotPassword||isResetPassword?t("Back to login","Обратно към входа"):isRegister ? t("Have an account? Log In","Имаш акаунт? Вход") : t("No account? Register","Нямаш акаунт? Регистрация")}
         </button>
       </form>
 
