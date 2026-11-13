@@ -1980,17 +1980,17 @@ class DatabaseManager {
       if(!isWall&&Number(station.plasma_wall_level||0)<20)return {error:"Reach Plasma Wall level 20 to unlock the Spaceport."};
       const statusColumn=isWall?"plasma_wall_status":"spaceport_status";
       const startColumn=isWall?"plasma_wall_started_at":"spaceport_started_at";
-      const bankColumn=isWall?"green_balance":"red_balance";
       const status=station[statusColumn];
       if(status==="building")return {error:"This structure is already under construction."};
       if(!isWall&&status==="built")return {error:"The Spaceport has already been completed."};
-      const cost=10000;
-      const bank=db.prepare("SELECT "+bankColumn+" AS balance FROM alliance_crystal_bank WHERE alliance_id=?").get(member.alliance_id);
-      if(Number(bank?.balance||0)<cost)return {error:"The alliance needs 10,000 "+(isWall?"green":"red")+" crystals."};
+      const greenCost=isWall?100:3000,redCost=isWall?0:100;
+      const bank=db.prepare("SELECT green_balance,red_balance FROM alliance_crystal_bank WHERE alliance_id=?").get(member.alliance_id)||{green_balance:0,red_balance:0};
+      if(Number(bank.green_balance||0)<greenCost)return {error:"The alliance needs "+greenCost+" donated green crystals."};
+      if(Number(bank.red_balance||0)<redCost)return {error:"The alliance needs "+redCost+" donated red crystals."};
       const now=Date.now(),duration=isWall?86400000:604800000;
-      db.prepare("UPDATE alliance_crystal_bank SET "+bankColumn+"="+bankColumn+"-? WHERE alliance_id=?").run(cost,member.alliance_id);
+      db.prepare("UPDATE alliance_crystal_bank SET green_balance=green_balance-?,red_balance=red_balance-? WHERE alliance_id=?").run(greenCost,redCost,member.alliance_id);
       db.prepare("UPDATE alliance_space_stations SET "+statusColumn+"='building',"+startColumn+"=? WHERE station_id=?").run(now,station.station_id);
-      return {success:true,kind,startedAt:now,completesAt:now+duration,cost,durationMs:duration,plasmaWallLevel:Number(station.plasma_wall_level||0)};
+      return {success:true,kind,startedAt:now,completesAt:now+duration,cost:{green:greenCost,red:redCost},durationMs:duration,plasmaWallLevel:Number(station.plasma_wall_level||0)};
     })();
   }
 
