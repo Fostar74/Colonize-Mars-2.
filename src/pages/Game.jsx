@@ -1,5 +1,5 @@
 import { useLanguage } from "../language";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import StructurePanel from "./StructurePanel";
 import BattleSimulator from "./BattleSimulator";
 import CyberKnightPanel from "./CyberKnightPanel";
@@ -9,6 +9,7 @@ import Rankings from "./Rankings";
 import MessagePanel from "./MessagePanel";
 import PlayerTalents from "./PlayerTalents";
 import Inventory from "./Inventory";
+import ReportsPanel from "./ReportsPanel";
 
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
@@ -252,6 +253,10 @@ function Game() {
   const [avatarNotice,setAvatarNotice]=useState("");
   const [showCyberKnight, setShowCyberKnight] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
+  const [showReports,setShowReports]=useState(false);
+  const [unreadIncoming,setUnreadIncoming]=useState(0);
+  const [incomingAlert,setIncomingAlert]=useState(false);
+  const lastUnreadRef=useRef(0);
   const [showAlliance,setShowAlliance]=useState(false);
   const [showRankings,setShowRankings]=useState(false);
   const [showEvents,setShowEvents]=useState(false);
@@ -266,6 +271,25 @@ function Game() {
   const [inviting,setInviting]=useState(false);
 
   const api=(process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
+  useEffect(()=>{
+    let active=true;
+    const refreshAttackAlerts=async()=>{
+      try{
+        const userId=sessionStorage.getItem("userId");
+        const response=await fetch(api+"/reports/"+encodeURIComponent(userId),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
+        if(!response.ok)return;
+        const data=await response.json();
+        if(!active)return;
+        const count=Number(data.unreadIncoming)||0;
+        setUnreadIncoming(count);
+        if(count>0&&lastUnreadRef.current===0)setIncomingAlert(true);
+        lastUnreadRef.current=count;
+      }catch{}
+    };
+    refreshAttackAlerts();
+    const timer=setInterval(refreshAttackAlerts,10000);
+    return()=>{active=false;clearInterval(timer);};
+  },[]);
   const saveAvatar=async nextAvatar=>{
     setAvatarSaving(true);setAvatarNotice("");
     try{
@@ -427,6 +451,7 @@ function Game() {
         <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
         <button onClick={()=>setMessageRecipient("")}>{t("Messages","Съобщения")}</button>
+        <button className={unreadIncoming>0?"reports-nav-button reports-unread":""} onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("Reports","Доклади")}{unreadIncoming>0&&<span className="reports-badge">{unreadIncoming}</span>}</button>
         <button onClick={() => setShowInventory(true)}>{t("Inventory","Инвентар")}</button>
         <button onClick={() => setOptionsVisible(!optionsVisible)}>{t("Options","Настройки")}</button>
       </div>
@@ -529,6 +554,8 @@ function Game() {
         </div>
       </div>}
 
+      {incomingAlert&&unreadIncoming>0&&<div className="incoming-attack-alert" role="alert"><span className="incoming-attack-lamp" />{t("Incoming attack! Open battle reports.","Входяща атака! Отвори бойните доклади.")}<button onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("View reports","Виж докладите")}</button><button aria-label={t("Dismiss","Затвори")} onClick={()=>setIncomingAlert(false)}>×</button></div>}
+      {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={()=>{setUnreadIncoming(0);lastUnreadRef.current=0;setIncomingAlert(false);}}/>}
       {showQuests && (
         <div className="popup">
           <div className="popup-header">
