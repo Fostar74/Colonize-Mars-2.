@@ -72,7 +72,8 @@ router.post("/login", async (req, res) => {
   }
 
   try {
-    const user = db.findUserByUsername(username);
+    const loginIdentifier = typeof username === "string" ? username.trim() : "";
+    const user = db.findUserByUsername(loginIdentifier) || db.findUserByEmail(loginIdentifier.toLowerCase());
 
     if (!user) {
       return res.status(401).json({ message: "Invalid username or password." });
