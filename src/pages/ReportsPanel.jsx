@@ -4,7 +4,7 @@ import { useLanguage } from "../language";
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const auth=()=>({Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 const diff=(initial,remaining)=>Object.fromEntries(Object.entries(initial||{}).map(([unit,count])=>[unit,Math.max(0,(Number(count)||0)-(Number(remaining?.[unit])||0))]).filter(([,count])=>count>0));
-const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>label(unit)+": "+Number(count).toLocaleString()).join(", ")||"—";
+const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>unit+": "+Number(count).toLocaleString()).join(", ")||"—";
 
 export default function ReportsPanel({onClose,onRead}) {
   const {t,label}=useLanguage();
