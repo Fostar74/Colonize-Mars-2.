@@ -1,6 +1,7 @@
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
+const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
 const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
@@ -234,6 +235,8 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
+    db.exec("CREATE TABLE IF NOT EXISTS player_green_crystals (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, total_earned INTEGER NOT NULL DEFAULT 0)");
+    db.exec("CREATE TABLE IF NOT EXISTS alliance_space_stations (station_id INTEGER PRIMARY KEY CHECK(station_id BETWEEN 1 AND 4), alliance_id INTEGER NOT NULL UNIQUE REFERENCES alliances(id), unlocked_at INTEGER NOT NULL)");
     db.exec(`CREATE TABLE IF NOT EXISTS player_messages (
       id INTEGER PRIMARY KEY, sender_id INTEGER NOT NULL REFERENCES users(id),
       recipient_id INTEGER REFERENCES users(id), alliance_id INTEGER REFERENCES alliances(id),
@@ -1879,7 +1882,52 @@ class DatabaseManager {
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerMissions,supportRoutes,formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,mothershipEvent:this.getMothershipEvent(userId)};
+    return {scoutMissions,playerMissions,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,mothershipEvent:this.getMothershipEvent(userId)};
+  }
+
+  getAlienStationStatus(userId){
+    const ranked=db.prepare("SELECT a.id,a.name,COUNT(m.user_id) AS memberCount,COALESCE(SUM(p.xp),0) AS points FROM alliances a LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents p ON p.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
+    const eligible=ranked.slice(0,4).map((row,index)=>({...row,rank:index+1}));
+    const member=db.prepare("SELECT m.alliance_id,m.role,a.name FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId)||null;
+    const personalBalance=Number(db.prepare("SELECT balance FROM player_green_crystals WHERE user_id=?").get(userId)?.balance||0);
+    const allianceBalance=member?Number(db.prepare("SELECT COALESCE(SUM(c.balance),0) AS balance FROM alliance_members m LEFT JOIN player_green_crystals c ON c.user_id=m.user_id WHERE m.alliance_id=?").get(member.alliance_id)?.balance||0):0;
+    const owned=db.prepare("SELECT s.station_id,s.alliance_id,a.name AS alliance_name,s.unlocked_at FROM alliance_space_stations s JOIN alliances a ON a.id=s.alliance_id").all();
+    const ownerByStation=Object.fromEntries(owned.map(row=>[row.station_id,row]));
+    const ownStation=owned.find(row=>row.alliance_id===member?.alliance_id)||null;
+    const eligibleAlliance=!!member&&eligible.some(row=>row.id===member.alliance_id);
+    return {
+      required:10000,personalBalance,allianceBalance,allianceId:member?.alliance_id||null,allianceName:member?.name||null,allianceRole:member?.role||null,
+      eligibleAlliance,rank:eligible.find(row=>row.id===member?.alliance_id)?.rank||null,ownStation:ownStation?.station_id||null,
+      canUnlock:!!member&&member.role==="Leader"&&eligibleAlliance&&!ownStation&&allianceBalance>=10000,
+      eligibleAlliances:eligible.map(({id,name,points,memberCount,rank})=>({id,name,points:Number(points||0),memberCount:Number(memberCount||0),rank})),
+      stations:spaceStations.map(station=>{const owner=ownerByStation[station.id];return {...station,locked:!owner,allianceId:owner?.alliance_id||null,allianceName:owner?.alliance_name||null,unlockedAt:owner?.unlocked_at||null};})
+    };
+  }
+
+  unlockAlienStation(userId,stationId){
+    if(!Number.isInteger(stationId)||stationId<1||stationId>4)return {error:"Choose one of the four stations."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT m.alliance_id,m.role,a.name FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance before unlocking a station."};
+      if(member.role!=="Leader")return {error:"Only the alliance leader can unlock a station."};
+      const ranked=db.prepare("SELECT a.id,COALESCE(SUM(p.xp),0) AS points,COUNT(m.user_id) AS memberCount FROM alliances a LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents p ON p.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
+      if(!ranked.slice(0,4).some(row=>row.id===member.alliance_id))return {error:"Only one of the four highest-ranked alliances can unlock a station."};
+      if(db.prepare("SELECT 1 FROM alliance_space_stations WHERE alliance_id=?").get(member.alliance_id))return {error:"Your alliance has already unlocked a station."};
+      if(db.prepare("SELECT 1 FROM alliance_space_stations WHERE station_id=?").get(stationId))return {error:"That station has already been claimed."};
+      const donors=db.prepare("SELECT m.user_id,c.balance FROM alliance_members m JOIN player_green_crystals c ON c.user_id=m.user_id WHERE m.alliance_id=? AND c.balance>0 ORDER BY m.user_id").all(member.alliance_id);
+      const total=donors.reduce((sum,row)=>sum+Number(row.balance||0),0);
+      if(total<10000)return {error:"Your alliance needs 10,000 green crystals."};
+      let remaining=10000;
+      for(const donor of donors){
+        if(!remaining)break;
+        const spent=Math.min(remaining,Number(donor.balance)||0);
+        db.prepare("UPDATE player_green_crystals SET balance=balance-? WHERE user_id=?").run(spent,donor.user_id);
+        remaining-=spent;
+      }
+      const unlockedAt=Date.now();
+      db.prepare("INSERT INTO alliance_space_stations(station_id,alliance_id,unlocked_at) VALUES (?,?,?)").run(stationId,member.alliance_id,unlockedAt);
+      return {success:true,stationId,allianceId:member.alliance_id,allianceName:member.name,unlockedAt};
+    })();
   }
 
   simulateAlienBattle(userId,level,selectedArmy,formation) {
@@ -1975,7 +2023,8 @@ class DatabaseManager {
         health: current.allianceBonuses.health + (activeBuffs.some(buff => buff.kind==="health") ? 10 : 0)
       };
       const origin={x:current.castle.x,y:current.castle.y};
-      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,origin,target}),now,arrivesAt);
+      const allianceId=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId)?.alliance_id||null;
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,allianceId,origin,target}),now,arrivesAt);
       if(campaign.used>=20&&Number(campaign.bonusMissions||0)>0)db.prepare("UPDATE alien_rewards SET bonus_missions=MAX(0,bonus_missions-1) WHERE user_id=?").run(userId);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,origin,target,remaining:campaign.remaining-1};
     })();
@@ -2010,6 +2059,11 @@ class DatabaseManager {
         });
         if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
         if(result.victory){
+          const greenCrystals=mission.level>=11&&mission.level<=19?100+(mission.level-11)*50:0;
+          if(greenCrystals){
+            db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,greenCrystals,greenCrystals);
+            result.greenCrystals=greenCrystals;
+          }
           this.awardPlayerXp(userId,mission.level*100);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
           db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
