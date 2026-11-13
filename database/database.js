@@ -1520,6 +1520,8 @@ class DatabaseManager {
   }
 
   getHospital(userId) {
+    // Resolve arriving player attacks so newly wounded defenders appear immediately.
+    this.resolvePlayerMissions(userId);
     // Calling the event readers also settles completed events and releases their wounded units.
     this.getMothershipEvent(userId);
     this.getSaturdayAllianceInvasion(userId);
