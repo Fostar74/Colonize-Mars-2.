@@ -1434,7 +1434,11 @@ class DatabaseManager {
       if(mission.arrives_at<=now)return {error:"The attack has already reached its target."};
       const data=JSON.parse(mission.army||"{}");
       const survivors=data.units||{};
-      const result={recalled:true,victory:false,rounds:0,report:[],survivors,defenderSurvivors:{},loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0};
+      const defender=this.syncGame(mission.defender_id);
+      const defenderArmy=defender?.army||{};
+      const result={recalled:true,battleSkipped:true,victory:false,rounds:0,report:[],survivors,
+        defenderInitial:{...defenderArmy},defenderSurvivors:{...defenderArmy},
+        loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0,cargoCapacity:0};
       const returnAt=now+Math.max(1000,mission.arrives_at-now);
       db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL WHERE id=?").run(now,returnAt,JSON.stringify(result),id);
       return {success:true,missionId:id,returnsAt:returnAt};
