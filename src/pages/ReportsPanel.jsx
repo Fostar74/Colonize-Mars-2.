@@ -4,7 +4,7 @@ import { useLanguage } from "../language";
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const auth=()=>({Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 const diff=(initial,remaining)=>Object.fromEntries(Object.entries(initial||{}).map(([unit,count])=>[unit,Math.max(0,(Number(count)||0)-(Number(remaining?.[unit])||0))]).filter(([,count])=>count>0));
-const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>unit+": "+Number(count).toLocaleString()).join(", ")||"—";
+const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>unit+": "+Number(count).toLocaleString()).join(", ")||"0";
 
 export default function ReportsPanel({onClose,onRead}) {
   const {t}=useLanguage();
@@ -34,7 +34,7 @@ export default function ReportsPanel({onClose,onRead}) {
     const enemyRemaining=m.incoming?(m.result.survivors||{}):(m.result.defenderSurvivors||{});
     return <article key={"player-"+m.id} style={card}>
       <h3>{m.incoming?t("Incoming attack from","Атака от")+" "+m.attacker_name:t("Attack on","Атака срещу")+" "+m.defender_name} · {m.target?.x}:{m.target?.y}</h3>
-      <p>{m.result.recalled?t("Attack recalled before arrival","Атаката е върната преди пристигане"):m.result.shielded?t("Blocked by protection","Спряна от протекция"):m.result.victory?t("Victory","Победа"):t("Defeat","Загуба")} · {t("Rounds","Рундове")}: {m.result.rounds??"—"}</p>
+      <p>{m.result.recalled?t("Attack recalled before arrival; no battle took place.","Атаката е върната преди пристигане; битка не е имало."):m.result.shielded?t("Blocked by protection","Спряна от протекция"):m.result.victory?t("Victory","Победа"):t("Defeat","Загуба")}{!m.result.recalled&&" · "+t("Rounds","Рундове")+": "+(m.result.rounds??"—")}</p>
       {army(t("Your starting army","Твоята начална армия"),ownInitial)}
       {army(t("Your losses","Твоите загуби"),diff(ownInitial,ownRemaining))}
       {army(t("Your survivors","Твоите оцелели"),ownRemaining)}
