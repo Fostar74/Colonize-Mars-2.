@@ -9,6 +9,9 @@ import Rankings from "./Rankings";
 import MessagePanel from "./MessagePanel";
 import PlayerTalents from "./PlayerTalents";
 import Inventory from "./Inventory";
+
+import "./Game.css";
+import marsBackground from "../images/mars-background.jpg";
 const AVATARS = [
   ["defender-m","Defender","Защитник","👨‍🚀","Male","Мъж"],["defender-f","Defender","Защитник","👩‍🚀","Female","Жена"],
   ["attacker-m","Attacker","Атакуващ","👨‍🚒","Male","Мъж"],["attacker-f","Attacker","Атакуващ","👩‍🚒","Female","Жена"],
@@ -21,8 +24,6 @@ const AVATARS = [
   ["leader-m","Leader","Лидер","👨‍🚀","Male","Мъж"],["leader-f","Leader","Лидер","👩‍🚀","Female","Жена"]
 ].map(([id,role,roleBg,icon,gender,genderBg])=>({id,role,roleBg,icon,gender,genderBg}));
 
-import "./Game.css";
-import marsBackground from "../images/mars-background.jpg";
 
 function MarketPanel() {
   const {t,label}=useLanguage();
