@@ -117,8 +117,8 @@ router.post("/forgot-password", async (req, res) => {
     return res.status(400).json({ message: "Enter a valid email address." });
   }
 
-  const apiKey = process.env.RESEND_API_KEY;
-  const from = process.env.RESEND_FROM_EMAIL;
+  const apiKey = process.env.BREVO_API_KEY;
+  const from = process.env.BREVO_FROM_EMAIL;
   if (!apiKey || !from) {
     return res.status(503).json({ message: "Password reset email is not configured yet." });
   }
@@ -144,15 +144,15 @@ router.post("/forgot-password", async (req, res) => {
 
     const appBaseUrl = (process.env.APP_BASE_URL || "https://colonize-mars-2.onrender.com").replace(/\/$/, "");
     const resetUrl = `${appBaseUrl}/#/reset-password?token=${token}`;
-    const response = await fetch(process.env.RESEND_API_URL || "https://api.resend.com/emails", {
+    const response = await fetch(process.env.BREVO_API_URL || "https://api.brevo.com/v3/smtp/email", {
       method: "POST",
-      headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+      headers: { "api-key": apiKey, "Content-Type": "application/json" },
       body: JSON.stringify({
-        from,
-        to: [email],
+        sender: { email: from, name: process.env.BREVO_FROM_NAME || "Colonize Mars" },
+        to: [{ email }],
         subject: "Reset your Colonize Mars password",
-        text: `Use this one-time link to choose a new password. It expires in 30 minutes: ${resetUrl}\n\nIf you did not request this change, ignore this email.`,
-        html: `<p>Use this one-time link to choose a new password. It expires in 30 minutes.</p><p><a href="${resetUrl}">Reset password</a></p><p>If you did not request this change, ignore this email.</p>`,
+        textContent: `Use this one-time link to choose a new password. It expires in 30 minutes: ${resetUrl}\n\nIf you did not request this change, ignore this email.`,
+        htmlContent: `<p>Use this one-time link to choose a new password. It expires in 30 minutes.</p><p><a href="${resetUrl}">Reset password</a></p><p>If you did not request this change, ignore this email.</p>`,
       }),
     });
     if (!response.ok) {
