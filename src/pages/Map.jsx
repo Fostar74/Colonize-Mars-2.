@@ -15,6 +15,7 @@ import formations from "../shared/formations";
 import alienBases from "../shared/alienBases";
 import spaceStations from "../shared/spaceStations";
 const {units, marchLimit, cellsPerRow, defaultFormation, normalizeFormation}=formations;
+const EMPTY_MINES=[];
 
 const formationTypes = {
   Ground: ["Ground", "Наземни", 1],
@@ -139,7 +140,9 @@ function Map() {
     campaignTab === "active" ? !mission.returned_at : mission.result || mission.returned_at);
   const playerMarches = (campaign.playerMissions || []).filter(mission =>
     campaignTab === "active" ? !mission.returned_at : mission.result || mission.returned_at);
-  const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || (campaign.playerMissions||[]).some(m=>!m.returned_at) || !!campaign.supportRoutes?.length;
+  const resourceMarches=(campaign.resourceMines?.missions||[]).filter(mission=>
+    campaignTab==="active"?mission.status!=="completed":mission.status==="completed");
+  const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || (campaign.playerMissions||[]).some(m=>!m.returned_at) || (campaign.resourceMines?.missions||[]).some(m=>m.status!=="completed") || !!campaign.supportRoutes?.length;
   useEffect(()=>{
     if(!marchHistoryOpen&&!hasRoutes)return;
     setClock(Date.now());
@@ -199,11 +202,8 @@ function Map() {
   const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
 
-  // World coordinates are 1–100; each tile has a stable geographic location.
-  const mineData = [
-    ...["gold","iron","solar","water"].flatMap((type,row)=>
-      Array.from({length:9},(_,i)=>({x:5+i*10,y:10+row*22,type})))
-  ];
+  // Independent resource mines are supplied by the server and respawn on a four-hour cycle.
+  const mineData = campaign.resourceMines?.mines || EMPTY_MINES;
 
 
   useEffect(() => {
@@ -346,7 +346,7 @@ function Map() {
     mineData.forEach((mine) => {
       const px = (mine.x-1) * tileSize + offset.x;
       const py = (mine.y-1) * tileSize + offset.y;
-      const icon = mineIcons[mine.type];
+      const icon = mineIcons[String(mine.resource||mine.type).toLowerCase()];
 
       if (
         icon &&
@@ -437,7 +437,7 @@ function Map() {
         ctx.fillText(`${c.username} (${c.x}:${c.y})`, px + 2, py + tileSize - 5);
       }
     });
-  }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom, campaign]);
+  }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom, tileSize, mineData, campaign]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
@@ -484,10 +484,11 @@ function Map() {
     const event=campaign.mothershipEvent?.active?nearest([campaign.mothershipEvent.coordinates]):null;
     const station=castle||event?null:nearest(campaign.stations?.stations||spaceStations);
     const alien=castle||event||station?null:nearest(alienBases);
+    const mine=castle||event||station||alien?null:nearest(mineData);
     setSelectedAlien(castle||station?null:alien||null);
     setMarchDraft(null);
     setStationNotice("");
-    setSelectedTarget(castle?{type:"castle",...castle}:event?{type:"mothership",...campaign.mothershipEvent.coordinates}:station?{type:"station",stationId:station.id,x:station.x,y:station.y}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
+    setSelectedTarget(castle?{type:"castle",...castle}:event?{type:"mothership",...campaign.mothershipEvent.coordinates}:station?{type:"station",stationId:station.id,x:station.x,y:station.y}:alien?{type:"alien",...alien}:mine?{type:"mine",...mine}:{type:"field",x:x+1,y:y+1});
     setMarchNotice("");
   };
   const ownUsername=sessionStorage.getItem("username");
@@ -532,26 +533,35 @@ function Map() {
     const isMothershipAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="mothership";
     const isPlayerAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="castle"&&!targetIsOwn;
     const isStationDefense=marchDraft?.type==="Defend"&&marchDraft?.target?.type==="station";
+    const isMineGather=marchDraft?.type==="Gather"&&marchDraft?.target?.type==="mine";
+    const isMineAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="mine";
     if(selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
     if((isAlienAttack||isMothershipAttack)&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
-    if(!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isStationDefense){setMarchNotice("Choose an attackable target.");return;}
+    if(!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isStationDefense&&!isMineGather&&!isMineAttack){setMarchNotice("Choose an available target.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
     try{
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
-      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
-      const payload=isAlienAttack
+      const standardRows=defaultFormation();
+      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]||standardRows[unit]}));
+      const payload=isMineGather||isMineAttack
+        ? {userId:sessionStorage.getItem("userId"),mineId:marchDraft.target.id,kind:isMineAttack?"attack":"gather",army:selected,formation}
+        : isAlienAttack
         ? {userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}}
         : isMothershipAttack ? {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded}
         : isStationDefense ? {userId:sessionStorage.getItem("userId"),stationId:marchDraft.target.stationId,army:selected}
         : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
-      const response=await fetch(base+(isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack"),{
+      const response=await fetch(base+(isMineGather||isMineAttack?"/resource-mines/launch":isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack"),{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
       });
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      if(isStationDefense){
+      if(isMineGather||isMineAttack){
+        const latest=await fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
+        if(latest.ok)setCampaign(await latest.json());
+        setMarchSuccess(isMineAttack?"Attack march is heading to the occupied mine.":"Gathering march is heading to the mine.");
+      }else if(isStationDefense){
         const latest=await fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
         if(latest.ok)setCampaign(await latest.json());
         setMarchSuccess("Army is heading to defend the alliance station.");
@@ -756,7 +766,7 @@ function Map() {
       </button>
         </div>
         <div id="map-menu-controls" hidden={!mapMenuOpen}>
-        <div>{t("Alien campaign: defeated level","Извънземна кампания: победено ниво")} {campaign.highestDefeated}{t("/20 · Next: level","/20 · Следващо ниво")} {campaign.nextLevel} {t("· Attacks left:","· Оставащи атаки:")} {campaign.remaining??"—"}{t("/20 · Cyber Knight Lv","/20 · Киберрицар ниво")} {campaign.knightLevel||1}</div>
+        <div>{t("Alien campaign: defeated level","Извънземна кампания: победено ниво")} {campaign.highestDefeated}{t("/20 · Next: level","/20 · Следващо ниво")} {campaign.nextLevel} {t("· Attacks left:","· Оставащи атаки:")} {campaign.remaining??"—"}{t("/20 · Cyber Knight Lv","/20 · Киберрицар ниво")} {campaign.knightLevel||1} · {t("Prestige","Престиж")} {Number(campaign.prestige||0)} ({Number(campaign.prestige||0)%20}/20)</div>
         <div style={{fontSize:12}}>{t("Mission travel: 60 seconds · Daily reset: 00:00 UTC","Пътуване: 60 секунди · Нулиране в 00:00 UTC")}</div>
         {(campaign.sideQuests||[]).filter(q=>q.completed&&!q.claimed).map(q=><button key={q.level} onClick={async()=>{
           const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
@@ -850,7 +860,13 @@ function Map() {
               <div style={{maxHeight:180,overflowY:"auto"}}>{(campaign.mothershipEvent.attacks||[]).slice().reverse().map(attack=><div key={attack.id}>{attack.username} · {attack.origin_x}:{attack.origin_y} → 50:50 · {attack.resolved_at?Number(attack.damage).toLocaleString()+" "+t("damage","щети")+" · "+Number(attack.xp||0).toLocaleString()+" XP":t("en route","на път")}</div>)}</div>
             </details>
           </section>}
-          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Mother Ship Hunt · Global Event","Ловът на Майчиния кораб · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
+          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Mother Ship Hunt · Global Event","Ловът на Майчиния кораб · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?t(selectedTarget.resource+" Mine","Мина за "+({Gold:"злато",Iron:"желязо",Water:"вода",Solar:"слънчева енергия"}[selectedTarget.resource]||selectedTarget.resource)):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
+          {selectedTarget?.type==="mine"&&<section style={{padding:12,margin:"10px 0",background:"#20384d",border:"1px solid #63829a",borderRadius:8}}>
+            <strong>{localLabel(selectedTarget.resource)} · {Number(selectedTarget.production_per_hour).toLocaleString()} {t("per hour","на час")}</strong>
+            <p>{t("Remaining mine stock:","Оставащ запас в мината:")} {Number(selectedTarget.remaining).toLocaleString()}</p>
+            {selectedTarget.ownerName&&<p>{t("Occupied by:","Заета от:")} {selectedTarget.ownerName}</p>}
+            <p style={{marginBottom:0}}>{t("Travel time uses the slowest unit in the selected army. Troops gather only up to their total cargo capacity, then return to base.","Времето за път се изчислява по най-бавната избрана единица. Войниците събират до общата си товароносимост, след което се връщат в базата.")}</p>
+          </section>}
           {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
             <strong>{t("Alien garrison · Level","Извънземен гарнизон · Ниво")} {selectedTarget.level}</strong>
             {campaign.garrisons?.[selectedTarget.level] ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:6,marginTop:8}}>
@@ -862,15 +878,16 @@ function Map() {
           {!marchDraft && selectedTarget?.type!=="station" && <div>
             <p>{t("Choose mission type:","Избери вид мисия:")}</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
-              {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
+              {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:selectedTarget?.type==="mine"?(Number(selectedTarget.ownerId)&&Number(selectedTarget.ownerId)!==Number(sessionStorage.getItem("userId"))?["Attack"]:Number(selectedTarget.ownerId)?[]:["Gather"]):["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
                 const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
                 const mothership=selectedTarget?.type==="mothership";
+                const resourceMine=selectedTarget?.type==="mine";
                 const shielded=Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now();
                 const blockedByShield=shielded&&(type==="Attack"||type==="Espionage");
-                const allowed=!blockedByShield&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own)): type==="Support"?!field&&!alien&&!own&&canSupport:
+                const allowed=!blockedByShield&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own)||(resourceMine&&Number(selectedTarget.ownerId)!==Number(sessionStorage.getItem("userId")))): type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
-                  type==="Gather"?field:
+                  type==="Gather"?(field||resourceMine):
                   type==="Trade"?!field&&!alien&&!own&&(campaign.tradeModuleLevel||0)>=3:
                   type==="Relocation"?field:false);
                 return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}
@@ -881,7 +898,7 @@ function Map() {
             </div>
             {selectedTarget?.type==="castle"&&!targetIsOwn&&Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now()&&<p role="status" style={{color:"#c4f4ff",background:"rgba(41,117,145,.35)",padding:10,borderRadius:7}}>{t("This player is protected by a 24-hour Plasma Shield. Attacks and espionage are blocked until it expires.","Този играч е защитен от 24-часов плазмен щит. Атаките и шпионажът са блокирани до изтичането му.")}</p>}
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
-            {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
+            {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) || (selectedTarget?.type==="mine"&&Number(selectedTarget.ownerId)) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Gather to send troops to collect this resource.","Избери „Добив“, за да изпратиш войници да събират този ресурс.")}</p>}
           </div>}
           {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
           {marchDraft && <div>
@@ -900,6 +917,7 @@ function Map() {
             </>}
             <p>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
             {marchDraft.type==="Attack" && marchDraft.target.type==="castle" && <p>{t("Estimated cargo capacity if the surviving army wins:","Очаквана товароносимост при победа на оцелялата армия:")} {selectedCargoCapacity.toLocaleString()} {t("resources","ресурси")}</p>}
+            {marchDraft.target.type==="mine"&&marchDraft.type==="Gather"&&<p>{t("Estimated cargo:","Очакван товар:")} {selectedCargoCapacity.toLocaleString()} · {t("available in mine:","налични в мината:")} {Number(marchDraft.target.remaining).toLocaleString()} · {t("estimated collection:","очакван добив:")} {Math.min(selectedCargoCapacity,Number(marchDraft.target.remaining)||0).toLocaleString()} {localLabel(marchDraft.target.resource)}</p>}
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
             {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
@@ -944,7 +962,7 @@ function Map() {
               }}>{t("Select up to 50,000","Избери до 50 000")}</button>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
               <button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>
-              <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
+              <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.target.type==="mine"&&marchDraft.type==="Gather"?t("Send gathering march","Изпрати поход за добив"):t("Launch attack","Изпрати атаката")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
@@ -1067,8 +1085,17 @@ function Map() {
             <p>{t("The selected defense formation is used for future player battles. You can change it at any time.","Избраната формация за защита се използва в бъдещи битки с играчи. Можеш да я смениш по всяко време.")}</p>
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
           </section> : <>
-          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length &&
+          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !resourceMarches.length &&
             <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
+          {resourceMarches.length>0&&<><h3>{t("Resource mine marches","Походи към ресурсни мини")}</h3>
+            {resourceMarches.map(mission=>{
+              const returning=mission.status==="returning"||mission.status==="gathering";
+              const due=returning?mission.returns_at:mission.arrives_at;
+              const remaining=Math.max(0,Math.ceil((Number(due||0)-clock)/1000));
+              const status=mission.status==="gathering"?t("Gathering · returning in","Добив · връщане след"):mission.status==="returning"?t("Returning in","Връщане след"):t("Travelling · arrival in","По пътя · пристигане след");
+              return <p key={"resource-"+mission.id}><strong>{mission.kind==="attack"?t("Attack march","Атакуващ поход"):t("Gathering march","Поход за добив")} #{mission.id}</strong> · {localLabel(mission.resource)} · {mission.x}:{mission.y} · {status} {remaining} {t("sec.","сек.")} · {Number(mission.gathered||0).toLocaleString()} / {Number(mission.gather_amount||0).toLocaleString()}</p>;
+            })}
+          </>}
           {(campaignTab==="reports" || scoutMarches.length>0) && <h3>{t("Reconnaissance","Разузнаване")}</h3>}
           {scoutMarches.map(mission=>{
             const returning=clock>=mission.arrives_at;
