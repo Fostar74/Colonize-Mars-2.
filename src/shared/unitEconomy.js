@@ -15,6 +15,14 @@ const cargoCapacity = {
   "Demolition Bot":20, "Missile Carrier":50, "Particle Blaster":10, "Orbital Strike Beacon":10,
   "AI General":50, "Gene Warrior":30
 };
+// Tile travel is governed by the slowest selected troop.
+const marchSpeed = {
+  "Explorer Trooper":5, "Exo-Soldier":4, "Plasma Bladesman":4, "Nano Shieldman":3,
+  "Railgunner":3, "Pulse Sniper":3, "Drone Operator":4,
+  "Rover Scout":10, "Hoverbike Rider":9, "Mech Walker":4, "Hover Drone Rider":8,
+  "Demolition Bot":3, "Missile Carrier":2, "Particle Blaster":2, "Orbital Strike Beacon":1,
+  "AI General":3, "Gene Warrior":5
+};
 // Each unit has a dominant resource; rotate the emphasis within every class.
 const emphasis = [
   {Gold:100,Iron:80,Water:60,Solar:40},
@@ -75,4 +83,4 @@ function buildingPrice(name,nextLevel,discount = 0) {
   return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * nextLevel * (100 - discount) / 100)]));
 }
 
-module.exports={allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice};
+module.exports={allianceUpgradeDuration,categories,cargoCapacity,marchSpeed,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice};

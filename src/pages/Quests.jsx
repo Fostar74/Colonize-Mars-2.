@@ -74,8 +74,20 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
   };
   const productionBuildings = ["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array"];
   const completedMines = productionBuildings.filter(name => Number(structures[name]?.level ?? structures[name] ?? 0) >= 3).length;
-  const [cyberKnightLevel, setCyberKnightLevel] = useState(1);
   const [gatheredMine, setGatheredMine] = useState(false);
+  useEffect(()=>{
+    if(!userId)return;
+    let cancelled=false;
+    const loadMineQuest=async()=>{
+      try{
+        const response=await fetch(base+"/alien-campaign/"+encodeURIComponent(userId),{headers:headers()});
+        if(response.ok){const data=await response.json();if(!cancelled)setGatheredMine(!!data.resourceMines?.gatheredMine);}
+      }catch(_){}
+    };
+    loadMineQuest();const timer=setInterval(loadMineQuest,10000);
+    return()=>{cancelled=true;clearInterval(timer);};
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  },[userId]);
 
   const handleMainQuest = mission => {
     if (mission.kind === "formation") {
@@ -116,8 +128,7 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
       onShowBase({ tab: "units" });
     }
   };
-  const handleLevelUpKnight = () => { setCyberKnightLevel(1); alert("Cyber Knight leveling is not available yet."); };
-  const handleGatherMine = () => { setGatheredMine(false); alert("Mine gathering is not available yet."); };
+  const handleGatherMine = () => { window.location.hash = "/map?mineGather=1"; };
 
   const claimTutorial = async (missionId) => {
     setClaimBusy(true); setClaimError("");
@@ -179,21 +190,12 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
       <h3>{t("Side Quests","Странични мисии")}</h3>
 
       <div className="quest-box">
-        <div className="quest-title">{t("Level up your Cyber Knight to level 2","Повиши Киберрицаря до ниво 2")}</div>
-        <div className="quest-progress">{cyberKnightLevel >= 2 ? "2 / 2" : "1 / 2"}</div>
-        <div className="quest-rewards">
-          {t("Helmet x1 Gloves x25 Armor x25 Boots x25","Шлем ×1, ръкавици ×25, броня ×25, ботуши ×25")}
-        </div>
-        <button onClick={handleLevelUpKnight}>{t("Show Me","Покажи ми")}</button>
-      </div>
-
-      <div className="quest-box">
-        <div className="quest-title">{t("Gather from 1 independent map mine","Събери ресурси от една независима мина")}</div>
+        <div className="quest-title">1. {t("Gather from 1 independent map mine","Събери ресурси от една независима мина")}</div>
         <div className="quest-progress">{gatheredMine ? "1 / 1" : "0 / 1"}</div>
         <div className="quest-rewards">
-          {t("Boost x1 (2h) Forge Token x50","Бонус ×1 (2 ч.), жетони за изковаване ×50")}
+          {t("Reward: 50 Universal Forge points","Награда: 50 универсални точки за изковаване")}
         </div>
-        <button onClick={handleGatherMine}>{t("Show Me","Покажи ми")}</button>
+        {gatheredMine?<button disabled>{t("Completed","Завършена")}</button>:<button onClick={handleGatherMine}>{t("Show Me","Покажи ми")}</button>}
       </div>
     </div>
   );
