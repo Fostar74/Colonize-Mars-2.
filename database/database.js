@@ -1373,7 +1373,7 @@ class DatabaseManager {
         const shield=db.prepare("SELECT expires_at FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(mission.defender_id,now);
         if(shield){
           const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
-          const shielded={victory:false,rounds:0,report:[],survivors:data.units||{},defenderSurvivors:defender.army||{},
+          const shielded={victory:false,rounds:0,report:[],survivors:data.units||{},defenderInitial:defender.army||{},defenderSurvivors:defender.army||{},
             defendersRemaining:Object.values(defender.army||{}).reduce((sum,count)=>sum+Number(count||0),0),
             loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0,cargoCapacity:0,shielded:true};
           db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL WHERE id=?")
