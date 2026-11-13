@@ -9,6 +9,10 @@ import goldMineImg from "../images/mine-gold.png";
 import ironMineImg from "../images/mine-iron.png";
 import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
+import goldIcon from "../images/gold.png";
+import ironIcon from "../images/iron.png";
+import solarIcon from "../images/solar.png";
+import waterIcon from "../images/water.png";
 import alienBaseImg from "../images/alien-base.png";
 import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
@@ -16,6 +20,7 @@ import alienBases from "../shared/alienBases";
 import spaceStations from "../shared/spaceStations";
 const {units, marchLimit, cellsPerRow, defaultFormation, normalizeFormation}=formations;
 const EMPTY_MINES=[];
+const MINE_RESOURCE_ICONS={Gold:goldIcon,Iron:ironIcon,Solar:solarIcon,Water:waterIcon};
 
 const formationTypes = {
   Ground: ["Ground", "Наземни", 1],
@@ -861,10 +866,20 @@ function Map() {
             </details>
           </section>}
           <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Mother Ship Hunt · Global Event","Ловът на Майчиния кораб · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?t(selectedTarget.resource+" Mine","Мина за "+({Gold:"злато",Iron:"желязо",Water:"вода",Solar:"слънчева енергия"}[selectedTarget.resource]||selectedTarget.resource)):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
-          {selectedTarget?.type==="mine"&&<section style={{padding:12,margin:"10px 0",background:"#20384d",border:"1px solid #63829a",borderRadius:8}}>
-            <strong>{localLabel(selectedTarget.resource)} · {Number(selectedTarget.production_per_hour).toLocaleString()} {t("per hour","на час")}</strong>
-            <p>{t("Remaining mine stock:","Оставащ запас в мината:")} {Number(selectedTarget.remaining).toLocaleString()}</p>
-            {selectedTarget.ownerName&&<p>{t("Occupied by:","Заета от:")} {selectedTarget.ownerName}</p>}
+          {selectedTarget?.type==="mine"&&<section style={{padding:14,margin:"10px 0",background:"#172d3f",border:"1px solid #63829a",borderRadius:10}}>
+            <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:12}}>
+              <img src={MINE_RESOURCE_ICONS[selectedTarget.resource]} alt="" style={{width:42,height:42,objectFit:"contain",background:"#111923",border:"1px solid #6b7782",borderRadius:5,padding:3}} />
+              <strong style={{fontSize:18}}>{localLabel(selectedTarget.resource)} {t("Mine","мина")}</strong>
+            </div>
+            <div style={{display:"grid",gridTemplateColumns:"minmax(0,1fr) auto",gap:"8px 12px",alignItems:"center",padding:12,background:"#f2f3f4",color:"#18212b",borderRadius:8}}>
+              <span>{t("Remaining quantity:","Оставащо количество:")}</span>
+              <strong>{Number(selectedTarget.remaining).toLocaleString()}</strong>
+              <span>{t("Gathering per hour:","Добив на час:")}</span>
+              <strong>{Number(selectedTarget.production_per_hour).toLocaleString()}</strong>
+            </div>
+            <div style={{marginTop:10,padding:10,textAlign:"center",background:"#f2f3f4",borderRadius:8,fontWeight:700,color:Number(selectedTarget.ownerId)?"#b83232":"#168044"}}>
+              {Number(selectedTarget.ownerId)?`${t("Occupied by:","Завладяна от:")} ${selectedTarget.ownerName||t("another player","друг играч")}`:t("Unoccupied","Незаета")}
+            </div>
             <p style={{marginBottom:0}}>{t("Travel time uses the slowest unit in the selected army. Troops gather only up to their total cargo capacity, then return to base.","Времето за път се изчислява по най-бавната избрана единица. Войниците събират до общата си товароносимост, след което се връщат в базата.")}</p>
           </section>}
           {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
@@ -891,14 +906,14 @@ function Map() {
                   type==="Trade"?!field&&!alien&&!own&&(campaign.tradeModuleLevel||0)>=3:
                   type==="Relocation"?field:false);
                 return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}
-                  style={{padding:"12px 18px",background:allowed?(type==="Attack"?"#9e4437":"#205c78"):"#253441",color:allowed?"white":"#788796",border:"1px solid #50718b",borderRadius:7,cursor:allowed?"pointer":"not-allowed"}}>
-                  {type==="Attack"?"⚔ ":type==="Espionage"?"◈ ":type==="Support"?"🛡 ":""}{localLabel(type)}
+                  style={{padding:"12px 18px",background:allowed?(type==="Attack"?"#9e4437":type==="Gather"&&resourceMine?"#208044":"#205c78"):"#253441",color:allowed?"white":"#788796",border:"1px solid #50718b",borderRadius:7,cursor:allowed?"pointer":"not-allowed"}}>
+                  {type==="Attack"?"⚔ ":type==="Espionage"?"◈ ":type==="Support"?"🛡 ":type==="Gather"?"⛏ ":""}{type==="Gather"?t("Gather","Събирай"):localLabel(type)}
                 </button>;
               })}
             </div>
             {selectedTarget?.type==="castle"&&!targetIsOwn&&Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now()&&<p role="status" style={{color:"#c4f4ff",background:"rgba(41,117,145,.35)",padding:10,borderRadius:7}}>{t("This player is protected by a 24-hour Plasma Shield. Attacks and espionage are blocked until it expires.","Този играч е защитен от 24-часов плазмен щит. Атаките и шпионажът са блокирани до изтичането му.")}</p>}
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
-            {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) || (selectedTarget?.type==="mine"&&Number(selectedTarget.ownerId)) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Gather to send troops to collect this resource.","Избери „Добив“, за да изпратиш войници да събират този ресурс.")}</p>}
+            {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) || (selectedTarget?.type==="mine"&&Number(selectedTarget.ownerId)) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Gather to send troops to collect this resource.","Избери „Събирай“, за да изпратиш войници да събират този ресурс.")}</p>}
           </div>}
           {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
           {marchDraft && <div>
