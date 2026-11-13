@@ -490,6 +490,7 @@ function Map() {
   };
   const ownUsername=sessionStorage.getItem("username");
   const targetIsOwn=selectedTarget?.type==="castle"&&selectedTarget.username===ownUsername;
+  const sameAllianceTarget=selectedTarget?.type==="castle"&&campaign.stations?.allianceId&&selectedTarget.alliance_id&&String(campaign.stations.allianceId)===String(selectedTarget.alliance_id);
   // Clan diplomacy is not yet backed by a server-side alliance system.
   // Never offer support to an unverified player.
   const canSupport=false;
@@ -601,6 +602,8 @@ function Map() {
     finally{setMarchLoading(false);}
   };
   const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+count,0);
+  const availableTroopCount=units.reduce((total,unit)=>total+Number(availableArmy[unit]||0),0);
+  const addAllAvailableTroops=()=>{let remaining=marchLimit;const selection={};for(const unit of units){selection[unit]=Math.min(remaining,Number(availableArmy[unit])||0);remaining-=selection[unit];}setMarchUnits(selection);};
   const selectedCargoCapacity=Object.entries(marchUnits).reduce((total,[unit,count])=>total+Number(count||0)*Number(unitEconomy.cargoCapacity?.[unit]||0),0);
   const previewRows=normalizeFormation(formationRows);
   const formationSettings=campaign.formations || {};
@@ -858,7 +861,7 @@ function Map() {
                 const mothership=selectedTarget?.type==="mothership";
                 const shielded=Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now();
                 const blockedByShield=shielded&&(type==="Attack"||type==="Espionage");
-                const allowed=!blockedByShield&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own)): type==="Support"?!field&&!alien&&!own&&canSupport:
+                const allowed=!blockedByShield&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own&&!sameAllianceTarget)): type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
                   type==="Gather"?field:
@@ -872,6 +875,7 @@ function Map() {
             </div>
             {selectedTarget?.type==="castle"&&!targetIsOwn&&Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now()&&<p role="status" style={{color:"#c4f4ff",background:"rgba(41,117,145,.35)",padding:10,borderRadius:7}}>{t("This player is protected by a 24-hour Plasma Shield. Attacks and espionage are blocked until it expires.","Този играч е защитен от 24-часов плазмен щит. Атаките и шпионажът са блокирани до изтичането му.")}</p>}
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
+            {sameAllianceTarget&&<p role="status">{t("You cannot attack a member of your alliance.","Не можеш да атакуваш член на своя алианс.")}</p>}
             {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
           </div>}
           {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
@@ -889,7 +893,7 @@ function Map() {
             </button>
             {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
             </>}
-            <p>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p>
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",margin:"10px 0"}}><p style={{margin:0}}>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p><button type="button" disabled={!availableTroopCount} title={t("Only troops currently available at your base can be selected. Wounded troops must first recover in the Hospital.","Могат да се изберат само наличните войници в базата. Ранените трябва първо да се възстановят в болницата.")} onClick={addAllAvailableTroops}>{availableTroopCount<=marchLimit?t("Add All Available","Добави всички налични"):t("Add up to 50,000","Добави до 50 000")}</button></div>{availableTroopCount>marchLimit&&<p style={{fontSize:12,color:"#b5c7d9"}}>{t("Only the first 50,000 available troops in the list will be selected.","Ще бъдат избрани първите 50 000 налични войници от списъка.")}</p>}
             {marchDraft.type==="Attack" && marchDraft.target.type==="castle" && <p>{t("Estimated cargo capacity if the surviving army wins:","Очаквана товароносимост при победа на оцелялата армия:")} {selectedCargoCapacity.toLocaleString()} {t("resources","ресурси")}</p>}
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
             {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
@@ -924,15 +928,6 @@ function Map() {
             </div>
             }
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>{
-                let remaining=marchLimit;
-                const selection={};
-                for(const unit of units){
-                  selection[unit]=Math.min(remaining,Number(availableArmy[unit])||0);
-                  remaining-=selection[unit];
-                }
-                setMarchUnits(selection);
-              }}>{t("Select up to 50,000","Избери до 50 000")}</button>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
               <button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>
               <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
