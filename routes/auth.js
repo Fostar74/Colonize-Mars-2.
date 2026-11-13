@@ -7,6 +7,14 @@ const DatabaseManager = require("../database/database");
 const db = new DatabaseManager();
 const sessions = new Map();
 const SESSION_MS = 24 * 60 * 60 * 1000;
+let settlingEndedEvents=false;
+const eventSettlementTimer=setInterval(()=>{
+  if(settlingEndedEvents)return;
+  settlingEndedEvents=true;
+  try{db.settleEndedEvents();}catch(error){console.error("Event hospital recovery:",error);}
+  finally{settlingEndedEvents=false;}
+},15000);
+if(typeof eventSettlementTimer.unref==="function")eventSettlementTimer.unref();
 function requireSession(req, res, next) {
   const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
   const session = match && sessions.get(match[1]);
@@ -286,6 +294,17 @@ router.post("/mothership/attack",requireSession,(req,res)=>{
     if(result.error)return res.status(400).json({message:result.error});
     res.json(result);
   }catch(error){console.error("Mother Ship attack:",error);res.status(500).json({message:"Mother Ship attack could not be launched."});}
+});
+router.get("/hospital/:userId",requireSession,(req,res)=>{
+  try{res.json(db.getHospital(Number(req.params.userId)));}
+  catch(error){console.error("Hospital:",error);res.status(500).json({message:"Hospital unavailable."});}
+});
+router.post("/hospital/treat",requireSession,(req,res)=>{
+  try{
+    const result=db.startHospitalTreatment(Number(req.body.userId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Hospital treatment:",error);res.status(500).json({message:"Hospital treatment could not start."});}
 });
 router.get("/mothership/hospital/:userId",requireSession,(req,res)=>{
   try{res.json(db.getMothershipHospital(Number(req.params.userId)));}
