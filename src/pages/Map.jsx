@@ -118,7 +118,7 @@ function Map() {
   const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
   const [campaignTab, setCampaignTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.hash.split("?")[1]).get("campaignTab");
-    return ["active", "reports", "formations"].includes(requestedTab) ? requestedTab : "active";
+    return ["active", "formations"].includes(requestedTab) ? requestedTab : "active";
   });
   const [presetSlot,setPresetSlot]=useState(1);
   const [formationMode,setFormationMode]=useState("attack");
@@ -994,8 +994,7 @@ function Map() {
           </nav>
           {campaignTab!=="formations" && <nav aria-label={t("Campaign views","Изглед на кампаниите")} style={{display:"flex",gap:8,margin:"8px 0"}}>
             {[
-              ["active",t("Active Marches","Активни походи")],
-              ["reports",t("Reports","Доклади")]
+              ["active",t("Active Marches","Активни походи")]
             ].map(([tab,label])=><button key={tab} type="button" aria-pressed={campaignTab===tab}
               style={{padding:"7px 12px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:campaignTab===tab?"#27657e":"#20384d"}}
               onClick={()=>setCampaignTab(tab)}>{label}</button>)}
