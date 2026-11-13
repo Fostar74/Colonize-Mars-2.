@@ -969,7 +969,6 @@ function Map() {
           {marchSuccess.includes("Mother Ship")&&<button type="button" onClick={()=>{window.location.href="/#/game?hospital=1";}}>{t("Open Hospital","Отвори болницата")}</button>} <button type="button" onClick={()=>setMarchSuccess("")} style={{background:"#26765e",color:"white",padding:"10px 24px"}}>{t("Continue","Продължи")}</button>
         </div>
       </div>}
-      <button onClick={()=>{setCampaignTab("active");setMarchHistoryOpen(true);}} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</button>
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</h2><button onClick={()=>setMarchHistoryOpen(false)}>{t("✕ Close","✕ Затвори")}</button></div>
@@ -1092,6 +1091,18 @@ function Map() {
             : t("Travelling","На път");
           return <details key={"player-"+m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
             <summary>{m.incoming?t("Incoming attack from","Вражеска атака от")+" "+m.attacker_name:t("Attack on","Атака срещу")+" "+m.defender_name} · {m.target?.x}:{m.target?.y} · {outcome}{!m.returned_at&&` · ${m.result?t("Returning","Връщане"):t("Arrival","Пристигане")} · ${Math.max(0,Math.ceil(((m.result?m.returns_at:m.arrives_at)-clock)/1000))} ${t("sec.","сек.")}`}</summary>
+            {campaignTab==="active"&&!m.incoming&&!m.result&&m.arrives_at>clock&&<button disabled={marchLoading} onClick={async event=>{
+              event.preventDefault();event.stopPropagation();setMarchLoading(true);setMarchNotice("");
+              try{
+                const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+                const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
+                const response=await fetch(api+"/player-missions/recall",{method:"POST",headers,body:JSON.stringify({userId:sessionStorage.getItem("userId"),missionId:m.id})});
+                const result=await response.json();if(!response.ok)throw Error(result.message||"Recall failed.");
+                const latest=await fetch(api+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:headers.Authorization},cache:"no-store"});
+                if(latest.ok)setCampaign(await latest.json());
+                setMarchNotice(t("March recalled; the army is returning.","Походът е върнат; армията се прибира."));
+              }catch(error){setMarchNotice(error.message);}finally{setMarchLoading(false);}
+            }}>{t("Recall attack","Върни атаката")}</button>}
             <p>{t("Sent troops:","Изпратени войници:")} {Object.entries(m.units||{}).map(([unit,count])=>`${count.toLocaleString()} ${localLabel(unit)}`).join(", ")}</p>
             {m.formation?.length>0&&<ul>{m.formation.map((group,index)=><li key={index}>{group.count.toLocaleString()} {localLabel(group.unit)} · {t("Row","Ред")} {group.row}</li>)}</ul>}
             {m.result&&<div>
