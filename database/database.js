@@ -37,7 +37,7 @@ function writeTradeNotification(tradeId,senderId,recipientId,senderName,resource
   const english=keys.filter(key=>Number(resources[key]||0)>0).map(key=>`${Number(resources[key]).toLocaleString("en-US")} ${key}`).join(", ");
   const bulgarian=keys.filter(key=>Number(resources[key]||0)>0).map(key=>`${Number(resources[key]).toLocaleString("bg-BG")} ${{Gold:"злато",Iron:"желязо",Water:"вода",Solar:"слънчева енергия"}[key]}`).join(", ");
   const body=`Trade received from ${senderName}: ${english}. Resources were added to your base. / Получена търговия от ${senderName}: ${bulgarian}. Ресурсите са добавени към базата ти.`;
-  const result=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
+  const result=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?, 'trade')")
     .run(senderId,recipientId,null,body,sentAt);
   db.prepare("INSERT INTO trade_message_notifications(trade_id,message_id) VALUES (?,?)").run(tradeId,Number(result.lastInsertRowid));
 }
@@ -253,12 +253,15 @@ function initializeDatabase() {
     db.exec(`CREATE TABLE IF NOT EXISTS player_messages (
       id INTEGER PRIMARY KEY, sender_id INTEGER NOT NULL REFERENCES users(id),
       recipient_id INTEGER REFERENCES users(id), alliance_id INTEGER REFERENCES alliances(id),
-      body TEXT NOT NULL, sent_at INTEGER NOT NULL,
+      body TEXT NOT NULL, sent_at INTEGER NOT NULL, message_type TEXT NOT NULL DEFAULT 'private',
       CHECK ((recipient_id IS NULL) != (alliance_id IS NULL)));
       CREATE INDEX IF NOT EXISTS messages_sender ON player_messages(sender_id,id);
       CREATE INDEX IF NOT EXISTS messages_recipient ON player_messages(recipient_id,id);
       CREATE INDEX IF NOT EXISTS messages_alliance ON player_messages(alliance_id,id);`);
     db.exec("CREATE TABLE IF NOT EXISTS trade_message_notifications (trade_id INTEGER PRIMARY KEY REFERENCES interbase_trades(id), message_id INTEGER NOT NULL REFERENCES player_messages(id))");
+    const messageColumns=db.prepare("PRAGMA table_info(player_messages)").all().map(column=>column.name);
+    if(!messageColumns.includes("message_type"))db.exec("ALTER TABLE player_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'private'");
+    db.exec("UPDATE player_messages SET message_type='trade' WHERE id IN (SELECT message_id FROM trade_message_notifications) OR body LIKE 'Marketplace offer #% accepted by%' OR body LIKE 'Marketplace purchase completed from%'");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_invitations (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), PRIMARY KEY(user_id, alliance_id))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_applications (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), applied_at INTEGER NOT NULL, PRIMARY KEY(user_id,alliance_id))");
     try { db.exec("ALTER TABLE alliance_members ADD COLUMN role TEXT NOT NULL DEFAULT 'Member'"); } catch(e) { if(!String(e.message).includes("duplicate column"))throw e; }
@@ -820,11 +823,11 @@ class DatabaseManager {
   }
 
   listMessages(userId, scope){
-    if(!["private","alliance"].includes(scope))return {error:"Unknown message channel."};
+    if(!["private","trade","alliance"].includes(scope))return {error:"Unknown message channel."};
     const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
     if(scope==="alliance"&&!member)return {error:"Join an alliance to view its chat."};
-    const filter=member ? "m.alliance_id=?" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL))";
-    const params=member ? [member.alliance_id] : [userId,userId];
+    const filter=scope==="alliance" ? "m.alliance_id=?" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type=?";
+    const params=scope==="alliance" ? [member.alliance_id] : [userId,userId,scope];
     const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,
       sender.username AS sender,recipient.username AS recipient FROM player_messages m
       JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
@@ -844,8 +847,8 @@ class DatabaseManager {
       if(scope==="alliance"&&!member)return {error:"Join an alliance to use its chat."};
       const target=scope==="private" && typeof recipient==="string" && this.findUserByUsername(recipient.trim());
       if(scope==="private"&&(!target||target.id===userId))return {error:"Choose another existing player."};
-      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
-        .run(userId,target?.id||null,member?.alliance_id||null,content,now);
+      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,?)")
+        .run(userId,target?.id||null,member?.alliance_id||null,content,now,scope);
       return {message:"Message sent."};
     })();
   }
@@ -1065,7 +1068,9 @@ class DatabaseManager {
     const helpHistory=db.prepare("SELECT h.id,h.building_name,h.building_level,h.reduction_ms,h.helped_at,requester.username AS requester,helper.username AS helper FROM alliance_help_history h JOIN users requester ON requester.id=h.requester_id JOIN users helper ON helper.id=h.helper_id WHERE h.alliance_id=? ORDER BY h.helped_at DESC,h.id DESC LIMIT 50").all(membership.id);
     const helpStats=db.prepare("SELECT COUNT(*) AS totalHelps,COALESCE(SUM(reduction_ms),0) AS totalTimeSavedMs FROM alliance_help_history WHERE alliance_id=?").get(membership.id);
     const reinforcements=db.prepare("SELECT r.id,r.sender_id,r.recipient_id,r.units,r.launched_at,r.arrives_at,r.recall_at,r.returned_at,s.username AS sender,t.username AS recipient FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id WHERE r.alliance_id=? AND r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?) ORDER BY r.id DESC LIMIT 100").all(membership.id,userId,userId).map(r=>({...r,units:JSON.parse(r.units)}));
-    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,economy:this.allianceEconomy(userId,membership.id),...this.allianceDirectory(userId)};
+    const bank=db.prepare("SELECT green_balance,red_balance FROM alliance_crystal_bank WHERE alliance_id=?").get(membership.id)||{green_balance:0,red_balance:0};
+    const crystals={green:Number(db.prepare("SELECT balance FROM player_green_crystals WHERE user_id=?").get(userId)?.balance||0),red:Number(db.prepare("SELECT balance FROM player_red_crystals WHERE user_id=?").get(userId)?.balance||0)};
+    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,crystals,crystalBank:{green:Number(bank.green_balance||0),red:Number(bank.red_balance||0)},economy:this.allianceEconomy(userId,membership.id),...this.allianceDirectory(userId)};
   }
   createAlliance(userId,name){
     if(typeof name!=="string"||name.trim().length<3||name.trim().length>32)return {error:"Alliance name must be 3–32 characters."};
@@ -1467,7 +1472,7 @@ class DatabaseManager {
       const now=Date.now(),changed=db.prepare("UPDATE market_offers SET status='accepted',accepted_by=?,resolved_at=? WHERE id=? AND status='open'").run(userId,now,offerId);
       if(changed.changes!==1)throw new Error("Offer was accepted by another player.");
       const sellerName=this.findUserById(offer.seller_id)?.username||"Another player",buyerName=this.findUserById(userId)?.username||"Another player";
-      const notify=(sender,recipient,body)=>db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)").run(sender,recipient,null,body,now);
+      const notify=(sender,recipient,body)=>db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?, 'trade')").run(sender,recipient,null,body,now);
       notify(userId,offer.seller_id,"Marketplace offer #"+offerId+" accepted by "+buyerName+". Payment received. / Офертата #"+offerId+" е приета от "+buyerName+". Плащането е получено.");
       notify(offer.seller_id,userId,"Marketplace purchase completed from "+sellerName+". Resources added to your base. / Покупката от "+sellerName+" е завършена. Ресурсите са добавени в базата ти.");
       db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(offer.seller_id,userId,JSON.stringify(offered),now);

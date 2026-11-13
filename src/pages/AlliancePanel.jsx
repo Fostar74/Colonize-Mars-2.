@@ -14,9 +14,11 @@ export default function AlliancePanel({supportTarget,playerAction}){
  const playerName=player=>playerAction ? playerAction(player) : player.username;
  const [reinforceRecipient,setReinforceRecipient]=useState(supportTarget?.id || ""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
  const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[tab,setTab]=useState(supportTarget ? "reinforcements" : "members");
+ const [crystalKind,setCrystalKind]=useState("green"),[crystalAmount,setCrystalAmount]=useState("");
  const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
  const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":path==="market/buy"?"Purchase added to your Inventory.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
+ const donateCrystals=async()=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alien-stations/donate",{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),kind:crystalKind,amount:Number(crystalAmount)})});const d=await r.json();if(!r.ok)throw Error(d.message||"Donation failed");setCrystalAmount("");setMessage(t("Crystals donated to the alliance.","Кристалите са дарени на алианса."));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  return <div style={{color:"#eef6ff",padding:15,minWidth:300}}>
   <h2>{t("Alliance Command","Командване на алианса")}</h2>
   {message&&<p role="status">{localLabel(message)}</p>}
@@ -64,6 +66,14 @@ export default function AlliancePanel({supportTarget,playerAction}){
      start={kind=>action("bonus/upgrade",{kind})}/>}
    {tab==="market"&&<div>
     <h3>{t("Alliance Donation & Market","Дарения и пазар")}</h3>
+    <h4>{t("Alliance Space Base Crystals","Кристали за космическата база")}</h4>
+    <p>💚 {t("Alliance bank","В хазната на алианса")}: {Number(state.crystalBank?.green||0).toLocaleString()} · 🔴 {Number(state.crystalBank?.red||0).toLocaleString()}</p>
+    <p>💚 {t("Your balance","Твоят баланс")}: {Number(state.crystals?.green||0).toLocaleString()} · 🔴 {Number(state.crystals?.red||0).toLocaleString()}</p>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+      <select value={crystalKind} onChange={e=>setCrystalKind(e.target.value)}><option value="green">💚 {t("Green crystals","Зелени кристали")}</option><option value="red">🔴 {t("Red crystals","Червени кристали")}</option></select>
+      <input aria-label={localLabel("Crystal donation amount")} type="number" min="1" step="1" value={crystalAmount} onChange={e=>setCrystalAmount(e.target.value)} placeholder={localLabel("Amount")}/>
+      <button type="button" disabled={busy||!Number.isSafeInteger(Number(crystalAmount))||Number(crystalAmount)<1} onClick={donateCrystals}>{t("Donate to Alliance","Дари на алианса")}</button>
+    </div>
     <p>{t("Alliance Points:","Точки на алианса:")} <strong>{state.economy?.points||0}</strong> {t("· Donations left today (resets at 00:00 UTC):","· Оставащи дарения днес (нулиране в 00:00 UTC):")} {state.economy?.donationsRemaining??20}/20</p>
     <h4>{t("Donate 100 resources (+10 Alliance Points)","Дари 100 ресурса (+10 точки на алианса)")}</h4>
     {["Gold","Iron","Water","Solar"].map(resource=><button key={resource} disabled={busy||!state.economy?.donationsRemaining} style={{margin:4}} onClick={()=>action("donate",{resource})}>{t("Donate 100","Дари 100")} {localLabel(resource)}</button>)}

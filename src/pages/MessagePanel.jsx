@@ -10,9 +10,11 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
   const [error, setError] = useState("");
   const [sending, setSending] = useState(false);
   const [revision, setRevision] = useState(0);
+  const [channel, setChannel] = useState("private");
   const userId = sessionStorage.getItem("userId");
   const token = sessionStorage.getItem("authToken");
-  const path = api + "/messages/" + (alliance ? "alliance" : "private") + "/" + encodeURIComponent(userId);
+  const scope=alliance?"alliance":channel;
+  const path = api + "/messages/" + scope + "/" + encodeURIComponent(userId);
 
   useEffect(() => {
     let active = true;
@@ -62,7 +64,11 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
   };
 
   return <section>
-    <h3>{alliance ? localLabel("Alliance Chat") : localLabel("Private Messages")}</h3>
+    <h3>{alliance ? localLabel("Alliance Chat") : localLabel(channel==="trade"?"Trade Messages":"Private Messages")}</h3>
+    {!alliance&&!recipient&&<nav aria-label={localLabel("Message categories")} style={{display:"flex",gap:8,marginBottom:12}}>
+      <button type="button" onClick={()=>setChannel("private")} aria-pressed={channel==="private"}>{t("Private","Лични")}</button>
+      <button type="button" onClick={()=>setChannel("trade")} aria-pressed={channel==="trade"}>{t("Trade","Търговски")}</button>
+    </nav>}
     {error && <p role="alert">{localLabel(error)}</p>}
     {!messages.length && <p>{t("No messages yet.","Все още няма съобщения.")}</p>}
     <div style={{maxHeight:"40vh",overflowY:"auto"}}>
@@ -74,7 +80,7 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
       </article>)}
     </div>
     {!alliance && !recipient && <p>{t("Select a player and choose Message to start a conversation.","Избери играч и натисни „Съобщение“, за да започнеш разговор.")}</p>}
-    {(alliance || recipient) && <form onSubmit={send} style={{display:"grid",gap:8,marginTop:12}}>
+    {(alliance || (recipient&&channel==="private")) && <form onSubmit={send} style={{display:"grid",gap:8,marginTop:12}}>
       {!alliance && <p>{t("To","До")} <strong>{recipient}</strong></p>}
       <textarea aria-label={localLabel("Message")} required maxLength={500} value={body} onChange={event=>setBody(event.target.value)} />
       <button disabled={sending || !body.trim()}>{t("Send","Изпрати")}</button>
