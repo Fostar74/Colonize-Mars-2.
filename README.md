@@ -15,7 +15,7 @@ Development foundation only. Registration, progress persistence, and unique serv
 
 ## Password recovery email
 
-Password reset links are sent through the Resend Email API. Configure `RESEND_API_KEY` and `RESEND_FROM_EMAIL` in the backend service environment. The sender address must be verified with Resend. `APP_BASE_URL` is optional and defaults to `https://colonize-mars-2.onrender.com`; set it to the public game URL if that changes. Keep the API key in the hosting provider's secret environment settings, never in source control.
+Password reset links are sent through the Brevo transactional email API. Configure `BREVO_API_KEY` and `BREVO_FROM_EMAIL` in the backend service environment; `BREVO_FROM_NAME` is optional and defaults to `Colonize Mars`. Brevo requires the sender address to be registered and verified by email. Domain authentication improves deliverability but is not required to create a verified sender. `APP_BASE_URL` is optional and defaults to `https://colonize-mars-2.onrender.com`; set it to the public game URL if that changes. Keep the API key in the hosting provider's secret environment settings, never in source control.
 
 Reset links contain a single-use token that expires after 30 minutes. The database stores only its SHA-256 hash.
 
