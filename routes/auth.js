@@ -512,6 +512,28 @@ router.get("/get-progress/:userId", requireSession, async (req, res) => {
   }
 });
 
+router.get("/profile/:userId", requireSession, (req, res) => {
+  try {
+    const user = db.findUserById(req.params.userId);
+    if (!user) return res.status(404).json({message:"User not found."});
+    res.json(db.getPlayerProfile(user.id));
+  } catch (error) {
+    console.error("Get player profile:", error);
+    res.status(500).json({message:"Unable to load player profile."});
+  }
+});
+
+router.post("/profile/avatar", requireSession, (req, res) => {
+  try {
+    const result = db.setPlayerAvatar(Number(req.body.userId), req.body.avatarId);
+    if (result.error) return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch (error) {
+    console.error("Save player avatar:", error);
+    res.status(500).json({message:"Unable to save avatar."});
+  }
+});
+
 router.post("/update-stats", requireSession, async (req, res) => {
   const { userId, playTime, resourcesMined, structuresBuilt } = req.body;
 

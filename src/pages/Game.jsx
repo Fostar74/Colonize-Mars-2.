@@ -9,8 +9,21 @@ import Rankings from "./Rankings";
 import MessagePanel from "./MessagePanel";
 import PlayerTalents from "./PlayerTalents";
 import Inventory from "./Inventory";
+
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
+const AVATARS = [
+  ["defender-m","Defender","Защитник","👨‍🚀","Male","Мъж"],["defender-f","Defender","Защитник","👩‍🚀","Female","Жена"],
+  ["attacker-m","Attacker","Атакуващ","👨‍🚒","Male","Мъж"],["attacker-f","Attacker","Атакуващ","👩‍🚒","Female","Жена"],
+  ["farmer-m","Farmer","Фермер","👨‍🌾","Male","Мъж"],["farmer-f","Farmer","Фермер","👩‍🌾","Female","Жена"],
+  ["scientist-m","Scientist","Учен","👨‍🔬","Male","Мъж"],["scientist-f","Scientist","Учен","👩‍🔬","Female","Жена"],
+  ["pilot-m","Pilot","Пилот","👨‍✈️","Male","Мъж"],["pilot-f","Pilot","Пилот","👩‍✈️","Female","Жена"],
+  ["doctor-m","Doctor","Лекар","👨‍⚕️","Male","Мъж"],["doctor-f","Doctor","Лекар","👩‍⚕️","Female","Жена"],
+  ["engineer-m","Engineer","Инженер","👨‍🔧","Male","Мъж"],["engineer-f","Engineer","Инженер","👩‍🔧","Female","Жена"],
+  ["tactician-m","Tactician","Тактик","🕵️‍♂️","Male","Мъж"],["tactician-f","Tactician","Тактик","🕵️‍♀️","Female","Жена"],
+  ["leader-m","Leader","Лидер","👨‍🚀","Male","Мъж"],["leader-f","Leader","Лидер","👩‍🚀","Female","Жена"]
+].map(([id,role,roleBg,icon,gender,genderBg])=>({id,role,roleBg,icon,gender,genderBg}));
+
 
 function MarketPanel() {
   const {t,label}=useLanguage();
@@ -244,6 +257,10 @@ function Game() {
   const [castleName, setCastleName] = useState("Headquarter");
   const [resources, setResources] = useState(null);
   const [optionsVisible, setOptionsVisible] = useState(false);
+  const [avatarId,setAvatarId]=useState(()=>sessionStorage.getItem("avatarId")||"pilot-m");
+  const [showAvatarPicker,setShowAvatarPicker]=useState(false);
+  const [avatarSaving,setAvatarSaving]=useState(false);
+  const [avatarNotice,setAvatarNotice]=useState("");
   const [showCyberKnight, setShowCyberKnight] = useState(false);
   const [showQuests, setShowQuests] = useState(false);
   const [showAlliance,setShowAlliance]=useState(false);
@@ -260,6 +277,19 @@ function Game() {
   const [inviting,setInviting]=useState(false);
 
   const api=(process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
+  const saveAvatar=async nextAvatar=>{
+    setAvatarSaving(true);setAvatarNotice("");
+    try{
+      const userId=sessionStorage.getItem("userId");
+      const response=await fetch(api+"/profile/avatar",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId,avatarId:nextAvatar.id})});
+      const data=await response.json();
+      if(!response.ok)throw new Error(data.message||"Unable to save avatar.");
+      setAvatarId(data.avatarId);sessionStorage.setItem("avatarId",data.avatarId);
+      setAvatarNotice(t("Avatar saved.","Аватарът е запазен."));
+    }catch(error){setAvatarNotice(error.message||t("Unable to save avatar.","Аватарът не можа да бъде запазен."));}
+    finally{setAvatarSaving(false);}
+  };
+
   const playerAction=player=><button type="button" onClick={async ()=>{
     setPlayerMenu(player);
     setPlayerNotice("");
@@ -312,6 +342,8 @@ function Game() {
     if (savedResources) {
       try { setResources(JSON.parse(savedResources)); } catch (_) {}
     }
+    fetch(api+"/profile/"+encodeURIComponent(sessionStorage.getItem("userId")),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"})
+      .then(response=>response.ok?response.json():null).then(profile=>{if(profile?.avatarId){setAvatarId(profile.avatarId);sessionStorage.setItem("avatarId",profile.avatarId);}}).catch(()=>{});
     const saved = sessionStorage.getItem("castle");
     if (saved) {
       const castle = JSON.parse(saved);
@@ -416,7 +448,18 @@ function Game() {
               <option value="en" lang="en">English</option>
             </select>
           </label>{" "}
+          <button type="button" onClick={()=>{setShowAvatarPicker(value=>!value);setAvatarNotice("");}}>{t("Player avatar","Аватар на играча")} · {AVATARS.find(avatar=>avatar.id===avatarId)?.icon||"👨‍🚀"}</button>{" "}
           <button onClick={logout}>{t("Log Out","Изход")}</button>
+          {showAvatarPicker&&<section aria-label={t("Choose an avatar","Избери аватар")} style={{marginTop:12,padding:12,background:"#111820",border:"1px solid #59768a",borderRadius:10,width:"min(92vw, 560px)",boxSizing:"border-box"}}>
+            <h3 style={{marginTop:0}}>{t("Choose your Mars avatar","Избери своя марсиански аватар")}</h3>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(105px,1fr))",gap:8}}>
+              {AVATARS.map(avatar=><button key={avatar.id} type="button" disabled={avatarSaving} aria-pressed={avatarId===avatar.id} onClick={()=>saveAvatar(avatar)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"9px 6px",borderRadius:10,border:avatarId===avatar.id?"2px solid #43c8b3":"1px solid #547188",background:avatarId===avatar.id?"#174c53":"#1c3143",color:"white",cursor:"pointer"}}>
+                <span aria-hidden="true" style={{width:50,height:50,borderRadius:"50%",display:"grid",placeItems:"center",fontSize:29,background:"radial-gradient(circle at 35% 30%,#718a9c,#263443 72%)"}}>{avatar.icon}</span>
+                <span>{t(avatar.role,avatar.roleBg)}</span><small>{t(avatar.gender,avatar.genderBg)}</small>
+              </button>)}
+            </div>
+            {avatarNotice&&<p role="status">{avatarNotice}</p>}
+          </section>}
         </div>
       )}
 
