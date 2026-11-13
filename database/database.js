@@ -243,6 +243,7 @@ function initializeDatabase() {
     if(!stationColumns.includes("protection_until"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN protection_until INTEGER NOT NULL DEFAULT 0");
     if(!stationColumns.includes("plasma_wall_status"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN plasma_wall_status TEXT NOT NULL DEFAULT 'not_started'");
     if(!stationColumns.includes("plasma_wall_started_at"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN plasma_wall_started_at INTEGER");
+    if(!stationColumns.includes("plasma_wall_level")){db.exec("ALTER TABLE alliance_space_stations ADD COLUMN plasma_wall_level INTEGER NOT NULL DEFAULT 0");db.exec("UPDATE alliance_space_stations SET plasma_wall_level=1,plasma_wall_status='not_started' WHERE plasma_wall_status='built'");}
     if(!stationColumns.includes("spaceport_status"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN spaceport_status TEXT NOT NULL DEFAULT 'not_started'");
     if(!stationColumns.includes("spaceport_started_at"))db.exec("ALTER TABLE alliance_space_stations ADD COLUMN spaceport_started_at INTEGER");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_station_defenders (station_id INTEGER NOT NULL REFERENCES alliance_space_stations(station_id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), user_id INTEGER NOT NULL REFERENCES users(id), army TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'travelling', sent_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, PRIMARY KEY(station_id,user_id))");
@@ -1923,8 +1924,12 @@ class DatabaseManager {
         const owner=ownerByStation[station.id];
         return {...station,locked:!owner,allianceId:owner?.alliance_id||null,allianceName:owner?.alliance_name||null,
           unlockedAt:owner?.unlocked_at||null,protectionUntil:Number(owner?.protection_until||0),protected:Number(owner?.protection_until||0)>now,
+          plasmaWallLevel:Number(owner?.plasma_wall_level||0),plasmaWallMaxLevel:20,
           plasmaWallStatus:owner?.plasma_wall_status||"not_started",plasmaWallStartedAt:owner?.plasma_wall_started_at||null,
+          plasmaWallCompletesAt:owner?.plasma_wall_status==="building"?Number(owner.plasma_wall_started_at||0)+86400000:null,
+          spaceportUnlocked:Number(owner?.plasma_wall_level||0)>=20,
           spaceportStatus:owner?.spaceport_status||"not_started",spaceportStartedAt:owner?.spaceport_started_at||null,
+          spaceportCompletesAt:owner?.spaceport_status==="building"?Number(owner.spaceport_started_at||0)+604800000:null,
           defenders:defenders.filter(defender=>defender.station_id===station.id)};
       })
     };
@@ -1948,35 +1953,44 @@ class DatabaseManager {
   }
 
   resolveStationProjects(now=Date.now()){
-    const rows=db.prepare("SELECT station_id,plasma_wall_status,plasma_wall_started_at,spaceport_status,spaceport_started_at FROM alliance_space_stations").all();
+    const rows=db.prepare("SELECT station_id,plasma_wall_status,plasma_wall_level,plasma_wall_started_at,spaceport_status,spaceport_started_at FROM alliance_space_stations").all();
     for(const row of rows){
-      if(row.plasma_wall_status==="building"&&Number(row.plasma_wall_started_at||0)+3600000<=now)db.prepare("UPDATE alliance_space_stations SET plasma_wall_status='built' WHERE station_id=? AND plasma_wall_status='building'").run(row.station_id);
-      if(row.spaceport_status==="building"&&Number(row.spaceport_started_at||0)+3600000<=now)db.prepare("UPDATE alliance_space_stations SET spaceport_status='built' WHERE station_id=? AND spaceport_status='building'").run(row.station_id);
+      if(row.plasma_wall_status==="building"&&Number(row.plasma_wall_started_at||0)+86400000<=now){
+        const nextLevel=Math.min(20,Number(row.plasma_wall_level||0)+1);
+        db.prepare("UPDATE alliance_space_stations SET plasma_wall_level=?,plasma_wall_status=?,plasma_wall_started_at=NULL WHERE station_id=? AND plasma_wall_status='building' AND plasma_wall_started_at=?")
+          .run(nextLevel,nextLevel>=20?"built":"not_started",row.station_id,row.plasma_wall_started_at);
+      }
+      if(row.spaceport_status==="building"&&Number(row.spaceport_started_at||0)+604800000<=now)
+        db.prepare("UPDATE alliance_space_stations SET spaceport_status='built',spaceport_started_at=NULL WHERE station_id=? AND spaceport_status='building' AND spaceport_started_at=?").run(row.station_id,row.spaceport_started_at);
     }
     return rows.length;
   }
 
   buildAlienStation(userId,kind){
     if(!["plasma-wall","spaceport"].includes(kind))return {error:"Choose the plasma wall or spaceport."};
+    this.resolveStationProjects();
     return db.transaction(()=>{
       const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
       if(!member)return {error:"Join an alliance first."};
       if(member.role!=="Leader")return {error:"Only the alliance leader can start construction."};
       const station=db.prepare("SELECT * FROM alliance_space_stations WHERE alliance_id=?").get(member.alliance_id);
       if(!station)return {error:"Unlock a station before starting construction."};
-      const statusColumn=kind==="plasma-wall"?"plasma_wall_status":"spaceport_status";
-      const startColumn=kind==="plasma-wall"?"plasma_wall_started_at":"spaceport_started_at";
-      const bankColumn=kind==="plasma-wall"?"green_balance":"red_balance";
+      const isWall=kind==="plasma-wall";
+      if(isWall&&Number(station.plasma_wall_level||0)>=20)return {error:"The Plasma Wall is already at level 20."};
+      if(!isWall&&Number(station.plasma_wall_level||0)<20)return {error:"Reach Plasma Wall level 20 to unlock the Spaceport."};
+      const statusColumn=isWall?"plasma_wall_status":"spaceport_status";
+      const startColumn=isWall?"plasma_wall_started_at":"spaceport_started_at";
+      const bankColumn=isWall?"green_balance":"red_balance";
       const status=station[statusColumn];
       if(status==="building")return {error:"This structure is already under construction."};
-      if(status==="built")return {error:"This structure has already been completed."};
+      if(!isWall&&status==="built")return {error:"The Spaceport has already been completed."};
       const cost=10000;
       const bank=db.prepare("SELECT "+bankColumn+" AS balance FROM alliance_crystal_bank WHERE alliance_id=?").get(member.alliance_id);
-      if(Number(bank?.balance||0)<cost)return {error:"The alliance needs 10,000 "+(kind==="plasma-wall"?"green":"red")+" crystals."};
-      const now=Date.now();
+      if(Number(bank?.balance||0)<cost)return {error:"The alliance needs 10,000 "+(isWall?"green":"red")+" crystals."};
+      const now=Date.now(),duration=isWall?86400000:604800000;
       db.prepare("UPDATE alliance_crystal_bank SET "+bankColumn+"="+bankColumn+"-? WHERE alliance_id=?").run(cost,member.alliance_id);
       db.prepare("UPDATE alliance_space_stations SET "+statusColumn+"='building',"+startColumn+"=? WHERE station_id=?").run(now,station.station_id);
-      return {success:true,kind,startedAt:now,completesAt:now+3600000,cost};
+      return {success:true,kind,startedAt:now,completesAt:now+duration,cost,durationMs:duration,plasmaWallLevel:Number(station.plasma_wall_level||0)};
     })();
   }
 
