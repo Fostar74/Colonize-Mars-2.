@@ -139,9 +139,10 @@ function LoginRegister() {
         {!isRegister && (
           <input
             type="text"
-            placeholder={t("Username","Потребителско име")}
+            placeholder={t("Username or email","Потребителско име или имейл")}
             value={username}
             required
+            autoComplete="username"
             onChange={(e) => setUsername(e.target.value)}
             style={{
               padding: "10px",
