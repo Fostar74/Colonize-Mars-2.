@@ -115,8 +115,6 @@ function Map() {
   const [marchNotice, setMarchNotice] = useState("");
   const [stationBusy,setStationBusy]=useState(false);
   const [stationNotice,setStationNotice]=useState("");
-  const [stationDonationKind,setStationDonationKind]=useState("green");
-  const [stationDonationAmount,setStationDonationAmount]=useState("");
   const [marchHistoryOpen, setMarchHistoryOpen] = useState(() => new URLSearchParams(window.location.hash.split("?")[1]).has("campaign"));
   const [campaignTab, setCampaignTab] = useState(() => {
     const requestedTab = new URLSearchParams(window.location.hash.split("?")[1]).get("campaignTab");
@@ -584,7 +582,7 @@ function Map() {
       const result=await response.json();if(!response.ok)throw Error(result.message||"Station action failed.");
       const latest=await fetch(api+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:headers.Authorization},cache:"no-store"});
       if(latest.ok)setCampaign(await latest.json());
-      setStationDonationAmount("");setStationNotice(successMessage);
+      setStationNotice(successMessage);
     }catch(error){setStationNotice(error.message);}finally{setStationBusy(false);}
   };
   const sendInterbaseTrade=async()=>{
@@ -801,6 +799,10 @@ function Map() {
             {(()=>{
               const status=campaign.stations||{};
               const station=status.stations?.find(item=>item.id===selectedTarget.stationId);
+              if(station?.locked)return <>
+                <h3 style={{color:"#83ffe0",marginTop:0}}>🛰️ {t("Alliance Space Station","Съюзна космическа база")} {selectedTarget.stationId}</h3>
+                {status.canUnlock&&<button type="button" disabled={stationBusy} onClick={()=>stationRequest("/alien-stations/unlock",{stationId:selectedTarget.stationId},"")}>{t("Unlock Base","Отключи базата")}</button>}
+              </>;
               const owner=station?.allianceName;
               const countdown=Math.max(0,Math.ceil((Number(station?.protectionUntil||0)-clock)/1000));
               const h=Math.floor(countdown/3600),mm=Math.floor((countdown%3600)/60),ss=countdown%60;
@@ -812,17 +814,6 @@ function Map() {
               const structureLabel=(value)=>value==="built"?t("Complete","Завършено"):value==="building"?t("Under construction","В строеж"):t("Not built","Не е построено");
               return <>
                 <h3 style={{color:"#83ffe0",marginTop:0}}>🛰️ {t("Alliance Space Station","Съюзна космическа база")} {selectedTarget.stationId}</h3>
-                <p>{owner?t("Unlocked for alliance:","Отключена за алианса:")+" "+owner:t("Locked · top four alliances compete to unlock it with 10,000 donated green crystals.","Заключена · първите четири алианса се съревновават да я отключат с 10 000 дарени зелени кристала.")}</p>
-                {status.allianceId?<p>{t("Your alliance:","Твоят алианс:")} <strong>{status.allianceName}</strong> · 💚 {Number(status.allianceGreen||0).toLocaleString()} / 10,000 · 🔴 {Number(status.allianceRed||0).toLocaleString()}<br/>{t("Your crystals:","Твоите кристали:")} 💚 {Number(status.personalGreen||0).toLocaleString()} · 🔴 {Number(status.personalRed||0).toLocaleString()}</p>:<p>{t("Join an alliance to donate crystals.","Присъедини се към алианс, за да даряваш кристали.")} · 💚 {Number(status.personalGreen||0).toLocaleString()} · 🔴 {Number(status.personalRed||0).toLocaleString()}</p>}
-                {status.allianceId&&<div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center",margin:"10px 0"}}>
-                  <select value={stationDonationKind} onChange={event=>setStationDonationKind(event.target.value)}><option value="green">{t("Green crystals","Зелени кристали")}</option><option value="red">{t("Red crystals","Червени кристали")}</option></select>
-                  <input type="number" min="1" step="1" value={stationDonationAmount} onChange={event=>setStationDonationAmount(event.target.value)} placeholder={t("Amount to donate","Количество за даряване")} style={{width:170}}/>
-                  <button type="button" disabled={stationBusy||!Number(stationDonationAmount)} onClick={()=>stationRequest("/alien-stations/donate",{kind:stationDonationKind,amount:Number(stationDonationAmount)},t("Crystals donated to the alliance.","Кристалите са дарени на алианса."))}>{t("Donate to alliance","Дарявай на алианса")}</button>
-                </div>}
-                <p><strong>{t("Top four alliances","Първите четири алианса")}</strong></p>
-                <ol>{(status.eligibleAlliances||[]).map(alliance=><li key={alliance.id}>{alliance.name} · {Number(alliance.points||0).toLocaleString()} {t("points","точки")} {alliance.id===status.allianceId&&<>{t("· rank","· място")} {alliance.rank}</>}</li>)}</ol>
-                {station?.locked&&status.canUnlock&&<button type="button" disabled={stationBusy} onClick={()=>stationRequest("/alien-stations/unlock",{stationId:selectedTarget.stationId},t("Station unlocked. Protection is active for 24 hours.","Станцията е отключена. Протекцията е активна 24 часа."))}>{stationBusy?t("Working…","Изпълнява се…"):t("Leader: unlock with 10,000 alliance green crystals","Лидер: отключи с 10 000 зелени кристала на алианса")}</button>}
-                {station?.locked&&status.allianceId&&!status.canUnlock&&<p>{!status.eligibleAlliance?t("Your alliance must rank among the top four to unlock a station.","Алиансът ти трябва да е сред първите четири."):status.allianceRole!=="Leader"?t("Only the alliance leader can unlock a station.","Само лидерът на алианса може да отключи станция."):t("Donate green crystals until the alliance bank reaches 10,000.","Дарявайте зелени кристали, докато алиансът събере 10 000.")}</p>}
                 {owner&&<div style={{padding:10,background:"#10222c",borderRadius:8,marginTop:10}}>
                   <h4 style={{margin:"4px 0"}}>{t("Station protection","Протекция на базата")}: {station?.protected&&countdown>0?t("Plasma shield active","Плазменият щит е активен"):t("Protection ended","Протекцията изтече")}{station?.protected&&countdown>0&&<span> · {h}h {String(mm).padStart(2,"0")}m {String(ss).padStart(2,"0")}s</span>}</h4>
                   {station?.protected&&<p>{t("Attacks and espionage against this station are blocked during the 24-hour shield.","Атаките и шпионажът срещу станцията са блокирани през 24-часовия щит.")}</p>}
