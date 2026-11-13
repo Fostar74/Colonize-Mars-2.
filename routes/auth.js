@@ -295,6 +295,21 @@ router.post("/alien-stations/recall",requireSession,(req,res)=>{
     res.json(result);
   }catch(error){console.error("Station defense recall:",error);res.status(500).json({message:"Station defense recall failed."});}
 });
+router.get("/reports/:userId",requireSession,(req,res)=>{
+  try{
+    const campaign=db.getAlienCampaign(Number(req.params.userId));
+    const playerMissions=campaign.playerMissions||[];
+    res.json({...campaign,unreadIncoming:playerMissions.filter(mission=>mission.incoming&&!mission.seen_at).length});
+  }catch(error){console.error("Report inbox:",error);res.status(500).json({message:"Reports unavailable."});}
+});
+router.post("/reports/read",requireSession,(req,res)=>{
+  try{res.json(db.markIncomingReportsRead(Number(req.body.userId)));}
+  catch(error){console.error("Mark reports read:",error);res.status(500).json({message:"Could not mark reports as read."});}
+});
+router.post("/player-missions/recall",requireSession,(req,res)=>{
+  try{const result=db.recallPlayerAttack(Number(req.body.userId),Number(req.body.missionId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}
+  catch(error){console.error("Recall player attack:",error);res.status(500).json({message:"Could not recall this attack."});}
+});
 router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
   try { res.json(db.getAlienCampaign(Number(req.params.userId))); }
   catch(error) { console.error(error);res.status(500).json({message:"Campaign unavailable."}); }
