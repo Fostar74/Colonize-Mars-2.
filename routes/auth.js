@@ -66,13 +66,16 @@ router.post("/register", async (req, res) => {
 // LOGIN
 router.post("/login", async (req, res) => {
   const { username, password } = req.body;
+  const loginIdentifier = typeof username === "string" ? username.trim() : "";
 
-  if (!username || !password) {
-    return res.status(400).json({ message: "Username and password required." });
+  if (!loginIdentifier || typeof password !== "string" || !password) {
+    return res.status(400).json({ message: "Username or email and password required." });
   }
 
   try {
-    const user = db.findUserByUsername(username);
+    // Registration stores a unique email as well as a username. Accept either
+    // identifier here so password managers that autofill the email still work.
+    const user = db.findUserByUsername(loginIdentifier) || db.findUserByEmail(loginIdentifier.toLowerCase());
 
     if (!user) {
       return res.status(401).json({ message: "Invalid username or password." });
