@@ -298,6 +298,13 @@ router.get("/alien-campaign/:userId",requireSession,(req,res)=>{
   try { res.json(db.getAlienCampaign(Number(req.params.userId))); }
   catch(error) { console.error(error);res.status(500).json({message:"Campaign unavailable."}); }
 });
+router.post("/resource-mines/launch",requireSession,(req,res)=>{
+  try{
+    const result=db.launchResourceMineMission(Number(req.body.userId),Number(req.body.mineId),req.body.army,req.body.kind,req.body.formation);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Resource mine march:",error);res.status(500).json({message:"Resource mine march failed."});}
+});
 router.post("/alien-campaign/formations",requireSession,(req,res)=>{
   const result=db.saveFormation(Number(req.body.userId),req.body.slot,req.body.rows,req.body.defenseSlot,req.body.name,req.body.mode);
   if(result.error)return res.status(400).json({message:result.error});
