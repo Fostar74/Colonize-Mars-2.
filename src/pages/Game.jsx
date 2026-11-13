@@ -290,7 +290,7 @@ function Game() {
     refreshAttackAlerts();
     const timer=setInterval(refreshAttackAlerts,10000);
     return()=>{active=false;clearInterval(timer);};
-  },[]);
+  },[api]);
   const saveAvatar=async nextAvatar=>{
     setAvatarSaving(true);setAvatarNotice("");
     try{
@@ -365,7 +365,7 @@ function Game() {
       const castle = JSON.parse(saved);
       setCastleName(`Headquarter (${castle.x}:${castle.y})`);
     }
-  }, []);
+  }, [api]);
 
   // Keep the HUD synchronized with the server even when the base panel is closed.
   // The server accrues mine production and persists it in SQLite on each read.
