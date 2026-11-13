@@ -2187,7 +2187,7 @@ class DatabaseManager {
         if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
         if(result.victory){
           const greenCrystals=mission.level>=11&&mission.level<=19?100+(mission.level-11)*50:0;
-          const redCrystals=mission.level===20?500:0;
+          const redCrystals=mission.level===20?1:0;
           if(greenCrystals){
             db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,greenCrystals,greenCrystals);
             result.greenCrystals=greenCrystals;
