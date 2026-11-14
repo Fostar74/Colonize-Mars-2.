@@ -270,9 +270,11 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS resource_mines (id INTEGER PRIMARY KEY AUTOINCREMENT, resource TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, amount INTEGER NOT NULL DEFAULT 5000, claimed_by INTEGER REFERENCES users(id), launched_at INTEGER, arrives_at INTEGER, origin_x INTEGER, origin_y INTEGER, gathering_started_at INTEGER, gathering_rate REAL)");
     if (!db.prepare("PRAGMA table_info(resource_mines)").all().some(column => column.name === "gathering_units")) db.exec("ALTER TABLE resource_mines ADD COLUMN gathering_units TEXT NOT NULL DEFAULT '{}' ");
     db.exec("CREATE INDEX IF NOT EXISTS resource_mines_claimed ON resource_mines(claimed_by,arrives_at)");
-    if (db.prepare("SELECT COUNT(*) AS count FROM resource_mines").get().count === 0) {
+    {
+      // Keep eight mines of each resource on the map, including existing databases.
       const blocked = new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row => row.x + ":" + row.y));
       for (const base of alienBases) blocked.add(base.x + ":" + base.y);
+      for (const mine of db.prepare("SELECT x,y FROM resource_mines").all()) blocked.add(mine.x + ":" + mine.y);
       const chooseMineTile = () => {
         for (let attempt = 0; attempt < 10000; attempt++) {
           const x = 1 + Math.floor(Math.random() * 100), y = 1 + Math.floor(Math.random() * 100), key = x + ":" + y;
@@ -281,9 +283,13 @@ function initializeDatabase() {
         throw new Error("No free map tile is available for a resource mine.");
       };
       const insertMine = db.prepare("INSERT INTO resource_mines(resource,x,y,amount) VALUES (?,?,?,5000)");
-      for (const resource of ["gold","iron","water","solar"]) for (let count = 0; count < 4; count++) {
-        const tile = chooseMineTile();
-        insertMine.run(resource,tile.x,tile.y);
+      const countMines = db.prepare("SELECT COUNT(*) AS count FROM resource_mines WHERE resource=?");
+      for (const resource of ["gold","iron","water","solar"]) {
+        const existing = Number(countMines.get(resource).count) || 0;
+        for (let count = existing; count < 8; count++) {
+          const tile = chooseMineTile();
+          insertMine.run(resource,tile.x,tile.y);
+        }
       }
     }
     db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
@@ -571,9 +577,8 @@ class DatabaseManager {
       // Resource production is calculated from server time, including while logged out.
       const elapsedTicks = Math.floor(Math.max(0, now - state.production_at) / 10000);
       const economyBonus = this.protocolBonus(userId, "Resource Management") / 100;
-      const miningBonus = this.protocolBonus(userId, "Mining Operations") / 100;
       const productionCarry = JSON.parse(state.production_carry || "{}");
-      const productionMultiplier = (1 + economyBonus) * (1 + miningBonus) * (1 + allianceBonuses.growth / 100);
+      const productionMultiplier = (1 + economyBonus) * (1 + allianceBonuses.growth / 100);
       const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
       for (const [resource, name] of Object.entries(rates)) {
         const level = Number(structures[name] || 0);
@@ -799,7 +804,7 @@ class DatabaseManager {
   talentCatalog(){
     return [
       ["Rapid Deployment",[20,40,60],"% army speed"],["Resource Management",[10,20,30],"% economy"],
-      ["Mining Operations",[20,50,100],"% mine production"],["Precision Fire",[20,40,60],"% ranged attack"],
+      ["Mining Operations",[20,50,100],"% external mine gathering speed"],["Precision Fire",[20,40,60],"% ranged attack"],
       ["Reinforced Armor",[10,20,30],"% unit HP"],["Infantry Command",[10,25,40],"% infantry attack and HP"],
       ["Battle Command",[10,20,30],"% army attack (leadership)"],["Advanced Recon",[10,30,50],"% reconnaissance resource discount"],
       ["Evasion Protocol",[5,10,15],"% evade"],["Combat Recovery",[5,10,15],"% revive"],
@@ -2795,7 +2800,7 @@ class DatabaseManager {
 
   mineCapacity(userId) {
     const tier=Number(this.playerTalents(userId).talents["Mining Operations"]||0);
-    return 4 + [0,1,3,6][Math.max(0,Math.min(3,tier))];
+    return 4 + [0,1,3,5][Math.max(0,Math.min(3,tier))];
   }
 
   settleResourceMines(now=Date.now()) {
