@@ -248,6 +248,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS alliances (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT NOT NULL UNIQUE, leader_id INTEGER NOT NULL REFERENCES users(id))");
+    if (!db.prepare("PRAGMA table_info(alliances)").all().some(column => column.name === "description")) db.exec("ALTER TABLE alliances ADD COLUMN description TEXT NOT NULL DEFAULT ''");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_members (user_id INTEGER PRIMARY KEY REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id))");
     db.exec("CREATE TABLE IF NOT EXISTS player_green_crystals (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, total_earned INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS player_red_crystals (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, total_earned INTEGER NOT NULL DEFAULT 0)");
@@ -867,7 +868,7 @@ class DatabaseManager {
 
   rankings(userId){
     const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.xp,0) AS points,COALESCE(p.avatar_id,'pilot-m') AS avatarId FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN player_talents r ON r.user_id=u.id LEFT JOIN player_profiles p ON p.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
-    const alliances=db.prepare("SELECT a.id,a.name,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.xp),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
+    const alliances=db.prepare("SELECT a.id,a.name,a.description,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.xp),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
     const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
     return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};
@@ -1064,9 +1065,17 @@ class DatabaseManager {
       return {item,amount,inventory:this.getInventory(userId)};
     })();
   }
+  saveAllianceDescription(userId,description){
+    if(typeof description!=="string"||description.trim().length>600)return {error:"Alliance profile message must be 600 characters or fewer."};
+    const membership=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+    if(!membership||!["Leader","Co-Leader"].includes(membership.role))return {error:"Only the leader or co-leader can edit the alliance profile."};
+    const clean=description.trim();
+    db.prepare("UPDATE alliances SET description=? WHERE id=?").run(clean,membership.alliance_id);
+    return {description:clean};
+  }
   allianceState(userId){
     this.settleAllianceReinforcements(userId);
-    const membership=db.prepare("SELECT a.id,a.name,a.leader_id,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
+    const membership=db.prepare("SELECT a.id,a.name,a.description,a.leader_id,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
     if(!membership){
       const invitations=db.prepare("SELECT a.id,a.name FROM alliance_invitations i JOIN alliances a ON a.id=i.alliance_id WHERE i.user_id=? ORDER BY a.name").all(userId);
       return {alliance:null,requests:[],invitations,...this.allianceDirectory(userId)};
