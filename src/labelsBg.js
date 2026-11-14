@@ -193,7 +193,7 @@ export default {
   "Strategist": "Стратег",
   "% army speed": "% скорост на армията",
   "% economy": "% производство на ресурси",
-  "% mine production": "% производство на мините",
+  "% external mine gathering speed": "% скорост на добив от външните мини",
   "% ranged attack": "% атака на стрелковите единици",
   "% unit HP": "% здраве на единиците",
   "% infantry attack and HP": "% атака и здраве на пехотата",
