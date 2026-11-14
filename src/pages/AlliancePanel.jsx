@@ -1,5 +1,6 @@
 import AllianceResearch from "./AllianceResearch";
 import { useLanguage } from "../language";
+import LinkifiedText from "../shared/LinkifiedText";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
@@ -42,7 +43,7 @@ export default function AlliancePanel({supportTarget,playerAction}){
    <h3>🛡 {state.alliance.name}</h3>
    <section style={{margin:"12px 0",padding:12,border:"1px solid #47758e",borderRadius:8,background:"#142637"}}>
     <h4 style={{marginTop:0}}>{t("Alliance profile","Профил на алианса")}</h4>
-    {state.alliance.description?<p style={{whiteSpace:"pre-wrap"}}>{state.alliance.description}</p>:<p>{t("The alliance has not added a profile message yet.","Алиансът все още няма представяне.")}</p>}
+    {state.alliance.description?<p style={{overflowWrap:"anywhere"}}><LinkifiedText text={state.alliance.description}/></p>:<p>{t("The alliance has not added a profile message yet.","Алиансът все още няма представяне.")}</p>}
     {["Leader","Co-Leader"].includes(state.alliance.role)&&<>
      <label style={{display:"block",marginBottom:8}}>{t("Public message for other players","Публично съобщение за останалите играчи")}
       <textarea aria-label={localLabel("Alliance profile message")} maxLength={600} rows={4} value={description} onChange={e=>setDescription(e.target.value)} style={{display:"block",width:"100%",boxSizing:"border-box",marginTop:6,padding:9}} placeholder={localLabel("Describe your alliance and invite players to join")}/>
