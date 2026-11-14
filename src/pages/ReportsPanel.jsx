@@ -39,6 +39,9 @@ export default function ReportsPanel({onClose,onRead}) {
   const previousPlayer=allPlayer.filter(m=>!newPlayer.includes(m));
   const alien=(data?.missions||[]).filter(m=>m.result);
   const newAlien=alien.filter(m=>unreadIds.has("alien:"+m.id));
+  const gathering=(data?.gatheringReports||[]);
+  const newGathering=gathering.filter(report=>unreadIds.has("gathering:"+report.id));
+  const previousGathering=gathering.filter(report=>!newGathering.includes(report));
   const army=(title,units)=> <div><strong>{title}:</strong> {units===null?t("Not recorded","Не е записано"):list(units)}</div>;
   const playerReport=m=>{
     const ownInitial=m.incoming?(m.result.defenderInitial||{}):(m.units||{});
@@ -67,18 +70,32 @@ export default function ReportsPanel({onClose,onRead}) {
     <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"}{m.result.reward?" · "+t("Reward","Награда")+": "+m.result.reward:""}</p>
     {army(t("Starting army","Начална армия"),m.units)}{army(t("Losses","Загуби"),diff(m.units,m.result.survivors||{}))}{army(t("Survivors","Оцелели"),m.result.survivors||{})}
   </article>;
+  const gatheringReport=report=>{
+    const resource={gold:t("Gold","Злато"),iron:t("Iron","Желязо"),water:t("Water","Вода"),solar:t("Solar","Слънчева енергия")}[String(report.resource).toLowerCase()]||report.resource;
+    const title=report.reason==="depleted"?t("Mine depleted · army returned","Мината се изчерпа · армията се прибра"):t("Army recalled from mine","Армията се прибра от мината");
+    return <article key={"gathering-"+report.id} style={card}>
+      <h3>{title} · {t("Mine","Мина")} #{report.mineId} ({report.x}:{report.y})</h3>
+      <p>{t("Resources collected","Източен ресурс")}: {Number(report.amount||0).toLocaleString()} {resource}</p>
+      {army(t("Army returned","Върната армия"),report.units)}
+      <p>{new Date(report.returnedAt).toLocaleString()}</p>
+    </article>;
+  };
   const incomingMarch=m=><article key={"march-"+m.id} style={card}>
     <h3>{t("Attack in progress from","Идваща атака от")} {m.attacker_name} · {m.target?.x}:{m.target?.y}</h3>
     <p>{t("The attack is on the way. No battle report exists yet.","Походът е в движение. Все още няма боен доклад.")}</p>
     <p>{t("Expected arrival","Очаквано пристигане")}: {new Date(m.arrives_at).toLocaleTimeString()}</p>
   </article>;
   return <div style={overlay} onClick={onClose}><section style={panel} onClick={e=>e.stopPropagation()}>
-    <header style={header}><span>{t("BATTLE REPORTS","БОЙНИ ДОКЛАДИ")}</span><button onClick={onClose} style={close}>×</button></header>
+    <header style={header}><span>{t("REPORTS","ДОКЛАДИ")}</span><button onClick={onClose} style={close}>×</button></header>
     <div style={{padding:20,overflowY:"auto",maxHeight:"calc(90vh - 70px)"}}>
       {error&&<p role="alert">{error}</p>}{!data&&!error&&<p>{t("Loading reports…","Зареждане на докладите…")}</p>}
       {data&&<>{activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}
-        {newPlayer.length>0?<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}</>:newAlien.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
-        {alien.length>0&&<><h2>{t("Alien mission reports","Доклади от извънземни мисии")}{newAlien.length?" · "+t("New","Нови")+": "+newAlien.length:""}</h2>{alien.map(alienReport)}</>}{previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
+        {newPlayer.length>0&&<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}</>}
+        {newGathering.length>0&&<><h2>{t("New resource gathering reports","Нови доклади от добив")}</h2>{newGathering.map(gatheringReport)}</>}
+        {newPlayer.length===0&&newAlien.length===0&&newGathering.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
+        {alien.length>0&&<><h2>{t("Alien mission reports","Доклади от извънземни мисии")}{newAlien.length?" · "+t("New","Нови")+": "+newAlien.length:""}</h2>{alien.map(alienReport)}</>}
+        {previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
+        {previousGathering.length>0&&<details style={{marginTop:20}}><summary>{t("Previous resource gathering reports","Предишни доклади от добив")}</summary>{previousGathering.map(gatheringReport)}</details>}
       </>}
     </div></section></div>;
 }
