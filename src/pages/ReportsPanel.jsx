@@ -39,7 +39,6 @@ export default function ReportsPanel({onClose,onRead}) {
   const previousPlayer=allPlayer.filter(m=>!newPlayer.includes(m));
   const alien=(data?.missions||[]).filter(m=>m.result);
   const newAlien=alien.filter(m=>unreadIds.has("alien:"+m.id));
-  const previousAlien=alien.filter(m=>!newAlien.includes(m));
   const army=(title,units)=> <div><strong>{title}:</strong> {units===null?t("Not recorded","Не е записано"):list(units)}</div>;
   const playerReport=m=>{
     const ownInitial=m.incoming?(m.result.defenderInitial||{}):(m.units||{});
@@ -78,8 +77,8 @@ export default function ReportsPanel({onClose,onRead}) {
     <div style={{padding:20,overflowY:"auto",maxHeight:"calc(90vh - 70px)"}}>
       {error&&<p role="alert">{error}</p>}{!data&&!error&&<p>{t("Loading reports…","Зареждане на докладите…")}</p>}
       {data&&<>{activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}
-        {newPlayer.length+newAlien.length>0?<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}{newAlien.map(alienReport)}</>:<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
-        {(previousPlayer.length>0||previousAlien.length>0)&&<details style={{marginTop:20}}><summary>{t("Previous reports","Предишни доклади")}</summary><h3>{t("Player battles","Битки с играчи")}</h3>{previousPlayer.length?previousPlayer.map(playerReport):<p>{t("No previous player reports.","Няма предишни доклади от битки с играчи.")}</p>}<h3>{t("Alien missions","Извънземни мисии")}</h3>{previousAlien.length?previousAlien.map(alienReport):<p>{t("No alien mission reports.","Няма доклади от извънземни мисии.")}</p>}</details>}</>}
+        {newPlayer.length>0?<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}</>:newAlien.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
+        {alien.length>0&&<><h2>{t("Alien mission reports","Доклади от извънземни мисии")}{newAlien.length?" · "+t("New","Нови")+": "+newAlien.length:""}</h2>{alien.map(alienReport)}</>}{previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
     </div></section></div>;
 }
 const overlay={position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,.8)",display:"grid",placeItems:"center",padding:12};
