@@ -698,10 +698,13 @@ function Map() {
     id:"scout-"+m.id,color:"#f7d34e",from:clock<m.arrives_at?m.origin:m.target,to:clock<m.arrives_at?m.target:m.origin,
     start:clock<m.arrives_at?m.launched_at:m.arrives_at,end:clock<m.arrives_at?m.arrives_at:m.returns_at,
   }));
+  const invasionRoutes=(campaign.invasionRoutes||[]).map(m=>({
+    id:"invasion-"+m.id,color:"#ff6b5e",from:{x:m.originX,y:m.originY},to:{x:m.targetX,y:m.targetY},start:m.launchedAt,end:m.arrivesAt
+  }));
   const gatheringRoutes=mapMines.filter(m=>m.claimed_by&&Number(m.arrives_at)>clock).map(m=>({
     id:"gather-"+m.id,color:"#ffd166",from:{x:m.origin_x,y:m.origin_y},to:{x:m.x,y:m.y},start:m.launched_at,end:m.arrives_at
   }));
-  const routes=[...attackRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>clock);
+  const routes=[...attackRoutes,...invasionRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>clock);
   const screenPoint=point=>({x:(point.x-.5)*tileSize+offset.x,y:(point.y-.5)*tileSize+offset.y});
 
   return (
