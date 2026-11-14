@@ -57,9 +57,9 @@ export default function InformationPanel(){
  const category=infantryCategories.find(c=>c.id===page);
  let crumbs=[{id:"home",en:"Home",bg:"Начало"}];
  if(section)crumbs.push({id:section.id,en:section.en,bg:section.bg});
- if(["infantry",...infantryCategories.map(x=>x.id)].includes(page)){
+ if(page==="infantry"||category){
   crumbs.push({id:"units",en:"Units and Upgrades",bg:"Единици и Подобрения"});
-  if(page!=="units")crumbs.push({id:"infantry",en:"Infantry",bg:"Пехота"});
+  if(page==="infantry")crumbs.push({id:"infantry",en:"Infantry",bg:"Пехота"});
   if(category)crumbs.push(category);
  }
  const breadcrumb=(crumb,index)=><React.Fragment key={crumb.id}>{index>0&&<span aria-hidden="true" style={{opacity:.65,padding:"0 7px"}}>/</span>}<button onClick={()=>setPage(crumb.id)} style={{background:"none",border:0,color:"#bcd9e8",padding:"4px 0",cursor:"pointer",fontSize:14}}>{t(crumb.en,crumb.bg)}</button></React.Fragment>;
@@ -76,23 +76,22 @@ export default function InformationPanel(){
   </>}
   {section?.id==="units"&&<>
    <h2>{t("Units and Upgrades","Единици и Подобрения")}</h2>
-   <div style={cardGrid}><button onClick={()=>setPage("infantry")} style={card}><span style={{fontSize:44}} aria-hidden="true">⚔</span><span>{t("Infantry","Пехота")}</span></button></div>
+   <div style={cardGrid}>
+    <button onClick={()=>setPage("infantry")} style={card}><span style={{fontSize:44}} aria-hidden="true">⚔</span><span>{t("Infantry","Пехота")}</span></button>
+    {infantryCategories.map(item=><button key={item.id} onClick={()=>setPage(item.id)} style={card}>
+     <span style={{fontSize:38}} aria-hidden="true">{item.id==="ground"?"🛡":item.id==="ranged"?"⌖":item.id==="mobile"?"🚀":item.id==="heavy"?"⚙":"✦"}</span>
+     <span>{t(item.en,item.bg)}</span>
+    </button>)}
+   </div>
   </>}
   {page==="infantry"&&<>
    <h2>{t("Infantry","Пехота")}</h2>
-   <div style={cardGrid}>{infantryCategories.map(item=><button key={item.id} onClick={()=>setPage(item.id)} style={card}>
-    <span style={{fontSize:38}} aria-hidden="true">{item.id==="ground"?"🛡":item.id==="ranged"?"⌖":item.id==="mobile"?"🚀":item.id==="heavy"?"⚙":"✦"}</span>
-    <span>{t(item.en,item.bg)}</span>
-   </button>)}</div>
-  </>}
-  {page==="ground"&&<>
-   <h2>{t("Ground Infantry","Сухопътни")}</h2>
    {unit(explorerTrooper,"Войник изследовател",["Infantry unit with the strongest attack against ground and ranged units. Best placed in the first row.","Пехотна единица с най-силна атака срещу сухопътни и стрелкови единици. Най-добре се поставя на първи ред."])}
    {unit(nanoShieldman,"Нано щитоносец",["Fastest infantry unit. Strongest against mobile and heavy systems. Range 2 allows placement in row 1 or 2.","Най-бързата пехотна единица. Най-силна срещу мобилни и тежки системи. Обхват 2 позволява разполагане на първи или втори ред."])}
    {unit(exoSoldier,"Екзовойник",["Infantry unit with equal attack against all unit groups and the highest health among infantry. Best placed in the first row.","Пехотна единица с еднаква атака срещу всички групи и най-много живот сред пехотата. Най-добре се поставя на първи ред."])}
    {unit(plasmaBladesman,"Плазмен мечоносец",["Infantry unit with the strongest attack against heavy systems. Best placed in the first row.","Пехотна единица с най-силна атака срещу тежки системи. Най-добре се поставя на първи ред."])}
   </>}
-  {category&&page!=="ground"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Information for this troop category will be added later.","Информацията за тази категория войски ще бъде добавена по-късно.")}</p></>}
+  {category&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Information for this troop category will be added later.","Информацията за тази категория войски ще бъде добавена по-късно.")}</p></>}
   {section?.id==="skills"&&<><h2>{t(section.en,section.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Allocate Protocol Points (PP) to improve commander protocols. Each protocol has three tiers: Initiate, Advanced and Elite. Their bonuses are listed below in tier order.","Разпределяй точки за протоколи (ТП), за да подобряваш протоколите на командира. Всеки протокол има три степени: начална, напреднала и елитна. Бонусите по-долу са подредени по степени.")}<br/>{t("Upgrade costs: Initiate 1 PP · Advanced 2 PP · Elite 3 PP.","Цена за подобрение: Начална 1 ТП · Напреднала 2 ТП · Елитна 3 ТП.")}</p><div style={cardGrid}>{commanderProtocols.map(item=><article key={item.en} style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}><h3 style={{marginTop:0}}>{t(item.en,item.bg)}</h3><p>{t(item.effectEn,item.effectBg)} · {t("bonus","бонус")}</p><p><strong>{t("Khan Wars skill","Умение в Khan Wars")}:</strong> {t(item.khanEn,item.khanBg)}</p><p><strong>{t("Tier bonuses","Бонуси по степени")}:</strong> {item.values.map(v=>v+"%").join(" / ")}</p><p style={{opacity:.8,fontSize:13}}>{t("Initiate / Advanced / Elite","Начална / Напреднала / Елитна")}</p></article>)}</div></>}{section&&section.id!=="units"&&section.id!=="skills"&&<><h2>{t(section.en,section.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{section.id==="knight"?t("Cyber Knight information will be added later.","Информацията за Кибер Рицаря ще бъде добавена по-късно."):section.id==="campaigns"?t("Campaign types and details will be added here later.","Тук по-късно ще добавим видовете кампании и подробности за тях."):t("Information for this section will be added later.","Информацията за този раздел ще бъде добавена по-късно.")}</p></>}
  </div>;
 }
