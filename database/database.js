@@ -265,6 +265,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
     db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
     db.exec("CREATE TABLE IF NOT EXISTS resource_mines (id INTEGER PRIMARY KEY AUTOINCREMENT, resource TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, amount INTEGER NOT NULL DEFAULT 5000, claimed_by INTEGER REFERENCES users(id), launched_at INTEGER, arrives_at INTEGER, origin_x INTEGER, origin_y INTEGER, gathering_started_at INTEGER, gathering_rate REAL)");
+    if (!db.prepare("PRAGMA table_info(resource_mines)").all().some(column => column.name === "gathering_units")) db.exec("ALTER TABLE resource_mines ADD COLUMN gathering_units TEXT NOT NULL DEFAULT '{}' ");
     db.exec("CREATE INDEX IF NOT EXISTS resource_mines_claimed ON resource_mines(claimed_by,arrives_at)");
     if (db.prepare("SELECT COUNT(*) AS count FROM resource_mines").get().count === 0) {
       const blocked = new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row => row.x + ":" + row.y));
@@ -2714,8 +2715,12 @@ class DatabaseManager {
         if(current){
           const key={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
           current.resources[key]=(Number(current.resources[key])||0)+Number(mine.amount);
+          for(const [unit,count] of Object.entries(JSON.parse(mine.gathering_units||"{}"))){
+            current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
+          }
           db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
             .run(JSON.stringify(current.resources),mine.claimed_by);
+          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mine.claimed_by);
         }
         const blocked=new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row=>row.x+":"+row.y));
         for(const base of alienBases)blocked.add(base.x+":"+base.y);
@@ -2726,7 +2731,7 @@ class DatabaseManager {
           if(!blocked.has(x+":"+y))tile={x,y};
         }
         if(!tile)throw new Error("No free map tile is available for a replacement resource mine.");
-        db.prepare("UPDATE resource_mines SET x=?,y=?,amount=5000,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,gathering_started_at=NULL,gathering_rate=NULL WHERE id=?")
+        db.prepare("UPDATE resource_mines SET x=?,y=?,amount=5000,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=?")
           .run(tile.x,tile.y,mine.id);
         settled++;
       }
@@ -2748,7 +2753,7 @@ class DatabaseManager {
     return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId)};
   }
 
-  startGathering(userId,mineId) {
+  startGathering(userId,mineId,selectedArmy) {
     return db.transaction(()=>{
       this.settleResourceMines();
       const mine=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(Number(mineId));
@@ -2757,16 +2762,31 @@ class DatabaseManager {
       const activeCount=db.prepare("SELECT COUNT(*) AS count FROM resource_mines WHERE claimed_by=?").get(userId).count;
       const capacity=this.mineCapacity(userId);
       if(activeCount>=capacity)return {error:"All your mine gathering slots are occupied ("+capacity+")."};
-      const base=db.prepare("SELECT b.x,b.y,u.username FROM base_positions b JOIN users u ON u.id=b.user_id WHERE b.user_id=?").get(userId);
+      const base=db.prepare("SELECT b.x,b.y,u.username FROM base_positions b JOIN users u ON u.id= b.user_id WHERE b.user_id=?").get(userId);
       if(!base)return {error:"Your base could not be found."};
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      if(!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy))return {error:"Choose troops for the gathering march."};
+      const {playerTypes}=require("../shared/combatEngine");
+      let total=0;
+      for(const [unit,count] of Object.entries(selectedArmy)){
+        if(!playerTypes[unit]||!Number.isSafeInteger(count)||count<0||count>Number(current.army[unit]||0))return {error:"Invalid troop selection."};
+        total+=count;
+      }
+      if(!total)return {error:"Select at least one unit for the gathering march."};
+      if(total>marchLimit)return {error:"A march can contain at most 50,000 troops."};
+      const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,count])=>count>0));
       const now=Date.now(),distance=Math.hypot(base.x-mine.x,base.y-mine.y);
       const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
       const arrivesAt=now+Math.max(10000,Math.ceil(distance*1000/(1+speedBonus)));
       const rate=1000*(1+this.protocolBonus(userId,"Mining Operations")/100);
-      db.prepare("UPDATE resource_mines SET claimed_by=?,launched_at=?,arrives_at=?,origin_x=?,origin_y=?,gathering_started_at=?,gathering_rate=? WHERE id=? AND claimed_by IS NULL")
-        .run(userId,now,arrivesAt,base.x,base.y,arrivesAt,rate,mine.id);
-      const current=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(mine.id);
-      return {success:true,mine:current,launchedAt:now,arrivesAt,rate,activeMineCount:activeCount+1,gatheringCapacity:capacity};
+      for(const [unit,count] of Object.entries(selected))current.army[unit]-=count;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      const result=db.prepare("UPDATE resource_mines SET claimed_by=?,launched_at=?,arrives_at=?,origin_x=?,origin_y=?,gathering_started_at=?,gathering_rate=?,gathering_units=? WHERE id=? AND claimed_by IS NULL")
+        .run(userId,now,arrivesAt,base.x,base.y,arrivesAt,rate,JSON.stringify(selected),mine.id);
+      if(!result.changes)throw new Error("This mine is already being gathered.");
+      const launchedMine=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(mine.id);
+      return {success:true,mine:launchedMine,launchedAt:now,arrivesAt,rate,units:selected,activeMineCount:activeCount+1,gatheringCapacity:capacity};
     })();
   }
 
