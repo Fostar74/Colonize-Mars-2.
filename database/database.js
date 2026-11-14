@@ -2970,4 +2970,4 @@ class DatabaseManager {
   }
 }
 
-module.exports = Da
+module.exports = DatabaseManager;
