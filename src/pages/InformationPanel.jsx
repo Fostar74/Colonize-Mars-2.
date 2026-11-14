@@ -63,7 +63,11 @@ export default function InformationPanel(){
  const hyperdriveNavigation=selectedProtocol==="Hyperdrive Navigation";
  const quantumLogistics=selectedProtocol==="Quantum Logistics";
  const nanoRegeneration=selectedProtocol==="Nano Regeneration";
- const siegeEngineering=selectedProtocol==="Siege Engineering";\n const probabilityMatrix=selectedProtocol==="Probability Matrix";\n const neuralLearningMatrix=selectedProtocol==="Neural Learning Matrix";\n const acceleratedTraining=selectedProtocol==="Accelerated Training";\n const deepCoreExtraction=selectedProtocol==="Deep Core Extraction";
+ const siegeEngineering=selectedProtocol==="Siege Engineering";
+ const probabilityMatrix=selectedProtocol==="Probability Matrix";
+ const neuralLearningMatrix=selectedProtocol==="Neural Learning Matrix";
+ const acceleratedTraining=selectedProtocol==="Accelerated Training";
+ const deepCoreExtraction=selectedProtocol==="Deep Core Extraction";
  const nanoArmorSystems=selectedProtocol==="Nano Armor Systems";
  let crumbs=[{id:"home",en:"Home",bg:"Начало"}];
  if(section)crumbs.push({id:section.id,en:section.en,bg:section.bg});
