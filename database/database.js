@@ -1884,7 +1884,7 @@ class DatabaseManager {
             artilleryAttack:this.protocolBonus(attack.user_id,"Heavy Artillery"),
             dodge:this.protocolBonus(attack.user_id,"Evasion Protocol"),
             revive:this.protocolBonus(attack.user_id,"Nano Regeneration")
-          },{playerDefense:true,defenderFormation,attackerIsAlien:true});
+          },{playerDefense:true,defenderFormation: defenseFormation,attackerIsAlien:true});
           const survivors=result.defenderSurvivors||{},wounded={};
           for(const [unit,count] of Object.entries(army)){const lost=Math.max(0,(Number(count)||0)-(Number(survivors[unit])||0));if(lost>0)wounded[unit]=lost;}
           const lost=Object.values(wounded).reduce((sum,count)=>sum+Number(count||0),0);
@@ -2970,4 +2970,4 @@ class DatabaseManager {
   }
 }
 
-module.exports = DatabaseManager;
+module.exports = Da
