@@ -7,7 +7,7 @@ import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
-const {unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice} = unitEconomy;
+const {unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails} = unitEconomy;
 
 const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
@@ -125,7 +125,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
   const [upgradeCategory, setUpgradeCategory] = useState("Ground");
   const [trainAmounts, setTrainAmounts] = useState({});
 
-  const baseTrainTime = 30;
+  const baseTrainTime = unit => unitTrainingDuration(unit);
 
   const formatTime = (seconds) => {
     const h = Math.floor(seconds / 3600);
@@ -260,7 +260,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
       <div className="unit-grid">
         {unitCategories[unitTab].map((unit) => {
           const qty = Number(trainAmounts[unit]) || 0;
-          const totalTime = baseTrainTime * qty;
+          const totalTime = baseTrainTime(unit) * qty;
           const price = unitPrice(unit);
           const requirement = unitRequirement(unit);
           const unlocked = Number(structures[requirement.building] || 0) >= requirement.level;
@@ -326,12 +326,14 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
               <h4>{localLabel(unit)}</h4>
               {["attack","defense"].map(stat=>{
                 const level=Number(game.unitUpgrades?.[unit]?.[stat] ?? 1);
-                const cost=upgradePrice(level, game.allianceBonuses?.discount);
+                const special=unitUpgradeDetails(unit,stat,level,game.allianceBonuses?.discount,game.allianceBonuses?.speed);
+                  const cost=special?.cost||upgradePrice(level, game.allianceBonuses?.discount);
+                  const duration=special?.durationMs||upgradeDuration(level, game.allianceBonuses?.speed);
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
                   <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {level}</p>
-                  <p>{t("Next level","Следващо ниво")} {Math.min(20,level+1)}: {cost.Gold.toLocaleString()} {t("Gold +","злато +")} {cost.Iron.toLocaleString()} {t("Iron ·","желязо ·")} {formatTime(Math.ceil(upgradeDuration(level, game.allianceBonuses?.speed)/1000))}</p>
-                  <button disabled={!!busy || level>=20 || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
+                  <p>{t("Next level","Следващо ниво")} {Math.min(special?.maxLevel||20,level+1)}: {cost.Gold.toLocaleString()} {t("Gold +","злато +")} {cost.Iron.toLocaleString()} {t("Iron ·","желязо ·")} {formatTime(Math.ceil(duration/1000))}</p>
+                  <button disabled={!!busy || level>=(special?.maxLevel||20) || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
                     onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>
                     {level>=20?localLabel("MAX LEVEL"):stat==="attack"?localLabel("Upgrade Attack"):localLabel("Upgrade Health / Defense")}
                   </button>
