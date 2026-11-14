@@ -182,12 +182,14 @@ function EventsPanel() {
   };
   useEffect(()=>{refresh().catch(error=>setNotice(error.message));const timer=setInterval(()=>refresh().catch(()=>{}),10000);const tick=setInterval(()=>setLabyrinthTick(Date.now()),1000);return()=>{clearInterval(timer);clearInterval(tick);};},[]);
   const start=async()=>{
+    const restarting=Boolean(data?.alliance?.run);
     setBusy(true);setNotice("");
     try{
-      const response=await fetch(api+"/events/saturday-invasion/start",{method:"POST",headers,body:JSON.stringify({userId:Number(userId)})});
+      const endpoint=restarting?"/events/saturday-invasion/restart":"/events/saturday-invasion/start";
+      const response=await fetch(api+endpoint,{method:"POST",headers,body:JSON.stringify({userId:Number(userId)})});
       const result=await response.json();
       if(!response.ok)throw Error(result.message||"Could not start the event.");
-      setNotice(t("Event started for your alliance.","Събитието е стартирано за алианса."));
+      setNotice(restarting?t("Event restarted from wave 1. Troops wounded in the previous run have been returned.","Събитието е рестартирано от вълна 1. Войниците, ранени в предишното участие, са върнати."):t("Event started for your alliance.","Събитието е стартирано за алианса."));
       await refresh();
     }catch(error){setNotice(error.message);}
     finally{setBusy(false);}
@@ -210,11 +212,12 @@ function EventsPanel() {
   return <div style={{color:"#eef6ff",padding:12,minWidth:320}}>
     <h2>{t("Saturday Alien Invasion","Съботна извънземна инвазия")}</h2>
     <p>{data.active?t("Event is active","Събитието е активно"):data.settled?t("Event results are final","Класирането е окончателно"):t("Scheduled for","Насрочено за")} {date(data.startsAt)} – {date(data.endsAt)}</p>
-    <p>{t("The first alien wave attacks as soon as the leader starts the run. Stronger waves attack every minute until all troops are eliminated or wave 20 is completed. Eliminated players receive no more attacks.","Първата извънземна вълна атакува веднага щом лидерът стартира участието. По-силни вълни атакуват през една минута, докато войските не бъдат елиминирани или не бъде завършена вълна 20. Елиминираните играчи повече не са атакувани.")}</p>
+    <p>{t("The first alien wave launches immediately from an alien base and reaches each participating alliance member after one minute. A stronger wave launches every minute. Alliance reinforcements sent to an active participant arrive in 30 seconds. The event ends when all participants are eliminated or wave 20 is completed.","Първата извънземна вълна потегля веднага от извънземна база и достига всеки участващ член на алианса след една минута. По-силна вълна потегля всяка минута. Подкрепленията към участник пристигат за 30 секунди. Събитието приключва, когато всички участници бъдат елиминирани или бъде завършена вълна 20.")}</p>
     {data.alliance&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
       <strong>{data.alliance.name}</strong>
       {data.alliance.run&&<span> · {data.alliance.run.status==="active"?t("Participating","Участва"):t("Run complete","Участието приключи")}</span>}
       {data.alliance.canStart&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Starting…","Стартиране…"):t("Start for my alliance","Стартирай за алианса")}</button></div>}
+      {data.alliance.run&&data.alliance.role==="Leader"&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Restarting…","Рестартиране…"):t("Restart from wave 1","Рестартирай от вълна 1")}</button></div>}
       {data.myResult&&<div style={{marginTop:8,padding:10,borderRadius:8,background:"rgba(30,50,70,.7)"}}>
         <p style={{margin:"0 0 6px"}}>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString()} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>
         <p style={{margin:"0 0 6px"}}>{t("Waves survived","Издържани вълни")}: {Number(data.myResult.waves||0)} / 20</p>
