@@ -74,6 +74,22 @@ export default function AlliancePanel({supportTarget,playerAction}){
     </table></div>
     {state.alliance.role==="Leader"&&<p style={{fontSize:12}}>{(state.members||[]).length>1?t("If you leave, leadership passes automatically to another member.","Ако напуснеш, лидерството ще премине автоматично към друг член."):t("If you are the last member, leaving disbands the alliance.","Ако си последният член, напускането разпуска алианса.")}</p>}
    </div>}
+   {tab==="applications"&&<div>
+    <h3>{t("Alliance Applications","Кандидатури за алианса")} ({(state.applications||[]).length})</h3>
+    {!["Leader","Co-Leader","Diplomat"].includes(state.alliance.role)
+      ? <p>{t("Only alliance officers can review applications.","Само ръководството може да преглежда кандидатури.")}</p>
+      : !(state.applications||[]).length
+        ? <p>{t("There are no pending applications.","Няма чакащи кандидатури.")}</p>
+        : <div style={{display:"grid",gap:10}}>
+          {(state.applications||[]).map(app=><div key={app.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:12,border:"1px solid #416177",borderRadius:8,background:"#142637"}}>
+            <div><strong>{playerName({...app,ally:false})}</strong><div style={{fontSize:12,opacity:.8}}>{app.applied_at?new Date(app.applied_at).toLocaleString():""}</div></div>
+            <div style={{display:"flex",gap:8}}>
+              <button disabled={busy} onClick={()=>action("application",{targetId:app.id,accept:true})}>{t("Accept","Приеми")}</button>
+              <button disabled={busy} onClick={()=>action("application",{targetId:app.id,accept:false})}>{t("Decline","Откажи")}</button>
+            </div>
+          </div>)}
+        </div>}
+   </div>}
    {tab==="research"&&<AllianceResearch economy={state.economy} role={state.alliance.role} busy={busy}
      start={kind=>action("bonus/upgrade",{kind})}/>}
    {tab==="market"&&<div>
