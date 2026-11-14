@@ -40,7 +40,7 @@ export default function MusicPlayer() {
 
   return <>
     <audio ref={audioRef} src={TRACK} preload="none" loop onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)} />
-    <div style={{ position:"fixed", right:12, bottom:"calc(70px + env(safe-area-inset-bottom))", zIndex:12000, display:"flex", flexDirection:"column", alignItems:"flex-end", gap:5 }}>
+    <div style={{ position:"fixed", right:12, bottom:"calc(150px + env(safe-area-inset-bottom))", zIndex:12000, display:"flex", flexDirection:"column", alignItems:"flex-end", gap:5 }}>
       {error && <span role="status" style={{maxWidth:240,padding:"6px 9px",borderRadius:7,background:"#281414",color:"#fff",fontSize:12}}>{t("Music could not be played. Reload the game and try again.","Музиката не можа да се пусне. Презареди играта и опитай отново.")}</span>}
       <button type="button" onClick={togglePlayback} aria-pressed={playing} aria-label={playing?t("Stop music","Спри музиката"):t("Play music","Пусни музиката")}
         style={{minHeight:44,padding:"9px 14px",border:"1px solid #93d8ff",borderRadius:22,background:playing?"#174f64":"rgba(12,24,34,.94)",color:"#fff",fontWeight:700,boxShadow:"0 2px 12px rgba(0,0,0,.55)",cursor:"pointer"}}>
