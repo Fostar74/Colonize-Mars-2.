@@ -524,29 +524,11 @@ function Map() {
       setMarchDraft({type,target,origin});
       } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
   };
-  const dispatchGathering = async mine => {
-    if(!mine?.id){setMarchNotice(t("Select a resource mine to start gathering.","Избери мина, за да изпратиш поход за добив."));return;}
-    setMarchLoading(true);setMarchNotice("");
-    try{
-      const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
-      const response=await fetch(api+"/map/gathering",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:Number(sessionStorage.getItem("userId")),mineId:mine.id})});
-      const data=await response.json();
-      if(!response.ok)throw Error(data.message||"Could not start gathering.");
-      setMapMines(data.mines||[]);
-      setMyMineCount(Number(data.activeMineCount)||0);
-      setMineCapacity(Number(data.gatheringCapacity)||mineCapacity);
-      setSelectedTarget(null);
-      const resource={gold:t("Gold","злато"),iron:t("Iron","желязо"),water:t("Water","вода"),solar:t("Solar","слънчева енергия")}[mine.resource];
-      setMarchSuccess(t("Gathering march launched. Mine output:","Походът за събиране е изпратен. Добив на мината:")+" "+Number(data.rate).toLocaleString()+" "+resource+" / "+t("hour","час"));
-    }catch(error){setMarchNotice(error.message);}
-    finally{setMarchLoading(false);}
-  };
   const chooseAction = (type) => {
     if (!selectedTarget) return;
     setMarchNotice("");
     setMarchDraft(null);
     setMarchHistoryOpen(false);
-    if(type==="Gather"){dispatchGathering(selectedTarget);return;}
     const home = castles.find(c => c.username === ownUsername);
     if (!home) {
       setMarchNotice("Your base could not be found. Refresh the map and try again.");
@@ -560,26 +542,37 @@ function Map() {
     const isMothershipAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="mothership";
     const isPlayerAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="castle"&&!targetIsOwn;
     const isStationDefense=marchDraft?.type==="Defend"&&marchDraft?.target?.type==="station";
+    const isGathering=marchDraft?.type==="Gather"&&marchDraft?.target?.type==="mine";
     if(selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
     if((isAlienAttack||isMothershipAttack)&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
-    if(!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isStationDefense){setMarchNotice("Choose an attackable target.");return;}
+    if(!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isStationDefense&&!isGathering){setMarchNotice("Choose an attackable target.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
     try{
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
-      const payload=isAlienAttack
+      const payload=isGathering
+        ? {userId:sessionStorage.getItem("userId"),mineId:marchDraft.target.id,units:selected}
+        : isAlienAttack
         ? {userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}}
         : isMothershipAttack ? {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded}
         : isStationDefense ? {userId:sessionStorage.getItem("userId"),stationId:marchDraft.target.stationId,army:selected}
         : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
-      const response=await fetch(base+(isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack"),{
+      const endpoint=isGathering?"/map/gathering":isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack";
+      const response=await fetch(base+endpoint,{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
       });
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      if(isStationDefense){
+      if(isGathering){
+        setMapMines(data.mines||[]);
+        setMyMineCount(Number(data.activeMineCount)||0);
+        setMineCapacity(Number(data.gatheringCapacity)||mineCapacity);
+        window.dispatchEvent(new Event("game-progress-updated"));
+        const resource={gold:t("Gold","злато"),iron:t("Iron","желязо"),water:t("Water","вода"),solar:t("Solar","слънчева енергия")}[marchDraft.target.resource];
+        setMarchSuccess(t("Gathering team sent. Mine output:","Походът за добив е изпратен. Добив на мината:")+" "+Number(data.rate).toLocaleString()+" "+resource+" / "+t("hour","час"));
+      }else if(isStationDefense){
         const latest=await fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
         if(latest.ok)setCampaign(await latest.json());
         setMarchSuccess("Army is heading to defend the alliance station.");
@@ -967,12 +960,12 @@ function Map() {
             }
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
-              <button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>
-              <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
+              {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
+              <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
-            <p style={{fontSize:12,color:"#b5c7d9"}}>{t("Alien attacks reserve selected troops immediately; survivors return after the battle.","Избраните войски тръгват веднага. Оцелелите се връщат след битката.")}</p>
+            <p style={{fontSize:12,color:"#b5c7d9"}}>{marchDraft.type==="Gather"?t("Selected troops are reserved until the mine is depleted, then they return to your base.","Избраните войски се отделят до изчерпване на мината, след което се връщат в базата."):t("Selected troops leave your base immediately and return after the mission.","Избраните войски напускат базата веднага и се връщат след мисията.")}</p>
             </>}
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{localLabel(marchNotice)}</p>}
