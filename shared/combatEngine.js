@@ -1,9 +1,9 @@
 // Provisional combat values until unit-specific statistics and equipment bonuses are finalized.
 // Every volley targets one randomly selected eligible group, independent of group size.
 const {categories}=require("../src/shared/unitEconomy");
-const {explorerCombatStats}=require("../src/shared/unitProfiles");
+const {unitCombatStats}=require("../src/shared/unitProfiles");
 const playerTypes=Object.fromEntries(Object.entries(categories).flatMap(([category,names])=>names.map((name,index)=>[name,{category:category==="Ground"||category==="Elite"?"infantry":category==="Ranged"?"ranged":category==="Mobile"?"mobile":"artillery",hp:category==="Ground"?90+index*30:category==="Ranged"?65+index*10:category==="Mobile"?180+index*80:category==="Elite"?350+index*100:120+index*50,attack:category==="Ground"?20+index*7:category==="Ranged"?35+index*12:category==="Mobile"?50+index*18:category==="Elite"?90+index*25:55+index*20,range:category==="Ground"?1:category==="Elite"?2:category==="Mobile"?1:category==="Ranged"?4:5}])));
-playerTypes["Explorer Trooper"]={...playerTypes["Explorer Trooper"],...explorerCombatStats({}),attackVs:explorerCombatStats({}).attack};
+for(const name of ["Explorer Trooper","Exo-Soldier"]){const stats=unitCombatStats(name,{});playerTypes[name]={...playerTypes[name],...stats,attackVs:stats.attack};}
 // Alien defenders are persistent templates; their casualties never modify the map.
 const alienTypes={
 "Alien Infantry":{category:"infantry",hp:75,attack:17,range:1},
@@ -47,7 +47,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
   for(let side=0;side<2;side++)for(const group of sides[side]){
     if(side!==playerSide&&!defenderIsPlayer)continue;
     const upgrades=side===0?bonuses.unitUpgrades?.[group.unit]:options.defenderUnitUpgrades?.[group.unit];
-    if(group.unit==="Explorer Trooper"){const stats=explorerCombatStats(upgrades||{});group.hp=stats.health;group.attackVs=stats.attack;}
+    if(group.unit==="Explorer Trooper"||group.unit==="Exo-Soldier"){const stats=unitCombatStats(group.unit,upgrades||{});group.hp=stats.health;group.attackVs=stats.attack;}
     const categoryBonus=side!==playerSide?0:group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
     const research=bonuses.unitResearch?.[group.unit];
     const attackMultiplier=1+((Number(categoryBonus)||0)+(side!==playerSide?0:Number(bonuses.leadership)||0)+(side!==playerSide?0:Number(bonuses.allAttack)||0)+(research?.attack||0))/100;
