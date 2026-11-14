@@ -1880,18 +1880,24 @@ class DatabaseManager {
   resolveSaturdayAllianceInvasions(now=Date.now()) {
     return db.transaction(()=>{
       const events=db.prepare("SELECT r.*,s.ends_at FROM saturday_invasion_runs r JOIN saturday_invasion_seasons s ON s.week_start=r.week_start WHERE r.status='active' AND s.settled=0 ORDER BY r.id").all();
+      const cancelPendingAttacks=(runId,userId,at)=>db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE run_id=? AND user_id=? AND resolved_at IS NULL")
+        .run(at,JSON.stringify({cancelled:true,eliminated:true}),runId,userId);
       for(const event of events){
         const dueAttacks=db.prepare("SELECT * FROM saturday_invasion_attacks WHERE run_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(event.id,now);
         for(const attack of dueAttacks){
           const participant=db.prepare("SELECT * FROM saturday_invasion_members WHERE run_id=? AND user_id=?").get(event.id,attack.user_id);
-          if(!participant||participant.eliminated){db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify({cancelled:true}),attack.id);continue;}
+          if(!participant||participant.eliminated){
+            if(participant?.eliminated)cancelPendingAttacks(event.id,attack.user_id,now);
+            else db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify({cancelled:true}),attack.id);
+            continue;
+          }
           this.settleAllianceReinforcements(attack.user_id);
           const current=this.syncGame(attack.user_id);
           const army=Object.fromEntries(Object.entries(current?.army||{}).filter(([,count])=>Number(count)>0));
           const armySize=Object.values(army).reduce((sum,count)=>sum+Number(count||0),0);
           if(!current||!armySize){
             db.prepare("UPDATE saturday_invasion_members SET eliminated=1 WHERE run_id=? AND user_id=?").run(event.id,attack.user_id);
-            db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify({level:attack.level,eliminated:true}),attack.id);
+            cancelPendingAttacks(event.id,attack.user_id,now);
             continue;
           }
           const level=attack.level,aliens=this.getAlienArmy(level);
@@ -1921,13 +1927,18 @@ class DatabaseManager {
           const battle={level,rounds:result.rounds,report:result.report,enemyUnits:enemyCount,alienCasualties:score,troopsLost:lost,troopsWounded:lost,remaining};
           db.prepare("UPDATE saturday_invasion_members SET score=score+?,waves=waves+1,eliminated=?,last_battle=? WHERE run_id=? AND user_id=?").run(score,eliminated?1:0,JSON.stringify(battle),event.id,attack.user_id);
           db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify(battle),attack.id);
+          if(eliminated)cancelPendingAttacks(event.id,attack.user_id,now);
         }
         const dueMembers=db.prepare("SELECT * FROM saturday_invasion_members WHERE run_id=? AND eliminated=0 AND waves<20 AND next_attack_at<=? ORDER BY user_id").all(event.id,now);
         for(const participant of dueMembers){
           if(db.prepare("SELECT 1 FROM saturday_invasion_attacks WHERE run_id=? AND user_id=? AND resolved_at IS NULL LIMIT 1").get(event.id,participant.user_id))continue;
           this.settleAllianceReinforcements(participant.user_id);
           const current=this.syncGame(participant.user_id),army=Object.fromEntries(Object.entries(current?.army||{}).filter(([,count])=>Number(count)>0));
-          if(!Object.keys(army).length){db.prepare("UPDATE saturday_invasion_members SET eliminated=1 WHERE run_id=? AND user_id=?").run(event.id,participant.user_id);continue;}
+          if(!Object.keys(army).length){
+            db.prepare("UPDATE saturday_invasion_members SET eliminated=1 WHERE run_id=? AND user_id=?").run(event.id,participant.user_id);
+            cancelPendingAttacks(event.id,participant.user_id,now);
+            continue;
+          }
           const level=participant.waves+1,bases=alienBases.filter(base=>base.level===level);
           const source=bases.length?bases[(Number(participant.user_id)+participant.waves-1)%bases.length]:{x:50,y:50};
           const launchedAt=now,arrivesAt=now+60000;
@@ -2174,7 +2185,7 @@ class DatabaseManager {
       JOIN alliance_members viewer ON viewer.alliance_id=run.alliance_id AND viewer.user_id=?
       JOIN users target ON target.id=attack.user_id
       JOIN base_positions base ON base.user_id=attack.user_id
-      WHERE run.status='active' AND attack.resolved_at IS NULL AND attack.arrives_at>?
+      WHERE run.status='active' AND member.eliminated=0 AND attack.resolved_at IS NULL AND attack.arrives_at>?
       ORDER BY attack.id DESC`).all(userId,Date.now());
     const scoutMissions = db.prepare("SELECT * FROM scout_missions WHERE user_id=? AND (returned_at IS NULL OR id IN (SELECT id FROM scout_missions WHERE user_id=? ORDER BY id DESC LIMIT 20)) ORDER BY id DESC")
       .all(userId,userId).map(({origin,target,report,...mission})=>({...mission,origin:JSON.parse(origin),target:JSON.parse(target),report:report ? JSON.parse(report) : null}));
