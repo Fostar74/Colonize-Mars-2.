@@ -264,7 +264,7 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS scout_missions_user ON scout_missions(user_id,id);`);
     db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
     db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
-    db.exec("CREATE TABLE IF NOT EXISTS resource_mines (id INTEGER PRIMARY KEY AUTOINCREMENT, resource TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, amount INTEGER NOT NULL DEFAULT 5000, claimed_by INTEGER REFERENCES users(id), launched_at INTEGER, arrives_at INTEGER, gathering_started_at INTEGER, gathering_rate REAL)");
+    db.exec("CREATE TABLE IF NOT EXISTS resource_mines (id INTEGER PRIMARY KEY AUTOINCREMENT, resource TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, amount INTEGER NOT NULL DEFAULT 5000, claimed_by INTEGER REFERENCES users(id), launched_at INTEGER, arrives_at INTEGER, origin_x INTEGER, origin_y INTEGER, gathering_started_at INTEGER, gathering_rate REAL)");
     db.exec("CREATE INDEX IF NOT EXISTS resource_mines_claimed ON resource_mines(claimed_by,arrives_at)");
     if (db.prepare("SELECT COUNT(*) AS count FROM resource_mines").get().count === 0) {
       const blocked = new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row => row.x + ":" + row.y));
@@ -2722,7 +2722,7 @@ class DatabaseManager {
           if(!blocked.has(x+":"+y))tile={x,y};
         }
         if(!tile)throw new Error("No free map tile is available for a replacement resource mine.");
-        db.prepare("UPDATE resource_mines SET x=?,y=?,amount=5000,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,gathering_started_at=NULL,gathering_rate=NULL WHERE id=?")
+        db.prepare("UPDATE resource_mines SET x=?,y=?,amount=5000,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,gathering_started_at=NULL,gathering_rate=NULL WHERE id=?")
           .run(tile.x,tile.y,mine.id);
         settled++;
       }
@@ -2732,9 +2732,14 @@ class DatabaseManager {
 
   getMapResources(userId) {
     this.settleResourceMines();
+    const now=Date.now();
     const mines=db.prepare(`SELECT m.id,m.resource,m.x,m.y,m.amount,m.claimed_by,m.launched_at,m.arrives_at,
-      m.gathering_started_at,m.gathering_rate,u.username AS owner
-      FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by ORDER BY m.id`).all();
+      m.origin_x,m.origin_y,m.gathering_started_at,m.gathering_rate,u.username AS owner
+      FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by ORDER BY m.id`).all().map(mine=>{
+        const elapsed=Math.max(0,now-Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now));
+        const gathered=mine.claimed_by&&mine.gathering_rate?Math.min(mine.amount,elapsed*mine.gathering_rate/3600000):0;
+        return {...mine,amount:Math.max(0,Math.floor(mine.amount-gathered))};
+      });
     const activeMineCount=mines.filter(mine=>Number(mine.claimed_by)===Number(userId)).length;
     return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId)};
   }
@@ -2754,8 +2759,8 @@ class DatabaseManager {
       const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
       const arrivesAt=now+Math.max(10000,Math.ceil(distance*1000/(1+speedBonus)));
       const rate=1000*(1+this.protocolBonus(userId,"Mining Operations")/100);
-      db.prepare("UPDATE resource_mines SET claimed_by=?,launched_at=?,arrives_at=?,gathering_started_at=?,gathering_rate=? WHERE id=? AND claimed_by IS NULL")
-        .run(userId,now,arrivesAt,arrivesAt,rate,mine.id);
+      db.prepare("UPDATE resource_mines SET claimed_by=?,launched_at=?,arrives_at=?,origin_x=?,origin_y=?,gathering_started_at=?,gathering_rate=? WHERE id=? AND claimed_by IS NULL")
+        .run(userId,now,arrivesAt,base.x,base.y,arrivesAt,rate,mine.id);
       const current=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(mine.id);
       return {success:true,mine:current,launchedAt:now,arrivesAt,rate,activeMineCount:activeCount+1,gatheringCapacity:capacity};
     })();
