@@ -67,12 +67,12 @@ export default function AlliancePanel({supportTarget,playerAction}){
        {state.alliance.role==="Leader"&&m.role!=="Leader"&&<><select aria-label={"Role for "+m.username} value={m.role} onChange={e=>action("role",{targetId:m.id,role:e.target.value})} disabled={busy}>
         {["Member","Co-Leader","Treasurer","Diplomat","General","Strategist"].map(role=><option key={role} value={role}>{localLabel(role)}</option>)}
        </select> <button disabled={busy} onClick={()=>{if(window.confirm("Transfer leadership to "+m.username+"?"))action("transfer",{targetId:m.id});}}>{t("Transfer Leader","Предай лидерството")}</button> </>}
-       {String(m.id)===String(getUserId())&&<button disabled={busy} onClick={()=>{const isLastLeader=m.role==="Leader"&&(state.members||[]).length===1;const prompt=m.role==="Leader"?(isLastLeader?"Leave this alliance? It will remain open for a new leader.":"Leave this alliance? Leadership will pass automatically to another member."):"Leave this alliance?";if(window.confirm(prompt))action("leave",{targetId:m.id});}}>{t("Leave","Напусни")}</button>}
+       {String(m.id)===String(getUserId())&&<button disabled={busy} onClick={()=>{const isLastLeader=m.role==="Leader"&&(state.members||[]).length===1;const prompt=m.role==="Leader"?(isLastLeader?"Leave and disband this alliance? It will be removed from the rankings.":"Leave this alliance? Leadership will pass automatically to another member."):"Leave this alliance?";if(window.confirm(prompt))action("leave",{targetId:m.id});}}>{t("Leave","Напусни")}</button>}
        {String(m.id)!==String(getUserId())&&m.role!=="Leader"&&["Leader","Co-Leader"].includes(state.alliance.role)&&<button disabled={busy} onClick={()=>{if(window.confirm("Remove "+m.username+"?"))action("leave",{targetId:m.id});}}>{t("Remove","Премахни")}</button>}
       </td>
      </tr>)}</tbody>
     </table></div>
-    {state.alliance.role==="Leader"&&<p style={{fontSize:12}}>{(state.members||[]).length>1?t("If you leave, leadership passes automatically to another member.","Ако напуснеш, лидерството ще премине автоматично към друг член."):t("If you are the last member, the alliance stays open. The next player to join becomes its leader.","Ако си последният член, алиансът остава отворен. Следващият присъединил се играч става негов лидер.")}</p>}
+    {state.alliance.role==="Leader"&&<p style={{fontSize:12}}>{(state.members||[]).length>1?t("If you leave, leadership passes automatically to another member.","Ако напуснеш, лидерството ще премине автоматично към друг член."):t("If you are the last member, leaving disbands the alliance.","Ако си последният член, напускането разпуска алианса.")}</p>}
    </div>}
    {tab==="research"&&<AllianceResearch economy={state.economy} role={state.alliance.role} busy={busy}
      start={kind=>action("bonus/upgrade",{kind})}/>}
