@@ -761,12 +761,12 @@ class DatabaseManager {
   }
   talentCatalog(){
     return [
-      ["Rapid Deployment",[15,35,60],"% army speed"],["Resource Management",[10,25,45],"% economy"],
+      ["Rapid Deployment",[20,40,60],"% army speed"],["Resource Management",[10,20,30],"% economy"],
       ["Mining Operations",[20,50,100],"% mine production"],["Precision Fire",[20,40,60],"% ranged attack"],
       ["Reinforced Armor",[10,20,30],"% unit HP"],["Infantry Command",[10,25,40],"% infantry attack and HP"],
       ["Battle Command",[10,20,30],"% army attack (leadership)"],["Advanced Recon",[10,30,50],"% reconnaissance resource discount"],
-      ["Evasion Protocol",[3,8,15],"% evade"],["Combat Recovery",[3,8,15],"% revive"],
-      ["Mobile Warfare",[10,25,40],"% mobile attack"],["Heavy Artillery",[10,25,45],"% siege attack"],
+      ["Evasion Protocol",[3,8,15],"% evade"],["Combat Recovery",[5,10,15],"% revive"],
+      ["Mobile Warfare",[10,25,40],"% mobile attack"],["Heavy Artillery",[10,20,30],"% siege attack"],
       ["Advanced Research",[10,25,45],"% XP"],["Accelerated Training",[10,25,45],"% training speed"],
       ["Forward Operations",[1,3,6],"extra camps"]
     ].map(([name,values,description])=>({name,values,description}));
