@@ -3,7 +3,7 @@ const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
+const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails,unitTrainingDuration,unitUpgradeDetails} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -661,7 +661,7 @@ class DatabaseManager {
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
-      const duration=Math.max(1000,Math.ceil(quantity*30000*(1-trainingBonus)));
+      const duration=Math.max(1000,Math.ceil(quantity*unitTrainingDuration(unit)*1000*(1-trainingBonus)));
       const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
       const job={unit,quantity,startsAt,endsAt:startsAt+duration};
       const trainingQueues={...current.trainingQueues,[category]:[...queue,job]};
@@ -696,7 +696,7 @@ class DatabaseManager {
   }
 
   upgradeUnit(userId,unit,stat,slot){
-    const {categories,upgradeDuration}=require("../src/shared/unitEconomy");
+    const {categories,upgradeDuration,unitUpgradeDetails}=require("../src/shared/unitEconomy");
     if(!Object.values(categories).some(group=>group.includes(unit))||!["attack","defense"].includes(stat)||![0,1].includes(slot))return {error:"Invalid upgrade selection."};
     return db.transaction(()=>{
       const current=this.syncGame(userId);
@@ -706,12 +706,13 @@ class DatabaseManager {
       if(jobs[nextSlot])return {error:"This upgrade slot is occupied."};
       if(jobs.some(j=>j&&j.unit===unit&&j.stat===stat))return {error:"This unit stat is already upgrading."};
       const level=Number(current.unitUpgrades[unit]?.[stat]||1);
-      if(level>=20)return {error:"Maximum upgrade level."};
-      const price=upgradePrice(level,current.allianceBonuses.discount);
+      const specific=unitUpgradeDetails(unit,stat,level,current.allianceBonuses.discount,current.allianceBonuses.speed);
+      if(level>=(specific?.maxLevel||20))return {error:"Maximum upgrade level."};
+      const price=specific?.cost||upgradePrice(level,current.allianceBonuses.discount);
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
       const completionXp=2*Object.values(price).reduce((total,cost)=>total+cost,0);
-      const durationMs = upgradeDuration(level,current.allianceBonuses.speed);
+      const durationMs = specific?.durationMs||upgradeDuration(level,current.allianceBonuses.speed);
       const job = {unit,stat,level:level+1,completionXp,durationMs};
       if (nextSlot === 0) job.endsAt = Date.now() + durationMs;
       jobs[nextSlot] = job;
@@ -1442,8 +1443,9 @@ class DatabaseManager {
         }));
         const {fight,playerTypes}=require("../shared/combatEngine");
         const validDefenders=Object.fromEntries(Object.entries(defender.army).filter(([unit,count])=>playerTypes[unit]&&Number(count)>0));
-        const result=fight(data.units||{},validDefenders,data.formation,{},{
+        const result=fight(data.units||{},validDefenders,data.formation,{unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{}},{
           playerDefense:true,
+          defenderUnitUpgrades:defender.unitUpgrades||{},
           defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit])
         });
         const defenderWounded={};
@@ -1835,6 +1837,7 @@ class DatabaseManager {
           const alliance=current.allianceBonuses||{};
           const result=combat.fight(aliens,army,null,{
             unitResearch:alliance.units||{},
+            unitUpgrades:participant.unit_upgrades?JSON.parse(participant.unit_upgrades):{},
             infantryAttack:this.protocolBonus(participant.user_id,"Infantry Command"),
             infantryHealth:this.protocolBonus(participant.user_id,"Infantry Command"),
             mobileAttack:this.protocolBonus(participant.user_id,"Mobile Warfare"),
@@ -2278,7 +2281,9 @@ class DatabaseManager {
         rangedAttack:this.protocolBonus(userId,"Precision Fire"),
         allHealth:this.protocolBonus(userId,"Reinforced Armor")+(alliance.health||0)+(activeBuffs.some(buff=>buff.kind==="health")?10:0),
         allAttack:(alliance.attack||0)+(activeBuffs.some(buff=>buff.kind==="attack")?10:0),
+        unitUpgrades:current.unitUpgrades,
         unitResearch:Object.fromEntries(Object.keys(selected).map(unit=>[unit,alliance.units?.[unit]||{}])),
+        unitUpgrades:current.unitUpgrades,
         infantryAttack:this.protocolBonus(userId,"Infantry Command"),
         infantryHealth:this.protocolBonus(userId,"Infantry Command"),
         mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
@@ -2343,7 +2348,7 @@ class DatabaseManager {
       };
       const origin={x:current.castle.x,y:current.castle.y};
       const allianceId=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId)?.alliance_id||null;
-      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,allianceId,origin,target}),now,arrivesAt);
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,unitUpgrades:current.unitUpgrades,allianceId,origin,target}),now,arrivesAt);
       if(campaign.used>=20&&Number(campaign.bonusMissions||0)>0)db.prepare("UPDATE alien_rewards SET bonus_missions=MAX(0,bonus_missions-1) WHERE user_id=?").run(userId);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,origin,target,remaining:campaign.remaining-1};
     })();
@@ -2368,6 +2373,7 @@ class DatabaseManager {
           allHealth:this.protocolBonus(userId,"Reinforced Armor") + (armyData.allianceCombat?.health || 0),
           allAttack:armyData.allianceCombat?.attack || 0,
           unitResearch:armyData.allianceCombat?.units,
+          unitUpgrades:armyData.unitUpgrades,
           infantryAttack:this.protocolBonus(userId,"Infantry Command"),
           infantryHealth:this.protocolBonus(userId,"Infantry Command"),
           mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),

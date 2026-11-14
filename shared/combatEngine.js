@@ -1,7 +1,9 @@
 // Provisional combat values until unit-specific statistics and equipment bonuses are finalized.
 // Every volley targets one randomly selected eligible group, independent of group size.
 const {categories}=require("../src/shared/unitEconomy");
+const {explorerCombatStats}=require("../src/shared/unitProfiles");
 const playerTypes=Object.fromEntries(Object.entries(categories).flatMap(([category,names])=>names.map((name,index)=>[name,{category:category==="Ground"||category==="Elite"?"infantry":category==="Ranged"?"ranged":category==="Mobile"?"mobile":"artillery",hp:category==="Ground"?90+index*30:category==="Ranged"?65+index*10:category==="Mobile"?180+index*80:category==="Elite"?350+index*100:120+index*50,attack:category==="Ground"?20+index*7:category==="Ranged"?35+index*12:category==="Mobile"?50+index*18:category==="Elite"?90+index*25:55+index*20,range:category==="Ground"?1:category==="Elite"?2:category==="Mobile"?1:category==="Ranged"?4:5}])));
+playerTypes["Explorer Trooper"]={...playerTypes["Explorer Trooper"],...explorerCombatStats({}),attackVs:explorerCombatStats({}).attack};
 // Alien defenders are persistent templates; their casualties never modify the map.
 const alienTypes={
 "Alien Infantry":{category:"infantry",hp:75,attack:17,range:1},
@@ -41,12 +43,17 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     createGroups(attackerArmy,attackerIsAlien?alienTypes:playerTypes,formation),
     createGroups(defenderArmy,defenderIsPlayer?playerTypes:alienTypes,defenderIsPlayer?options.defenderFormation:null)
   ];
-  // Apply player protocols, research, and upgrades to the player's side, including when defending.
-  for(const group of sides[playerSide]){
-    const categoryBonus=group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
-    const research = bonuses.unitResearch?.[group.unit];
-    group.attack*=1+((Number(categoryBonus)||0)+(Number(bonuses.leadership)||0)+(Number(bonuses.allAttack)||0)+(research?.attack||0))/100;
-    group.hp*=1+((Number(bonuses.allHealth)||0)+(research?.health||0)+(group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
+  // Apply unit-specific upgrades to player units on both sides, and commander bonuses to the active player side.
+  for(let side=0;side<2;side++)for(const group of sides[side]){
+    if(side!==playerSide&&!defenderIsPlayer)continue;
+    const upgrades=side===0?bonuses.unitUpgrades?.[group.unit]:options.defenderUnitUpgrades?.[group.unit];
+    if(group.unit==="Explorer Trooper"){const stats=explorerCombatStats(upgrades||{});group.hp=stats.health;group.attackVs=stats.attack;}
+    const categoryBonus=side!==playerSide?0:group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
+    const research=bonuses.unitResearch?.[group.unit];
+    const attackMultiplier=1+((Number(categoryBonus)||0)+(side!==playerSide?0:Number(bonuses.leadership)||0)+(side!==playerSide?0:Number(bonuses.allAttack)||0)+(research?.attack||0))/100;
+    group.attack*=attackMultiplier;
+    if(group.attackVs)for(const key of Object.keys(group.attackVs))group.attackVs[key]*=attackMultiplier;
+    group.hp*=1+((side!==playerSide?0:Number(bonuses.allHealth)||0)+(research?.health||0)+(side===playerSide&&group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
   }
   const dodgeChance=Math.max(0,Math.min(0.15,(Number(bonuses.dodge)||0)/100));
   const reviveRate=Math.max(0,Math.min(0.15,(Number(bonuses.revive)||0)/100));
@@ -64,7 +71,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         const enemies=sides[1-side].filter(g=>g.count>0&&group.range>=group.row+g.row-1);
         if(!enemies.length)continue;
         const target=enemies[Math.floor(Math.random()*enemies.length)];
-        const damage=group.count*group.attack*effectiveness[group.category][target.category];
+        const damage=group.count*(group.attackVs?.[target.category]??group.attack*effectiveness[group.category][target.category]);
         shots.push({side,group,target,damage,count:group.count});
       }
       const hits=new Map();
