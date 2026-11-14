@@ -365,6 +365,13 @@ router.post("/events/saturday-invasion/start",requireSession,(req,res)=>{
     res.json(result);
   }catch(error){console.error("Saturday invasion:",error);res.status(500).json({message:"The event could not be started."});}
 });
+router.post("/events/saturday-invasion/restart",requireSession,(req,res)=>{
+  try{
+    const result=db.restartSaturdayAllianceInvasion(Number(req.body.userId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Saturday invasion restart:",error);res.status(500).json({message:"The event could not be restarted."});}
+});
 router.post("/mothership/attack",requireSession,(req,res)=>{
   try{
     const result=db.launchMothershipAttack(Number(req.body.userId),req.body.army,req.body.formation,req.body.includeCyberKnight);
