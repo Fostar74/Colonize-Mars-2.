@@ -332,10 +332,10 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
                   <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {level}</p>
-                  <p>{t("Next level","Следващо ниво")} {Math.min(special?.maxLevel||20,level+1)}: {cost.Gold.toLocaleString()} {t("Gold +","злато +")} {cost.Iron.toLocaleString()} {t("Iron ·","желязо ·")} {formatTime(Math.ceil(duration/1000))}</p>
+                  <p>{t("Next level","Следващо ниво")} {Math.min(special?.maxLevel||20,level+1)}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>
                   <button disabled={!!busy || level>=(special?.maxLevel||20) || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
                     onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>
-                    {level>=20?localLabel("MAX LEVEL"):stat==="attack"?localLabel("Upgrade Attack"):localLabel("Upgrade Health / Defense")}
+                    {level>=(special?.maxLevel||20)?localLabel("MAX LEVEL"):stat==="attack"?localLabel("Upgrade Attack"):localLabel("Upgrade Health / Defense")}
                   </button>
                 </div>;
               })}
