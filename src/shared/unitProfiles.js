@@ -1,5 +1,5 @@
-const explorerTrooper = {
-  name: "Explorer Trooper", category: "infantry",
+const nanoShieldman = {
+  name: "Nano Shieldman", category: "infantry",
   attack: { infantry: 10, ranged: 10, mobile: 70, artillery: 70 }, health: 60, range: 2, speed: 5, cargo: 10, population: 1,
   requirement: { building: "Training Center", level: 16 }, price: { Gold: 45, Iron: 30, Water: 60, Solar: 35 }, trainingSeconds: 390,
   attackUpgrades: [
@@ -23,23 +23,22 @@ const explorerTrooper = {
   ],
   skills:["Defender","Warrior"]
 };
+const explorerTrooper={name:"Explorer Trooper",category:"infantry",attack:{infantry:80,ranged:80,mobile:10,artillery:10},health:70,range:1,speed:7,cargo:10,population:1,requirement:{building:"Training Center",level:1},price:{Gold:10,Iron:45,Water:35,Solar:50},trainingSeconds:300,attackUpgrades:[{values:[3.2,0.4,3.2,0,0.4],cost:[120,96,84,60],seconds:8918},{values:[7.2,0.9,7.2,0,0.9],cost:[480,384,336,240],seconds:14158},{values:[12,1.5,12,0,1.5],cost:[1680,1344,1176,840],seconds:17838},{values:[17.6,2.2,17.6,0,2.2],cost:[3780,3024,2646,1890],seconds:22478},{values:[24,3,24,0,3],cost:[6304,5043,4413,3152],seconds:28322},{values:[32,4,32,0,4],cost:[9840,7872,6888,4920],seconds:35684},{values:[41.6,5.2,41.6,0,5.2],cost:[18450,14760,12915,9225],seconds:44964},{values:[52.8,6.6,52.8,0,6.6],cost:[30760,24608,21532,15380],seconds:56652},{values:[65.6,8.2,65.6,0,8.2],cost:[48075,38460,33670,24050],seconds:71384},{values:[80,10,80,0,10],cost:[72090,57672,50484,36060],seconds:89942}],healthUpgrades:[{value:2.8,cost:[150,120,105,75],seconds:7008},{value:6.3,cost:[600,480,420,300],seconds:11124},{value:10.5,cost:[2100,1680,1473,1052],seconds:14016},{value:15.4,cost:[4728,3782,3310,2364],seconds:17662},{value:21,cost:[7872,6298,5510,3936],seconds:22254},{value:28,cost:[12300,9840,8610,6150],seconds:28038},{value:36.4,cost:[23070,18456,16149,11535],seconds:35328},{value:46.2,cost:[38460,30768,26936,19240],seconds:44514},{value:57.4,cost:[60075,48060,42070,30050],seconds:56086},{value:70,cost:[90120,72096,63084,45060],seconds:70668}],skills:["Defender","Warrior"]};
 const exoSoldier={name:"Exo-Soldier",category:"infantry",attack:{infantry:40,ranged:40,mobile:40,artillery:40},health:80,range:1,speed:6,cargo:10,population:1,requirement:{building:"Training Center",level:6},price:{Gold:30,Iron:70,Water:30,Solar:20},trainingSeconds:330,attackUpgrades:[{values:[1.6,1.6,1.6,0,1.6],cost:[72,120,144,60],seconds:9556},{values:[3.6,3.6,3.6,0,3.6],cost:[288,480,576,240],seconds:15170},{values:[6,6,6,0,6],cost:[1008,1680,2016,840],seconds:19112},{values:[8.8,8.8,8.8,0,8.8],cost:[2268,3780,4536,1890],seconds:24082},{values:[12,12,12,0,12],cost:[3782,6304,7565,3152],seconds:30344},{values:[16,16,16,0,16],cost:[5904,9840,11808,4920],seconds:38234},{values:[20.8,20.8,20.8,0,20.8],cost:[11070,18450,22140,9225],seconds:48176},{values:[26.4,26.4,26.4,0,26.4],cost:[18456,30760,36912,15380],seconds:60700},{values:[32.8,32.8,32.8,0,32.8],cost:[28860,48075,57690,24050],seconds:76482},{values:[40,40,40,0,40],cost:[43272,72090,86508,36060],seconds:96368}],healthUpgrades:[{value:3.2,cost:[90,150,180,75],seconds:7508},{value:7.2,cost:[360,600,720,300],seconds:11920},{value:12,cost:[1262,2100,2520,1052],seconds:15016},{value:17.6,cost:[2837,4728,5674,2364],seconds:18922},{value:24,cost:[4723,7872,9446,3936],seconds:23842},{value:32,cost:[7380,12300,14760,6150],seconds:30040},{value:41.6,cost:[13842,23070,27684,11535],seconds:37852},{value:52.8,cost:[23088,38460,46152,19240],seconds:47694},{value:65.6,cost:[36060,60075,72090,30050],seconds:60092},{value:80,cost:[54072,90120,108144,45060],seconds:75718}],skills:["Defender","Warrior"]};
 const resources=["Gold","Iron","Water","Solar"];
+function profileFor(unit){return unit==="Explorer Trooper"?explorerTrooper:unit==="Nano Shieldman"?nanoShieldman:unit==="Exo-Soldier"?exoSoldier:null;}
 function explorerUpgrade(unit,stat,currentLevel,discount=0,speed=0){
- const profile=unit==="Explorer Trooper"?explorerTrooper:unit==="Exo-Soldier"?exoSoldier:null;
- if(!profile)return null;
- const rows=stat==="attack"?profile.attackUpgrades:profile.healthUpgrades,row=rows[currentLevel-1];
- if(!row)return null;
+ const profile=profileFor(unit);if(!profile)return null;
+ const rows=stat==="attack"?profile.attackUpgrades:profile.healthUpgrades,row=rows[currentLevel-1];if(!row)return null;
  return {cost:Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)])),durationMs:Math.ceil(row.seconds*1000*(100-speed)/100),maxLevel:rows.length+1};
 }
 function unitCombatStats(unit,levels={}){
- const profile=unit==="Exo-Soldier"?exoSoldier:explorerTrooper,attack={...profile.attack};let health=profile.health;
+ const profile=profileFor(unit)||explorerTrooper,attack={...profile.attack};let health=profile.health;
  for(let i=0;i<Math.max(0,Math.min(10,(Number(levels.attack)||1)-1));i++){
-  const v=profile.attackUpgrades[i].values;
-  attack.infantry+=v[0];attack.mobile+=v[1];attack.ranged+=v[2];attack.artillery+=v[4];
+  const v=profile.attackUpgrades[i].values;attack.infantry+=v[0];attack.mobile+=v[1];attack.ranged+=v[2];attack.artillery+=v[4];
  }
  for(let i=0;i<Math.max(0,Math.min(10,(Number(levels.defense)||1)-1));i++)health+=profile.healthUpgrades[i].value;
  return {...profile,attack,health};
 }
 function explorerCombatStats(levels={}){return unitCombatStats("Explorer Trooper",levels);}
-module.exports={explorerTrooper,exoSoldier,explorerUpgrade,explorerCombatStats,unitCombatStats,resources};
+module.exports={explorerTrooper,nanoShieldman,exoSoldier,explorerUpgrade,explorerCombatStats,unitCombatStats,resources};
