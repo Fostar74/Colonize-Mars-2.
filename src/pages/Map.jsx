@@ -112,6 +112,8 @@ function Map() {
   const [mapMines,setMapMines]=useState([]);
   const [myMineCount,setMyMineCount]=useState(0);
   const [mineCapacity,setMineCapacity]=useState(4);
+  const [mineRecallId,setMineRecallId]=useState(null);
+  const [mineNotice,setMineNotice]=useState("");
   const [availableArmy, setAvailableArmy] = useState({});
   const [availableResources,setAvailableResources]=useState({});
   const [tradeAmounts,setTradeAmounts]=useState({Gold:0,Iron:0,Water:0,Solar:0});
@@ -596,6 +598,23 @@ function Map() {
       setPreviewOpen(false);
     }catch(e){setMarchNotice(e.message);}finally{setMarchLoading(false);}
   };
+  const recallMineArmy=async mine=>{
+    setMineRecallId(Number(mine.id));setMineNotice("");
+    try{
+      const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
+      const response=await fetch(base+"/map/gathering/recall",{
+        method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
+        body:JSON.stringify({userId:Number(sessionStorage.getItem("userId")),mineId:Number(mine.id)})
+      });
+      const data=await response.json();
+      if(!response.ok)throw Error(data.message||"Could not recall the gathering army.");
+      setMapMines(data.mines||[]);setMyMineCount(Number(data.activeMineCount)||0);setMineCapacity(Number(data.gatheringCapacity)||mineCapacity);
+      setSelectedTarget(target=>target?.type==="mine"&&Number(target.id)===Number(mine.id)?{...target,...(data.mines||[]).find(item=>Number(item.id)===Number(mine.id))}:target);
+      window.dispatchEvent(new Event("game-progress-updated"));
+      setMineNotice(data.completed?t("Mine depleted. Your army and resources were returned automatically.","Мината се изчерпа. Армията и ресурсите бяха върнати автоматично."):t("Army recalled from the mine and returned to your base.","Армията е отзована от мината и върната в базата ти."));
+    }catch(error){setMineNotice(error.message);}
+    finally{setMineRecallId(null);}
+  };
   const stationRequest=async(path,payload,successMessage)=>{
     setStationBusy(true);setStationNotice("");
     try{
@@ -879,6 +898,8 @@ function Map() {
             {selectedTarget.claimed_by
               ? <p>{t("This mine is already being gathered by","Тази мина вече се добива от")} {selectedTarget.owner||t("another player","друг играч")}.</p>
               : <p>{t("Fixed mine stock: 5,000. Base gathering rate: 1,000 per hour. A replacement mine appears at a random free location when this one is depleted.","Фиксиран запас: 5 000. Начална скорост: 1 000 на час. След изчерпване мината се появява на случайно свободно място.")}</p>}
+            {Number(selectedTarget.claimed_by)===Number(sessionStorage.getItem("userId"))&&<button type="button" disabled={mineRecallId===Number(selectedTarget.id)} onClick={()=>recallMineArmy(selectedTarget)}>{mineRecallId===Number(selectedTarget.id)?t("Recalling…","Отзоваване…"):t("Recall army from mine","Отзови армията от мината")}</button>}
+            {mineNotice&&<p role="status">{localLabel(mineNotice)}</p>}
           </section>}
           {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
             <strong>{t("Alien garrison · Level","Извънземен гарнизон · Ниво")} {selectedTarget.level}</strong>
@@ -1094,8 +1115,12 @@ function Map() {
               const travelling=clock<Number(mine.arrives_at);
               const seconds=travelling?Math.max(0,Math.ceil((Number(mine.arrives_at)-clock)/1000)):Math.ceil(Number(mine.amount||0)/Math.max(1,Number(mine.gathering_rate)||1000)*3600);
               const resource={gold:t("Gold","злато"),iron:t("Iron","желязо"),water:t("Water","вода"),solar:t("Solar","слънчева енергия")}[mine.resource];
-              return <p key={mine.id}>{resource} · {mine.x}:{mine.y} · {travelling?t("Marching","Походът пътува"):t("Gathering","Събиране")} · {travelling?formatDuration(seconds*1000):Number(mine.amount||0).toLocaleString()+" "+t("remaining","остават")} · {formatDuration(seconds*1000)}</p>;
+              return <div key={mine.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",padding:"6px 0",borderBottom:"1px solid #536c80"}}>
+                <span>{resource} · {mine.x}:{mine.y} · {travelling?t("Marching","Походът пътува"):t("Gathering","Събиране")} · {travelling?formatDuration(seconds*1000):Number(mine.amount||0).toLocaleString()+" "+t("remaining","остават")} · {formatDuration(seconds*1000)}</span>
+                <button type="button" disabled={mineRecallId===Number(mine.id)} onClick={()=>recallMineArmy(mine)}>{mineRecallId===Number(mine.id)?t("Recalling…","Отзоваване…"):t("Recall army","Отзови армията")}</button>
+              </div>;
             })}
+            {mineNotice&&<p role="status">{localLabel(mineNotice)}</p>}
           </section>}
           {(campaignTab==="reports" || scoutMarches.length>0) && <h3>{t("Reconnaissance","Разузнаване")}</h3>}
           {scoutMarches.map(mission=>{

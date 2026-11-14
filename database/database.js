@@ -2850,6 +2850,30 @@ class DatabaseManager {
     })();
   }
 
+  recallGathering(userId,mineId) {
+    return db.transaction(()=>{
+      this.settleResourceMines();
+      const mine=db.prepare("SELECT * FROM resource_mines WHERE id=? AND claimed_by=?").get(Number(mineId),Number(userId));
+      if(!mine){
+        const map=this.getMapResources(userId);
+        return {success:true,completed:true,...map};
+      }
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      const now=Date.now(),startAt=Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now);
+      const gathered=mine.gathering_rate?Math.min(Number(mine.amount)||0,Math.floor(Math.max(0,now-startAt)*Number(mine.gathering_rate)/3600000)):0;
+      const resourceKey={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
+      if(resourceKey)current.resources[resourceKey]=(Number(current.resources[resourceKey])||0)+gathered;
+      const returnedUnits=JSON.parse(mine.gathering_units||"{}");
+      for(const [unit,count] of Object.entries(returnedUnits))current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      db.prepare(`UPDATE resource_mines SET amount=?,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,
+        gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=? AND claimed_by=?`).run(Math.max(0,Number(mine.amount)-gathered),mine.id,userId);
+      return {success:true,returnedUnits,resource:resourceKey,amountCollected:gathered,...this.getMapResources(userId)};
+    })();
+  }
+
   getPublicBases() {
     return db.prepare(`
       SELECT u.username, b.x, b.y, m.alliance_id,

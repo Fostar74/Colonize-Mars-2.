@@ -129,6 +129,15 @@ router.post("/map/gathering", requireSession, (req,res)=>{
   }catch(error){console.error("Gathering march:",error);res.status(500).json({message:"Could not start the gathering march."});}
 });
 
+router.post("/map/gathering/recall", requireSession, (req,res)=>{
+  try{
+    const userId=Number(req.body.userId);
+    const result=db.recallGathering(userId,Number(req.body.mineId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Recall gathering army:",error);res.status(500).json({message:"Could not recall the gathering army."});}
+});
+
 router.post("/upgrade-building", requireSession, (req, res) => {
   try {
     const result = db.upgradeBuilding(req.body.userId, req.body.name);
