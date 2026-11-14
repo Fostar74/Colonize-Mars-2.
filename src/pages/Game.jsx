@@ -210,12 +210,17 @@ function EventsPanel() {
   return <div style={{color:"#eef6ff",padding:12,minWidth:320}}>
     <h2>{t("Saturday Alien Invasion","Съботна извънземна инвазия")}</h2>
     <p>{data.active?t("Event is active","Събитието е активно"):data.settled?t("Event results are final","Класирането е окончателно"):t("Scheduled for","Насрочено за")} {date(data.startsAt)} – {date(data.endsAt)}</p>
-    <p>{t("Each alliance leader can start one run on Saturday. Alien waves arrive every 30 seconds and grow stronger. Eliminated players receive no more attacks.","Лидерът на всеки алианс може да стартира едно участие в събота. Извънземните вълни пристигат през 30 секунди и стават по-силни. Елиминираните играчи повече не са атакувани.")}</p>
+    <p>{t("The first alien wave attacks as soon as the leader starts the run. Stronger waves attack every minute until all troops are eliminated or wave 20 is completed. Eliminated players receive no more attacks.","Първата извънземна вълна атакува веднага щом лидерът стартира участието. По-силни вълни атакуват през една минута, докато войските не бъдат елиминирани или не бъде завършена вълна 20. Елиминираните играчи повече не са атакувани.")}</p>
     {data.alliance&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
       <strong>{data.alliance.name}</strong>
       {data.alliance.run&&<span> · {data.alliance.run.status==="active"?t("Participating","Участва"):t("Run complete","Участието приключи")}</span>}
       {data.alliance.canStart&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Starting…","Стартиране…"):t("Start for my alliance","Стартирай за алианса")}</button></div>}
-      {data.myResult&&<p>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString()} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>}
+      {data.myResult&&<div style={{marginTop:8,padding:10,borderRadius:8,background:"rgba(30,50,70,.7)"}}>
+        <p style={{margin:"0 0 6px"}}>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString()} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>
+        <p style={{margin:"0 0 6px"}}>{t("Waves survived","Издържани вълни")}: {Number(data.myResult.waves||0)} / 20</p>
+        {data.myResult.lastBattle&&<p style={{margin:"0 0 6px"}}>{t("Last attack","Последна атака")} · {t("Alien base level","Ниво на извънземната база")} {data.myResult.lastBattle.level}: {Number(data.myResult.lastBattle.alienCasualties||0).toLocaleString()} {t("aliens eliminated","извънземни елиминирани")} · {Number(data.myResult.lastBattle.remaining||0).toLocaleString()} {t("troops remaining","войници остават")}</p>}
+        {data.alliance.run?.status==="active"&&!data.myResult.eliminated&&<p style={{margin:0}}>{t("Next wave in","Следваща вълна след")}: {Math.max(0,Math.ceil((Number(data.myResult.nextAttackAt||labyrinthTick)-labyrinthTick)/1000))} {t("seconds","секунди")}</p>}
+      </div>}
       {}
       {data.alliance&&!data.alliance.run&&!data.alliance.canStart&&<p>{t("Only the alliance leader can start the event, and only during Saturday UTC.","Само лидерът на алианса може да стартира събитието в събота по UTC.")}</p>}
     </div>}
