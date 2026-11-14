@@ -354,7 +354,7 @@ function Map() {
     mineData.forEach((mine) => {
       const px = (mine.x-1) * tileSize + offset.x;
       const py = (mine.y-1) * tileSize + offset.y;
-      const icon = mineIcons[mine.type];
+      const icon = mineIcons[mine.resource];
 
       if (
         icon &&
