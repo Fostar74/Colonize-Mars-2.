@@ -201,7 +201,10 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
           {expandedSections[section] && <div className="building-grid">
             {buildings.map(name => {
               const level = Number(structures[name] || 0);
-              const next = level + (game.buildingJob?.name === name ? 1 : 0) + 1;
+              const queuedBuildings = game.buildingQueue || (game.queuedBuildingJob ? [game.queuedBuildingJob] : []);
+              const queuedLevels = queuedBuildings.filter(job => job.name === name).length;
+              const queueFull = !!game.buildingJob && queuedBuildings.length >= 2;
+              const next = level + (game.buildingJob?.name === name ? 1 : 0) + queuedLevels + 1;
               const cost = buildingPrice(name, next, game.allianceBonuses?.discount) || {Gold:0,Iron:0,Water:0,Solar:0};
               const affordable = Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
               return <div key={name} ref={questTarget?.building === name ? questDestination : null} className="building" style={{padding:14}}>
@@ -219,8 +222,8 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                 {game.buildingJob?.name === name && <div>{t("Construction:","Строеж:")} {formatTime(remaining(game.buildingJob))}</div>}
                 {game.queuedBuildingJob?.name === name && <div>{t("Queued: Level","На опашката: ниво")} {game.queuedBuildingJob.level}</div>}
                 <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>{t("Next:","Следващо:")} {cost.Gold} {t("Gold ·","злато ·")} {cost.Iron} {t("Iron ·","желязо ·")} {cost.Water} {t("Water ·","вода ·")} {cost.Solar} {t("Solar","слънчева енергия")}</p>
-                <button className="upgrade-btn" disabled={!!busy || !!game.queuedBuildingJob || next > 20 || !affordable} onClick={() => upgrade(name)}>
-                  {busy === name ? "Starting..." : game.queuedBuildingJob ? localLabel("Queue full") : next > 20 ? localLabel("Max level") : game.buildingJob ? localLabel("Queue as second") : !affordable ? localLabel("Not enough resources") : level === 0 ? localLabel("Build") : localLabel("Upgrade")}
+                <button className="upgrade-btn" disabled={!!busy || queueFull || next > 20 || !affordable} onClick={() => upgrade(name)}>
+                  {busy === name ? "Starting..." : queueFull ? localLabel("Queue full") : next > 20 ? localLabel("Max level") : game.buildingJob ? queuedBuildings.length ? t("Queue as third","Добави трети строеж") : localLabel("Queue as second") : !affordable ? localLabel("Not enough resources") : level === 0 ? localLabel("Build") : localLabel("Upgrade")}
                 </button>
               </div>;
             })}
