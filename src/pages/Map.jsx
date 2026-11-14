@@ -140,6 +140,7 @@ function Map() {
     campaignTab === "active" ? !mission.returned_at : mission.result || mission.returned_at);
   const playerMarches = (campaign.playerMissions || []).filter(mission =>
     campaignTab === "active" ? !mission.returned_at : mission.result || mission.returned_at);
+  const myGatheringMines=mapMines.filter(mine=>Number(mine.claimed_by)===Number(sessionStorage.getItem("userId")));
   const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || (campaign.playerMissions||[]).some(m=>!m.returned_at) || !!campaign.supportRoutes?.length || mapMines.some(m=>m.claimed_by&&m.arrives_at>Date.now());
   useEffect(()=>{
     if(!marchHistoryOpen&&!hasRoutes)return;
@@ -1082,8 +1083,17 @@ function Map() {
             <p>{t("The selected defense formation is used for future player battles. You can change it at any time.","Избраната формация за защита се използва в бъдещи битки с играчи. Можеш да я смениш по всяко време.")}</p>
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
           </section> : <>
-          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length &&
+          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !myGatheringMines.length &&
             <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
+          {campaignTab==="active"&&myGatheringMines.length>0&&<section>
+            <h3>{t("Gathering","Събиране")}</h3>
+            {myGatheringMines.map(mine=>{
+              const travelling=clock<Number(mine.arrives_at);
+              const seconds=travelling?Math.max(0,Math.ceil((Number(mine.arrives_at)-clock)/1000)):Math.ceil(Number(mine.amount||0)/Math.max(1,Number(mine.gathering_rate)||1000)*3600);
+              const resource={gold:t("Gold","злато"),iron:t("Iron","желязо"),water:t("Water","вода"),solar:t("Solar","слънчева енергия")}[mine.resource];
+              return <p key={mine.id}>{resource} · {mine.x}:{mine.y} · {travelling?t("Marching","Походът пътува"):t("Gathering","Събиране")} · {travelling?formatDuration(seconds*1000):Number(mine.amount||0).toLocaleString()+" "+t("remaining","остават")} · {formatDuration(seconds*1000)}</p>;
+            })}
+          </section>}
           {(campaignTab==="reports" || scoutMarches.length>0) && <h3>{t("Reconnaissance","Разузнаване")}</h3>}
           {scoutMarches.map(mission=>{
             const returning=clock>=mission.arrives_at;
