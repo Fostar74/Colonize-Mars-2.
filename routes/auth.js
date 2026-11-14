@@ -123,7 +123,7 @@ function requireSessionForMap(req, res, next) {
 
 router.post("/map/gathering", requireSession, (req,res)=>{
   try{
-    const result=db.startGathering(Number(req.body.userId),Number(req.body.mineId));
+    const result=db.startGathering(Number(req.body.userId),Number(req.body.mineId),req.body.units);
     if(result.error)return res.status(400).json({message:result.error});
     res.json({...result,...db.getMapResources(Number(req.body.userId))});
   }catch(error){console.error("Gathering march:",error);res.status(500).json({message:"Could not start the gathering march."});}
@@ -312,7 +312,7 @@ router.get("/reports/:userId",requireSession,(req,res)=>{
   try{
     const campaign=db.getAlienCampaign(Number(req.params.userId));
     const playerMissions=campaign.playerMissions||[];
-    res.json({...campaign,unreadIncoming:playerMissions.filter(mission=>mission.incoming&&(!mission.result||mission.unread)).length});
+    res.json({...campaign,unreadIncoming:playerMissions.filter(mission=>mission.incoming&&!mission.result&&!mission.returned_at&&Number(mission.arrives_at)>Date.now()).length});
   }catch(error){console.error("Report inbox:",error);res.status(500).json({message:"Reports unavailable."});}
 });
 router.post("/reports/read",requireSession,(req,res)=>{
