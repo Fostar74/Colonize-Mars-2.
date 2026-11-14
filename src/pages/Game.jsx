@@ -303,6 +303,31 @@ function Game() {
   const api=useMemo(()=> (process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,""),[]);
   useEffect(()=>{
     let active=true;
+    const checkBuildVersion=async()=>{
+      try{
+        const response=await fetch(api+"/app-version",{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
+        if(!response.ok)return;
+        const data=await response.json();
+        const version=String(data.version||"");
+        if(!active||!version)return;
+        const key="colonize-mars-build-version";
+        const previous=sessionStorage.getItem(key);
+        if(!previous){sessionStorage.setItem(key,version);return;}
+        if(previous!==version&&document.visibilityState==="visible"){
+          sessionStorage.setItem(key,version);
+          window.location.reload();
+        }
+      }catch{}
+    };
+    const onVisible=()=>{if(document.visibilityState==="visible")checkBuildVersion();};
+    checkBuildVersion();
+    const timer=window.setInterval(checkBuildVersion,45000);
+    document.addEventListener("visibilitychange",onVisible);
+    return()=>{active=false;window.clearInterval(timer);document.removeEventListener("visibilitychange",onVisible);};
+  },[api]);
+
+  useEffect(()=>{
+    let active=true;
     const refreshAttackAlerts=async()=>{
       try{
         const userId=sessionStorage.getItem("userId");
