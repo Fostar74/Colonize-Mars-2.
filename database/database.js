@@ -1102,6 +1102,14 @@ class DatabaseManager {
       if(db.prepare("SELECT 1 FROM alliance_members WHERE user_id=?").get(userId))return {error:"Already in an alliance."};
       const a=db.prepare("SELECT id FROM alliances WHERE name=? COLLATE NOCASE").get(name.trim());
       if(!a)return {error:"Alliance not found."};
+      const memberCount=db.prepare("SELECT COUNT(*) AS n FROM alliance_members WHERE alliance_id=?").get(a.id).n;
+      if(memberCount===0){
+        db.prepare("INSERT INTO alliance_members(user_id,alliance_id,role) VALUES (?,?,'Leader')").run(userId,a.id);
+        db.prepare("UPDATE alliances SET leader_id=? WHERE id=?").run(userId,a.id);
+        db.prepare("DELETE FROM alliance_applications WHERE user_id=?").run(userId);
+        db.prepare("DELETE FROM alliance_invitations WHERE user_id=?").run(userId);
+        return {joined:true,message:"The alliance had no members. You joined as its new leader."};
+      }
       db.prepare("INSERT OR IGNORE INTO alliance_applications(user_id,alliance_id,applied_at) VALUES (?,?,?)").run(userId,a.id,Date.now());
       return {applied:true,message:"Application sent. Wait for alliance leadership to accept."};
     })();
@@ -1145,9 +1153,10 @@ class DatabaseManager {
         const successor=db.prepare(`SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?
           ORDER BY CASE role WHEN 'Co-Leader' THEN 0 WHEN 'General' THEN 1 WHEN 'Strategist' THEN 2 WHEN 'Treasurer' THEN 3 WHEN 'Diplomat' THEN 4 ELSE 5 END,user_id LIMIT 1`)
           .get(actor.alliance_id,targetId);
-        if(!successor)return {error:"You are the only member. Invite another player before leaving."};
-        db.prepare("UPDATE alliance_members SET role='Leader' WHERE user_id=?").run(successor.user_id);
-        db.prepare("UPDATE alliances SET leader_id=? WHERE id=?").run(successor.user_id,actor.alliance_id);
+        if(successor){
+          db.prepare("UPDATE alliance_members SET role='Leader' WHERE user_id=?").run(successor.user_id);
+          db.prepare("UPDATE alliances SET leader_id=? WHERE id=?").run(successor.user_id,actor.alliance_id);
+        }
       }
       if(target.role==="Co-Leader"&&actor.role!=="Leader"&&userId!==targetId)return {error:"Only leader can remove co-leader."};
       this.syncGame(targetId);
