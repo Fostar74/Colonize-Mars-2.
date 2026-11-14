@@ -10,6 +10,7 @@ import MessagePanel from "./MessagePanel";
 import PlayerTalents from "./PlayerTalents";
 import Inventory from "./Inventory";
 import ReportsPanel from "./ReportsPanel";
+import InformationPanel from "./InformationPanel";
 
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
@@ -247,6 +248,7 @@ function Game() {
   const [castleName, setCastleName] = useState("Headquarter");
   const [resources, setResources] = useState(null);
   const [optionsVisible, setOptionsVisible] = useState(false);
+  const [showInformation,setShowInformation]=useState(false);
   const [avatarId,setAvatarId]=useState(()=>sessionStorage.getItem("avatarId")||"pilot-m");
   const [showAvatarPicker,setShowAvatarPicker]=useState(false);
   const [avatarSaving,setAvatarSaving]=useState(false);
@@ -473,6 +475,7 @@ function Game() {
             </select>
           </label>{" "}
           <button type="button" onClick={()=>{setShowAvatarPicker(value=>!value);setAvatarNotice("");}}>{t("Player avatar","Аватар на играча")} · {AVATARS.find(avatar=>avatar.id===avatarId)?.icon||"👨‍🚀"}</button>{" "}
+          <button type="button" onClick={()=>setShowInformation(true)}>{t("Information","Информация")}</button>{" "}
           <button onClick={logout}>{t("Log Out","Изход")}</button>
           {showAvatarPicker&&<section aria-label={t("Choose an avatar","Избери аватар")} style={{marginTop:12,padding:12,background:"#111820",border:"1px solid #59768a",borderRadius:10,width:"min(92vw, 560px)",boxSizing:"border-box"}}>
             <h3 style={{marginTop:0}}>{t("Choose your Mars avatar","Избери своя марсиански аватар")}</h3>
@@ -514,6 +517,7 @@ function Game() {
         </div>
       )}
 
+      {showInformation&&<div className="popup" style={{zIndex:1007}}><div className="popup-header"><span>{t("UNIT INFORMATION","ИНФОРМАЦИЯ ЗА ВОЙСКИТЕ")}</span><button className="close-button" onClick={()=>setShowInformation(false)}>X</button></div><div className="popup-content"><InformationPanel/></div></div>}
       {showBattleSimulator&&<div className="popup" style={{zIndex:1004}}>
         <div className="popup-header"><span>{t("COMBAT SIMULATOR","БОЕН СИМУЛАТОР")}</span><button className="close-button" onClick={()=>setShowBattleSimulator(false)}>X</button></div>
         <div className="popup-content"><BattleSimulator/></div>
