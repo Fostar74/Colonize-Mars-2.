@@ -7,10 +7,10 @@ const categories = {
   Elite: ["AI General","Gene Warrior"]
 };
 const tiers = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3, Elite:5 };
-const {explorerTrooper,nanoShieldman,exoSoldier,explorerUpgrade}=require("./unitProfiles");
+const {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,explorerUpgrade}=require("./unitProfiles");
 // Maximum resources a single surviving unit can carry home after a player battle.
 const cargoCapacity = {
-  "Explorer Trooper":10, "Exo-Soldier":10, "Plasma Bladesman":20, "Nano Shieldman":10,
+  "Explorer Trooper":10, "Exo-Soldier":10, "Plasma Bladesman":10, "Nano Shieldman":10,
   "Railgunner":15, "Pulse Sniper":15, "Drone Operator":15,
   "Rover Scout":80, "Hoverbike Rider":60, "Mech Walker":25, "Hover Drone Rider":40,
   "Demolition Bot":20, "Missile Carrier":50, "Particle Blaster":10, "Orbital Strike Beacon":10,
@@ -27,6 +27,7 @@ function unitPrice(unit) {
   if(unit==="Explorer Trooper")return {...explorerTrooper.price};
   if(unit==="Nano Shieldman")return {...nanoShieldman.price};
   if(unit==="Exo-Soldier")return {...exoSoldier.price};
+  if(unit==="Plasma Bladesman")return {...plasmaBladesman.price};
   const entry = Object.entries(categories).find(([,units])=>units.includes(unit));
   if (!entry) return null;
   const [category,units]=entry;
@@ -48,6 +49,7 @@ function unitRequirement(unit) {
   if(unit==="Explorer Trooper")return {...explorerTrooper.requirement};
   if(unit==="Nano Shieldman")return {...nanoShieldman.requirement};
   if(unit==="Exo-Soldier")return {...exoSoldier.requirement};
+  if(unit==="Plasma Bladesman")return {...plasmaBladesman.requirement};
   return {building:unlockBuildings[category],level:unlockLevels[category][units.indexOf(unit)]};
 }
 function allianceUpgradeDuration(duration, speed = 0) {
@@ -62,7 +64,7 @@ function upgradePrice(level, discount = 0, unit, stat) {
   return {Gold:amount,Iron:amount};
 }
 
-function unitTrainingDuration(unit){return unit==="Explorer Trooper"?explorerTrooper.trainingSeconds:unit==="Nano Shieldman"?nanoShieldman.trainingSeconds:unit==="Exo-Soldier"?exoSoldier.trainingSeconds:30;}
+function unitTrainingDuration(unit){return unit==="Explorer Trooper"?explorerTrooper.trainingSeconds:unit==="Nano Shieldman"?nanoShieldman.trainingSeconds:unit==="Exo-Soldier"?exoSoldier.trainingSeconds:unit==="Plasma Bladesman"?plasmaBladesman.trainingSeconds:30;}
 function unitUpgradeDetails(unit,stat,level,discount=0,speed=0){return explorerUpgrade(unit,stat,level,discount,speed);}
 // Building resource specialization; nextLevel starts at 1.
 const buildingBaseCosts = {
