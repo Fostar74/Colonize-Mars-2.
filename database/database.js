@@ -250,6 +250,11 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_seasons (week_start INTEGER PRIMARY KEY, ends_at INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, week_start INTEGER NOT NULL REFERENCES saturday_invasion_seasons(week_start), alliance_id INTEGER NOT NULL REFERENCES alliances(id), started_by INTEGER NOT NULL REFERENCES users(id), status TEXT NOT NULL DEFAULT 'active', started_at INTEGER NOT NULL, completed_at INTEGER, UNIQUE(week_start,alliance_id))");
     db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_members (run_id INTEGER NOT NULL REFERENCES saturday_invasion_runs(id), user_id INTEGER NOT NULL REFERENCES users(id), score INTEGER NOT NULL DEFAULT 0, waves INTEGER NOT NULL DEFAULT 0, eliminated INTEGER NOT NULL DEFAULT 0, next_attack_at INTEGER NOT NULL, last_battle TEXT, PRIMARY KEY(run_id,user_id))");
+    db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_attacks (id INTEGER PRIMARY KEY AUTOINCREMENT,run_id INTEGER NOT NULL REFERENCES saturday_invasion_runs(id),user_id INTEGER NOT NULL REFERENCES users(id),level INTEGER NOT NULL,origin_x INTEGER NOT NULL,origin_y INTEGER NOT NULL,launched_at INTEGER NOT NULL,arrives_at INTEGER NOT NULL,resolved_at INTEGER,result TEXT)");
+    db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_attacks_due ON saturday_invasion_attacks(resolved_at,arrives_at)");
+    db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_attacks_run ON saturday_invasion_attacks(run_id,user_id,resolved_at)");
+    const reinforcementColumns=new Set(db.prepare("PRAGMA table_info(alliance_reinforcements)").all().map(column=>column.name));
+    if(!reinforcementColumns.has("delivered_at"))db.exec("ALTER TABLE alliance_reinforcements ADD COLUMN delivered_at INTEGER");
     db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_members_due ON saturday_invasion_members(run_id,eliminated,next_attack_at)");
     db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_runs_week ON saturday_invasion_runs(week_start,status)");
     db.exec("CREATE TABLE IF NOT EXISTS labyrinth_players (user_id INTEGER PRIMARY KEY REFERENCES users(id), mission_day TEXT NOT NULL, missions_today INTEGER NOT NULL DEFAULT 0, crystal_mission INTEGER NOT NULL DEFAULT 0, last_mission_at INTEGER NOT NULL DEFAULT 0, crystals TEXT NOT NULL DEFAULT '{\"yellow\":0,\"blue\":0,\"orange\":0,\"purple\":0}', maze TEXT NOT NULL, current_room TEXT NOT NULL, visited TEXT NOT NULL DEFAULT '[]', rooms_opened INTEGER NOT NULL DEFAULT 1, deepest_depth INTEGER NOT NULL DEFAULT 0, total_moves INTEGER NOT NULL DEFAULT 0, medicine_found INTEGER NOT NULL DEFAULT 0, completed_at INTEGER)");
@@ -955,11 +960,17 @@ class DatabaseManager {
     const now=Date.now();
     const returning=db.prepare("SELECT id,sender_id,units FROM alliance_reinforcements WHERE sender_id=? AND recall_at IS NOT NULL AND returned_at IS NULL AND recall_at<=?").all(userId,now);
     for(const mission of returning){
-      const progress=this.syncGame(mission.sender_id);
-      if(!progress)continue;
+      const progress=this.syncGame(mission.sender_id);if(!progress)continue;
       for(const [unit,n] of Object.entries(JSON.parse(mission.units)))progress.army[unit]=(Number(progress.army[unit])||0)+n;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),mission.sender_id);
       db.prepare("UPDATE alliance_reinforcements SET returned_at=? WHERE id=? AND returned_at IS NULL").run(now,mission.id);
+    }
+    const arrivals=db.prepare("SELECT id,recipient_id,units FROM alliance_reinforcements WHERE recipient_id=? AND recall_at IS NULL AND returned_at IS NULL AND delivered_at IS NULL AND arrives_at<=?").all(userId,now);
+    for(const mission of arrivals){
+      const progress=this.syncGame(mission.recipient_id);if(!progress)continue;
+      for(const [unit,n] of Object.entries(JSON.parse(mission.units)))progress.army[unit]=(Number(progress.army[unit])||0)+n;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),mission.recipient_id);
+      db.prepare("UPDATE alliance_reinforcements SET delivered_at=? WHERE id=? AND delivered_at IS NULL AND returned_at IS NULL").run(now,mission.id);
     }
   }
   sendAllianceReinforcement(userId,recipientId,units){
@@ -979,7 +990,9 @@ class DatabaseManager {
       if(!total)return {error:"Select troops to send."};
       for(const [unit,n] of Object.entries(units))progress.army[unit]-=n;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),userId);
-      const now=Date.now(),travelMs=Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100)));
+      const now=Date.now();
+      const eventParticipant=db.prepare("SELECT 1 FROM saturday_invasion_members m JOIN saturday_invasion_runs r ON r.id=m.run_id WHERE m.user_id=? AND m.eliminated=0 AND r.status='active' AND r.week_start=?").get(recipientId,this.saturdayInvasionWindow(now).startsAt);
+      const travelMs=eventParticipant?30000:Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100)));
       const result=db.prepare("INSERT INTO alliance_reinforcements(alliance_id,sender_id,recipient_id,units,launched_at,arrives_at) VALUES (?,?,?,?,?,?)").run(members[0].alliance_id,userId,recipientId,JSON.stringify(units),now,now+travelMs);
       return {missionId:Number(result.lastInsertRowid),arrivesAt:now+travelMs};
     })();
@@ -1844,49 +1857,62 @@ class DatabaseManager {
     return db.transaction(()=>{
       const events=db.prepare("SELECT r.*,s.ends_at FROM saturday_invasion_runs r JOIN saturday_invasion_seasons s ON s.week_start=r.week_start WHERE r.status='active' AND s.settled=0 ORDER BY r.id").all();
       for(const event of events){
-        const due=db.prepare("SELECT * FROM saturday_invasion_members WHERE run_id=? AND eliminated=0 AND next_attack_at<=? ORDER BY user_id").all(event.id,now);
-        for(const participant of due){
-          const current=this.syncGame(participant.user_id);
-          if(!current){db.prepare("UPDATE saturday_invasion_members SET eliminated=1 WHERE run_id=? AND user_id=?").run(event.id,participant.user_id);continue;}
-          const army=Object.fromEntries(Object.entries(current.army||{}).filter(([,count])=>Number(count)>0));
+        const dueAttacks=db.prepare("SELECT * FROM saturday_invasion_attacks WHERE run_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(event.id,now);
+        for(const attack of dueAttacks){
+          const participant=db.prepare("SELECT * FROM saturday_invasion_members WHERE run_id=? AND user_id=?").get(event.id,attack.user_id);
+          if(!participant||participant.eliminated){db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify({cancelled:true}),attack.id);continue;}
+          this.settleAllianceReinforcements(attack.user_id);
+          const current=this.syncGame(attack.user_id);
+          const army=Object.fromEntries(Object.entries(current?.army||{}).filter(([,count])=>Number(count)>0));
           const armySize=Object.values(army).reduce((sum,count)=>sum+Number(count||0),0);
-          if(!armySize){
-            db.prepare("UPDATE saturday_invasion_members SET eliminated=1,waves=waves+1,next_attack_at=? WHERE run_id=? AND user_id=?").run(event.ends_at,event.id,participant.user_id);
+          if(!current||!armySize){
+            db.prepare("UPDATE saturday_invasion_members SET eliminated=1 WHERE run_id=? AND user_id=?").run(event.id,attack.user_id);
+            db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify({level:attack.level,eliminated:true}),attack.id);
             continue;
           }
-          const level=Math.min(20,participant.waves+1),aliens=this.getAlienArmy(level);
+          const level=attack.level,aliens=this.getAlienArmy(level);
           const formations=require("../src/shared/formations"),combat=require("../shared/combatEngine");
           const defaultRows=formations.defaultFormation();
-          const defense=this.getFormations(participant.user_id),preset=defense.defensePresets?.[String(defense.defenseSlot)]||{};
+          const defense=this.getFormations(attack.user_id),preset=defense.defensePresets?.[String(defense.defenseSlot)]||{};
           const defenseFormation=Object.entries(army).map(([unit,count])=>({unit,count,row:Number(preset[unit])||Number(defaultRows[unit])||1}));
           const alliance=current.allianceBonuses||{};
           const result=combat.fight(aliens,army,null,{
             unitResearch:alliance.units||{},
-            unitUpgrades:participant.unit_upgrades?JSON.parse(participant.unit_upgrades):{},
-            infantryAttack:this.protocolBonus(participant.user_id,"Infantry Command"),
-            infantryHealth:this.protocolBonus(participant.user_id,"Infantry Command"),
-            mobileAttack:this.protocolBonus(participant.user_id,"Mobile Warfare"),
-            artilleryAttack:this.protocolBonus(participant.user_id,"Heavy Artillery"),
-            dodge:this.protocolBonus(participant.user_id,"Evasion Protocol"),
-            revive:this.protocolBonus(participant.user_id,"Nano Regeneration")
+            infantryAttack:this.protocolBonus(attack.user_id,"Infantry Command"),
+            infantryHealth:this.protocolBonus(attack.user_id,"Infantry Command"),
+            mobileAttack:this.protocolBonus(attack.user_id,"Mobile Warfare"),
+            artilleryAttack:this.protocolBonus(attack.user_id,"Heavy Artillery"),
+            dodge:this.protocolBonus(attack.user_id,"Evasion Protocol"),
+            revive:this.protocolBonus(attack.user_id,"Nano Regeneration")
           },{playerDefense:true,defenderFormation,attackerIsAlien:true});
-          const survivors=result.defenderSurvivors||{};
-          const wounded={};
-          for(const [unit,count] of Object.entries(army)){
-            const lost=Math.max(0,(Number(count)||0)-(Number(survivors[unit])||0));
-            if(lost>0)wounded[unit]=lost;
-          }
+          const survivors=result.defenderSurvivors||{},wounded={};
+          for(const [unit,count] of Object.entries(army)){const lost=Math.max(0,(Number(count)||0)-(Number(survivors[unit])||0));if(lost>0)wounded[unit]=lost;}
           const lost=Object.values(wounded).reduce((sum,count)=>sum+Number(count||0),0);
-          if(Object.keys(wounded).length)this.recordHospitalWounds(participant.user_id,"saturday-invasion",event.id,wounded,"event",event.ends_at);
-          const score=Object.values(aliens).reduce((sum,count)=>sum+Number(count||0),0)-Object.values(result.survivors||{}).reduce((sum,count)=>sum+Number(count||0),0);
-          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(survivors),participant.user_id);
-          const remaining=Object.values(survivors).reduce((sum,count)=>sum+Number(count||0),0);
-          const eliminated=remaining<=0;
-          const battle={level,rounds:result.rounds,enemyUnits:Object.values(aliens).reduce((sum,count)=>sum+count,0),alienCasualties:Math.max(0,score),troopsLost:lost,troopsWounded:lost,remaining};
-          db.prepare("UPDATE saturday_invasion_members SET score=score+?,waves=waves+1,eliminated=?,next_attack_at=?,last_battle=? WHERE run_id=? AND user_id=?").run(Math.max(0,score),eliminated?1:0,eliminated?event.ends_at:now+60000,JSON.stringify(battle),event.id,participant.user_id);
+          if(Object.keys(wounded).length)this.recordHospitalWounds(attack.user_id,"saturday-invasion",event.id,wounded,"event",event.ends_at);
+          const enemyCount=Object.values(aliens).reduce((sum,count)=>sum+Number(count||0),0);
+          const enemyRemaining=Object.values(result.survivors||{}).reduce((sum,count)=>sum+Number(count||0),0);
+          const score=Math.max(0,enemyCount-enemyRemaining);
+          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(survivors),attack.user_id);
+          const remaining=Object.values(survivors).reduce((sum,count)=>sum+Number(count||0),0),eliminated=remaining<=0;
+          const battle={level,rounds:result.rounds,enemyUnits:enemyCount,alienCasualties:score,troopsLost:lost,troopsWounded:lost,remaining};
+          db.prepare("UPDATE saturday_invasion_members SET score=score+?,waves=waves+1,eliminated=?,last_battle=? WHERE run_id=? AND user_id=?").run(score,eliminated?1:0,JSON.stringify(battle),event.id,attack.user_id);
+          db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify(battle),attack.id);
         }
-        const alive=db.prepare("SELECT COUNT(*) AS n FROM saturday_invasion_members WHERE run_id=? AND eliminated=0").get(event.id).n;
-        if(!alive){
+        const dueMembers=db.prepare("SELECT * FROM saturday_invasion_members WHERE run_id=? AND eliminated=0 AND waves<20 AND next_attack_at<=? ORDER BY user_id").all(event.id,now);
+        for(const participant of dueMembers){
+          if(db.prepare("SELECT 1 FROM saturday_invasion_attacks WHERE run_id=? AND user_id=? AND resolved_at IS NULL LIMIT 1").get(event.id,participant.user_id))continue;
+          this.settleAllianceReinforcements(participant.user_id);
+          const current=this.syncGame(participant.user_id),army=Object.fromEntries(Object.entries(current?.army||{}).filter(([,count])=>Number(count)>0));
+          if(!Object.keys(army).length){db.prepare("UPDATE saturday_invasion_members SET eliminated=1 WHERE run_id=? AND user_id=?").run(event.id,participant.user_id);continue;}
+          const level=participant.waves+1,bases=alienBases.filter(base=>base.level===level);
+          const source=bases.length?bases[(Number(participant.user_id)+participant.waves-1)%bases.length]:{x:50,y:50};
+          const launchedAt=now,arrivesAt=now+60000;
+          db.prepare("INSERT INTO saturday_invasion_attacks(run_id,user_id,level,origin_x,origin_y,launched_at,arrives_at) VALUES (?,?,?,?,?,?,?)").run(event.id,participant.user_id,level,source.x,source.y,launchedAt,arrivesAt);
+          db.prepare("UPDATE saturday_invasion_members SET next_attack_at=? WHERE run_id=? AND user_id=?").run(launchedAt+60000,event.id,participant.user_id);
+        }
+        const remaining=db.prepare("SELECT COUNT(*) AS n FROM saturday_invasion_members WHERE run_id=? AND eliminated=0 AND waves<20").get(event.id).n;
+        const inFlight=db.prepare("SELECT COUNT(*) AS n FROM saturday_invasion_attacks WHERE run_id=? AND resolved_at IS NULL").get(event.id).n;
+        if(!remaining&&!inFlight){
           db.prepare("UPDATE saturday_invasion_runs SET status='completed',completed_at=? WHERE id=?").run(now,event.id);
           this.recoverEventHospital("saturday-invasion",event.id,now);
         }
@@ -1897,7 +1923,28 @@ class DatabaseManager {
     })();
   }
 
-  settleSaturdayAllianceInvasion(weekStart) {
+  restartSaturdayAllianceInvasion(userId) {
+    const now=Date.now(),window=this.saturdayInvasionWindow(now);
+    if(now<window.startsAt||now>=window.endsAt)return {error:"The Saturday invasion can only be restarted on Saturday (UTC)."};
+    const reset=db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance before restarting the event."};
+      if(member.role!=="Leader")return {error:"Only the alliance leader can restart this event."};
+      const run=db.prepare("SELECT id FROM saturday_invasion_runs WHERE week_start=? AND alliance_id=?").get(window.startsAt,member.alliance_id);
+      if(!run)return {error:"There is no active run to restart."};
+      this.recoverEventHospital("saturday-invasion",run.id,now);
+      db.prepare("DELETE FROM hospital_entries WHERE source='saturday-invasion' AND source_id=?").run(run.id);
+      db.prepare("DELETE FROM saturday_invasion_attacks WHERE run_id=?").run(run.id);
+      db.prepare("DELETE FROM saturday_invasion_members WHERE run_id=?").run(run.id);
+      db.prepare("DELETE FROM saturday_invasion_runs WHERE id=?").run(run.id);
+      return {success:true,allianceId:member.alliance_id};
+    })();
+    if(reset.error)return reset;
+    const started=this.startSaturdayAllianceInvasion(userId);
+    return started.error?started:{...started,restarted:true,message:"Alliance invasion restarted from wave 1."};
+  }
+
+  settleSaturdayAllianceInvasion(weekStart) {  settleSaturdayAllianceInvasion(weekStart) {
     return db.transaction(()=>{
       const season=db.prepare("SELECT * FROM saturday_invasion_seasons WHERE week_start=?").get(weekStart);
       if(!season||season.settled||Date.now()<season.ends_at)return false;
@@ -2094,6 +2141,14 @@ class DatabaseManager {
     this.resolveAlienMissions(userId);
     const current = this.syncGame(userId);
     const playerMissions=this.getPlayerMissions(userId);
+    this.resolveSaturdayAllianceInvasions();
+    const invasionRoutes=db.prepare(`SELECT attack.id,attack.level,attack.origin_x AS originX,attack.origin_y AS originY,attack.launched_at AS launchedAt,attack.arrives_at AS arrivesAt,base.x AS targetX,base.y AS targetY
+      FROM saturday_invasion_attacks attack
+      JOIN saturday_invasion_members member ON member.run_id=attack.run_id AND member.user_id=attack.user_id
+      JOIN saturday_invasion_runs run ON run.id=attack.run_id
+      JOIN base_positions base ON base.user_id=attack.user_id
+      WHERE attack.user_id=? AND run.status='active' AND attack.resolved_at IS NULL AND attack.arrives_at>?
+      ORDER BY attack.id DESC`).all(userId,Date.now());
     const scoutMissions = db.prepare("SELECT * FROM scout_missions WHERE user_id=? AND (returned_at IS NULL OR id IN (SELECT id FROM scout_missions WHERE user_id=? ORDER BY id DESC LIMIT 20)) ORDER BY id DESC")
       .all(userId,userId).map(({origin,target,report,...mission})=>({...mission,origin:JSON.parse(origin),target:JSON.parse(target),report:report ? JSON.parse(report) : null}));
 
@@ -2113,7 +2168,7 @@ class DatabaseManager {
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerMissions,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,mothershipEvent:this.getMothershipEvent(userId)};
+    return {scoutMissions,playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,mothershipEvent:this.getMothershipEvent(userId)};
   }
 
   getAlienStationStatus(userId){
