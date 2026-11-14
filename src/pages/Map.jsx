@@ -699,7 +699,7 @@ function Map() {
     start:clock<m.arrives_at?m.launched_at:m.arrives_at,end:clock<m.arrives_at?m.arrives_at:m.returns_at,
   }));
   const invasionRoutes=(campaign.invasionRoutes||[]).map(m=>({
-    id:"invasion-"+m.id,color:"#ff6b5e",from:{x:m.originX,y:m.originY},to:{x:m.targetX,y:m.targetY},start:m.launchedAt,end:m.arrivesAt
+    id:"invasion-"+m.id,color:"#ff6b5e",level:m.level,targetName:m.targetName,from:{x:m.originX,y:m.originY},to:{x:m.targetX,y:m.targetY},start:m.launchedAt,end:m.arrivesAt
   }));
   const gatheringRoutes=mapMines.filter(m=>m.claimed_by&&Number(m.arrives_at)>clock).map(m=>({
     id:"gather-"+m.id,color:"#ffd166",from:{x:m.origin_x,y:m.origin_y},to:{x:m.x,y:m.y},start:m.launched_at,end:m.arrives_at
@@ -742,6 +742,7 @@ function Map() {
           const progress=Math.max(0,Math.min(1,(clock-route.start)/Math.max(1,route.end-route.start)));
           const x=from.x+(to.x-from.x)*progress,y=from.y+(to.y-from.y)*progress;
           return <g key={route.id}>
+            {route.id.startsWith("invasion-")&&<title>{t("Alien Base Lv","Извънземна база ниво")} {route.level} → {route.targetName}</title>}
             <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke={route.color} strokeWidth="3" strokeDasharray={route.id.startsWith("scout-")?"7 5":undefined}/>
             <circle cx={x} cy={y} r="6" fill={route.color} stroke="white" strokeWidth="2"/>
           </g>;
@@ -797,6 +798,9 @@ function Map() {
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
         <input type="text" id="usernameInput" placeholder={localLabel("Search Username")} />
+Warning: truncated output (original token count: 12564)
+Total output lines: 369
+
         <button onClick={searchByUsername}>{t("Search","Търси")}</button>
         <div style={{marginTop:6}}>
           <input type="number" id="xCoord" placeholder="X (1–100)" style={{width:90}} />
@@ -881,192 +885,7 @@ function Map() {
           </section>}
           {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
             <strong>{t("Alien garrison · Level","Извънземен гарнизон · Ниво")} {selectedTarget.level}</strong>
-            {campaign.garrisons?.[selectedTarget.level] ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:6,marginTop:8}}>
-              {Object.entries(campaign.garrisons[selectedTarget.level]).map(([unit,count])=><div key={unit}>{localLabel(unit)}: <strong>{count.toLocaleString()}</strong></div>)}
-              <div style={{gridColumn:"1 / -1",marginTop:6,fontWeight:"bold"}}>{t("Total defenders:","Общо защитници:")} {Object.values(campaign.garrisons[selectedTarget.level]).reduce((sum,n)=>sum+n,0).toLocaleString()}</div>
-            </div> : <p>{t("Loading fixed garrison data...","Зареждане на гарнизона…")}</p>}
-            <p style={{fontSize:12}}>{t("Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.","По-високите нива имат по-големи и по-силни гарнизони. Крепостта на ниво 20 има извънземен владетел.")}</p>
-          </div>}
-          {!marchDraft && selectedTarget?.type!=="station" && <div>
-            <p>{t("Choose mission type:","Избери вид мисия:")}</p>
-            <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
-              {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:selectedTarget?.type==="mine"?["Gather"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
-                const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
-                const mothership=selectedTarget?.type==="mothership";
-                const shielded=Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now();
-                const blockedByShield=shielded&&(type==="Attack"||type==="Espionage");
-                const allowed=!blockedByShield&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own&&!sameAllianceTarget)): type==="Support"?!field&&!alien&&!own&&canSupport:
-                  type==="Espionage"?!field&&!own:
-                  type==="Patrol"?field:
-                  type==="Gather"?selectedTarget?.type==="mine"&&!selectedTarget?.claimed_by:
-                  type==="Trade"?!field&&!alien&&!own&&(campaign.tradeModuleLevel||0)>=3:
-                  type==="Relocation"?field:false);
-                return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}
-                  style={{padding:"12px 18px",background:allowed?(type==="Attack"?"#9e4437":"#205c78"):"#253441",color:allowed?"white":"#788796",border:"1px solid #50718b",borderRadius:7,cursor:allowed?"pointer":"not-allowed"}}>
-                  {type==="Attack"?"⚔ ":type==="Espionage"?"◈ ":type==="Support"?"🛡 ":""}{localLabel(type)}
-                </button>;
-              })}
-            </div>
-            {selectedTarget?.type==="castle"&&!targetIsOwn&&Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now()&&<p role="status" style={{color:"#c4f4ff",background:"rgba(41,117,145,.35)",padding:10,borderRadius:7}}>{t("This player is protected by a 24-hour Plasma Shield. Attacks and espionage are blocked until it expires.","Този играч е защитен от 24-часов плазмен щит. Атаките и шпионажът са блокирани до изтичането му.")}</p>}
-            {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
-            {sameAllianceTarget&&<p role="status">{t("You cannot attack a member of your alliance.","Не можеш да атакуваш член на своя алианс.")}</p>}
-            {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
-          </div>}
-          {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
-          {marchDraft && <div>
-            <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
-            {marchDraft.type==="Trade" ? <div>
-              <p>{t("Direct transfers have been replaced by the marketplace. Publish an offer from your base; the other player must accept it before resources move.","Директното изпращане е заменено с пазар. Публикувай оферта от базата си; другият играч трябва да я приеме, преди ресурсите да се преместят.")}</p>
-              <button type="button" onClick={()=>{window.location.href="/#/game?market=1";}}>{t("Open marketplace","Отвори пазара")}</button>
-              <button type="button" onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
-            </div> : <>
-            {marchDraft.type === "Attack" && (marchDraft.target.type === "alien"||marchDraft.target.type==="mothership") && <>
-            <p>{t("Cyber Knight leads this attack · Level","Киберрицарят води похода · Ниво")} {campaign.knightLevel || 1} {t("(required)","(задължителен)")}</p>
-            <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
-              {knightAdded ? localLabel("Remove Cyber Knight") : localLabel("Add Cyber Knight")}
-            </button>
-            {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
-            </>}
-            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",margin:"10px 0"}}><p style={{margin:0}}>{t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p><button type="button" disabled={!availableTroopCount} title={t("Only troops currently available at your base can be selected. Wounded troops must first recover in the Hospital.","Могат да се изберат само наличните войници в базата. Ранените трябва първо да се възстановят в болницата.")} onClick={addAllAvailableTroops}>{availableTroopCount<=marchLimit?t("Add All Available","Добави всички налични"):t("Add up to 50,000","Добави до 50 000")}</button></div>{availableTroopCount>marchLimit&&<p style={{fontSize:12,color:"#b5c7d9"}}>{t("Only the first 50,000 available troops in the list will be selected.","Ще бъдат избрани първите 50 000 налични войници от списъка.")}</p>}
-            {marchDraft.type==="Attack" && marchDraft.target.type==="castle" && <p>{t("Estimated cargo capacity if the surviving army wins:","Очаквана товароносимост при победа на оцелялата армия:")} {selectedCargoCapacity.toLocaleString()} {t("resources","ресурси")}</p>}
-            {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
-            {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
-            <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
-              {units.map(unit=><label key={unit} style={{background:"#20384d",border:"1px solid #46637a",padding:10,borderRadius:8,display:"flex",flexDirection:"column",gap:6,opacity:Number(availableArmy[unit]||0)>0?1:.5}}>
-                <strong>{localLabel(unit)}</strong>
-                <span>{t("Available:","Налични:")} {Number(availableArmy[unit]||0)}</span>
-                <span>{t("Cargo per unit:","Товароносимост на единица:")} {Number(unitEconomy.cargoCapacity?.[unit]||0)}</span>
-                <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
-                  onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
-                <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>{t("MAX","МАКС.")}</button>
-
-              </label>)}
-            </div>
-            {marchDraft.type==="Attack" && (marchDraft.target.type==="alien" || marchDraft.target.type==="castle") && <div style={{margin:"10px 0"}}>
-              <strong>{t("Choose an attack formation","Избери формация за атака")}</strong>
-              <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
-                {[1,2,3,4,5].map(slot=>{
-                  const saved=attackPresets[slot];
-                  return <button key={slot} type="button" disabled={!saved}
-                    aria-pressed={String(slot)===marchFormationSlot}
-                    onClick={()=>{
-                      setMarchFormationSlot(String(slot));
-                      setFormationRows(saved||{});
-                    }}
-                    style={{padding:"9px 14px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:String(slot)===marchFormationSlot?"#26765e":"#20384d",opacity:saved?1:.5}}>
-                    {attackNames[slot]||t("Attack formation","Формация за атака")+" "+slot}
-                  </button>;
-                })}
-              </div>
-              {!Object.keys(attackPresets).length && <p>{t("No saved attack formations yet. The standard attack layout is selected.","Още няма запазени формации за атака. Избрана е стандартната атака.")}</p>}
-            </div>
-            }
-            <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
-              <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
-              {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
-              <button disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
-              <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
-            </div>
-            {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
-            <p style={{fontSize:12,color:"#b5c7d9"}}>{marchDraft.type==="Gather"?t("Selected troops are reserved until the mine is depleted, then they return to your base.","Избраните войски се отделят до изчерпване на мината, след което се връщат в базата."):t("Selected troops leave your base immediately and return after the mission.","Избраните войски напускат базата веднага и се връщат след мисията.")}</p>
-            </>}
-          </div>}
-          {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{localLabel(marchNotice)}</p>}
-        </div>
-      </div>}
-      {previewOpen && marchDraft && <div role="dialog" aria-modal="true" aria-label={t("Formation preview","Преглед на строя")} style={{position:"fixed",inset:0,zIndex:55,background:"rgba(0,0,0,.86)",display:"grid",placeItems:"center",padding:16}}>
-        <div style={{width:"min(980px,96vw)",maxHeight:"90vh",overflowY:"auto",background:"#e8dec1",color:"#211c16",border:"3px solid #76664b",borderRadius:10,padding:18,boxShadow:"0 12px 50px #000"}}>
-          <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:12}}>
-            <div><h2 style={{margin:"0 0 4px"}}>{t("Attack formation preview","Преглед на бойната формация")}</h2><div>{marchDraft.target.username||t("Alien base","Извънземна база")} · {marchDraft.target.x}:{marchDraft.target.y}</div></div>
-            <button type="button" aria-label={t("Close preview","Затвори прегледа")} onClick={()=>setPreviewOpen(false)}>✕</button>
-          </div>
-          <div style={{overflowX:"auto",marginTop:14}}><div style={{minWidth:640,display:"grid",gridTemplateColumns:"56px repeat(7,minmax(0,1fr))",gap:6}}>
-            {[4,3,2,1].map(row=><React.Fragment key={row}><strong style={{alignSelf:"center",textAlign:"center"}}>{row}<br/>{t("ROW","РЕД")}</strong>{Array.from({length:7},(_,column)=>{
-              const unit=units.find(name=>previewRows[name]===row&&previewRows.columns[name]===column);
-              const count=unit?Number(marchUnits[unit]||0):0;
-              return <div key={column} style={{minHeight:92,display:"flex",flexDirection:"column",justifyContent:"space-between",padding:6,background:"#f6f0df",border:"1px solid #9d8b6a",borderRadius:4,textAlign:"center"}}>
-                {unit&&count>0&&<><strong style={{fontSize:12}}>{localLabel(unit)}</strong><small>{formationUnitTypes[unit]?.[1] ? t(formationUnitTypes[unit][0],formationUnitTypes[unit][1]) : ""} · {t("Range","Обхват")} {formationUnitTypes[unit]?.[2]}</small><b style={{background:"white",borderRadius:4,padding:3}}>{count.toLocaleString()}</b></>}
-              </div>;
-            })}</React.Fragment>)}
-          </div></div>
-          <div style={{margin:"12px 0",padding:10,textAlign:"center",fontWeight:"bold",background:"#897452",color:"white"}}>{t("Target wall","Стена на целта")}</div>
-          <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {t("Formation:","Формация:")} {attackNames[marchFormationSlot]||t("Standard attack","Стандартна атака")}</p>
-          <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
-            <button type="button" onClick={()=>setPreviewOpen(false)}>{t("Back to army selection","Назад към избора на войници")}</button>
-            <button type="button" disabled={marchLoading || (marchDraft.target.type==="alien" && (campaign.knightBusy || !knightAdded || !marchFormationSlot)) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{t("Send attack","Изпрати похода")}</button>
-          </div>
-        </div>
-      </div>}
-      {marchSuccess && <div role="dialog" aria-modal="true" aria-label={t("March sent","Походът е изпратен")} style={{position:"fixed",inset:0,zIndex:60,background:"rgba(0,0,0,.72)",display:"grid",placeItems:"center",padding:16}}>
-        <div style={{width:"min(640px,94vw)",padding:28,textAlign:"center",background:"#f4efdf",color:"#181818",border:"3px solid #857450",borderRadius:10,boxShadow:"0 12px 50px #000"}}>
-          <h2>{t("March sent successfully!","Походът е изпратен успешно!")}</h2><p>{localLabel(marchSuccess)}</p>
-          {marchSuccess.includes("Mother Ship")&&<button type="button" onClick={()=>{window.location.href="/#/game?hospital=1";}}>{t("Open Hospital","Отвори болницата")}</button>} <button type="button" onClick={()=>setMarchSuccess("")} style={{background:"#26765e",color:"white",padding:"10px 24px"}}>{t("Continue","Продължи")}</button>
-        </div>
-      </div>}
-      {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
-        <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
-          <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</h2><button onClick={()=>setMarchHistoryOpen(false)}>{t("✕ Close","✕ Затвори")}</button></div>
-          <nav aria-label={t("Campaign sections","Раздели на кампаниите")} style={{display:"flex",flexWrap:"wrap",gap:8,margin:"16px 0"}}>
-            {[
-              ["campaigns",t("Campaigns","Кампании")],
-              ["formations",t("Formations","Формации")]
-            ].map(([tab,label])=>{
-              const active=tab==="formations"?campaignTab==="formations":campaignTab!=="formations";
-              return <button key={tab} type="button" aria-pressed={active}
-                style={{padding:"8px 14px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:active?"#27657e":"#20384d"}}
-                onClick={()=>{
-                  if(tab==="formations"){
-                    setPresetRows(attackPresets[presetSlot]||{});
-                    setPresetName(attackNames[presetSlot]||"");
-                    setFormationMode("attack");
-                    setCampaignTab("formations");
-                  }else if(campaignTab==="formations"){
-                    setCampaignTab("active");
-                  }
-                }}>{label}</button>;
-            })}
-          </nav>
-          {campaignTab!=="formations" && <nav aria-label={t("Campaign views","Изглед на кампаниите")} style={{display:"flex",gap:8,margin:"8px 0"}}>
-            {[
-              ["active",t("Active Marches","Активни походи")]
-            ].map(([tab,label])=><button key={tab} type="button" aria-pressed={campaignTab===tab}
-              style={{padding:"7px 12px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:campaignTab===tab?"#27657e":"#20384d"}}
-              onClick={()=>setCampaignTab(tab)}>{label}</button>)}
-          </nav>}
-          {campaignTab==="formations" ? <section>
-            <div style={{display:"flex",gap:8,margin:"12px 0"}}>
-              {["attack","defense"].map(mode=><button key={mode} type="button" aria-pressed={formationMode===mode}
-                onClick={()=>{
-                  setFormationMode(mode);
-                  const nextPresets=mode==="defense"?defensePresets:attackPresets;
-                  const nextNames=mode==="defense"?defenseNames:attackNames;
-                  setPresetRows(nextPresets[presetSlot]||{});
-                  setPresetName(nextNames[presetSlot]||"");
-                }}
-                style={{padding:"9px 16px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:formationMode===mode?"#26765e":"#20384d"}}>
-                {mode==="attack"?t("Attack formations","Формации за атака"):t("Defense formations","Формации за защита")}
-              </button>)}
-            </div>
-            <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"12px 0"}}>
-              {[1,2,3,4,5].map(slot=>{
-                const saved=(formationMode==="defense"?defensePresets:attackPresets)[slot];
-                const name=(formationMode==="defense"?defenseNames:attackNames)[slot];
-                return <button key={slot} type="button" aria-pressed={presetSlot===slot}
-                  onClick={()=>{
-                    setPresetSlot(slot);
-                    setPresetRows((formationMode==="defense"?defensePresets:attackPresets)[slot]||{});
-                    setPresetName((formationMode==="defense"?defenseNames:attackNames)[slot]||"");
-                  }}
-                  style={{padding:"9px 12px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:presetSlot===slot?"#27657e":"#20384d"}}>
-                  {name||t("Formation","Формация")+" "+slot}{saved?"":localLabel(" (празен)")}
-                </button>;
-              })}
-            </div>
-            <button type="button" onClick={()=>setPresetRows(defaultFormation(formationMode==="defense"))}>
-              {formationMode==="defense"?t("Load default defense","Зареди стандартна защита"):t("Load default attack","Зареди стандартна атака")}
-            </button>
-            <label style={{display:"inline-flex",gap:8,alignItems:"center",margin:"12px 0"}}>{t("Formation name","Име на формацията")} <input value={presetName} maxLength={32} onChange={event=>setPresetName(event.target.value)} placeholder={t("e.g. Fast attack","например Бърза атака")} /></label>
-            <FormationBoard key={formationMode+"-"+presetSlot} rows={presetRows} setRows={setPresetRows} />
+            {campaign.garrisons?.[selectedTarget.level] ? <div style={{display:"grid",gri…5564 tokens truncated…} />
             <div style={{position:"sticky",bottom:0,zIndex:5,display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:"12px 8px",background:"#122334",borderTop:"1px solid #69a5c2"}}>
               <strong>{units.filter(unit => presetRows[unit]).length} / {units.length} {t("troops placed","войници подредени")}</strong>
               <button type="button" disabled={formationBusy || !units.every(unit => presetRows[unit]) || !presetName.trim()}

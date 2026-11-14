@@ -1,3 +1,6 @@
+Warning: truncated output (original token count: 9700)
+Total output lines: 400
+
 import { useLanguage } from "../language";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import StructurePanel from "./StructurePanel";
@@ -177,66 +180,7 @@ function EventsPanel() {
     const result=await response.json();
     if(!response.ok)throw Error(result.message||"Events unavailable.");
     setData(result.saturdayInvasion);
-    setMotherShip(result.motherShip||null);
-    setLabyrinth(result.labyrinth||null);
-  };
-  useEffect(()=>{refresh().catch(error=>setNotice(error.message));const timer=setInterval(()=>refresh().catch(()=>{}),10000);const tick=setInterval(()=>setLabyrinthTick(Date.now()),1000);return()=>{clearInterval(timer);clearInterval(tick);};},[]);
-  const start=async()=>{
-    const restarting=Boolean(data?.alliance?.run);
-    setBusy(true);setNotice("");
-    try{
-      const endpoint=restarting?"/events/saturday-invasion/restart":"/events/saturday-invasion/start";
-      const response=await fetch(api+endpoint,{method:"POST",headers,body:JSON.stringify({userId:Number(userId)})});
-      const result=await response.json();
-      if(!response.ok)throw Error(result.message||"Could not start the event.");
-      setNotice(restarting?t("Event restarted from wave 1. Troops wounded in the previous run have been returned.","Събитието е рестартирано от вълна 1. Войниците, ранени в предишното участие, са върнати."):t("Event started for your alliance.","Събитието е стартирано за алианса."));
-      await refresh();
-    }catch(error){setNotice(error.message);}
-    finally{setBusy(false);}
-  };
-  const date=value=>value?new Date(value).toLocaleString(language==="bg"?"bg-BG":"en-US",{dateStyle:"medium",timeStyle:"short",timeZone:"UTC"})+" UTC":"—";
-  const crystalLabel={yellow:t("yellow","жълт"),blue:t("blue","син"),orange:t("orange","оранжев"),purple:t("purple","лилав")};
-  const runLabyrinthMission=async()=>{
-    setLabyrinthBusy(true);setLabyrinthNotice("");
-    try{const response=await fetch(api+"/events/labyrinth/mission",{method:"POST",headers,body:JSON.stringify({userId:Number(userId)})});const result=await response.json();if(!response.ok)throw Error(result.message||"Labyrinth mission failed.");setLabyrinth(result.status);setLabyrinthNotice(result.crystal?t("You found "+crystalLabel[result.crystal]+" crystal and "+result.item.name+".","Намери "+crystalLabel[result.crystal]+" кристал и "+result.item.name+"."):t("Equipment found: "+result.item.name+".","Намерена екипировка: "+result.item.name+"."));}
-    catch(error){setLabyrinthNotice(error.message);}
-    finally{setLabyrinthBusy(false);}
-  };
-  const labyrinthAction=async(path,payload,successText)=>{
-    setLabyrinthBusy(true);setLabyrinthNotice("");
-    try{const response=await fetch(api+path,{method:"POST",headers,body:JSON.stringify({userId:Number(userId),...payload})});const result=await response.json();if(!response.ok)throw Error(result.message||"Labyrinth action failed.");setLabyrinth(result.status);setLabyrinthNotice(successText);}
-    catch(error){setLabyrinthNotice(error.message);}
-    finally{setLabyrinthBusy(false);}
-  };
-  if(!data)return <div><p>{notice||t("Loading events…","Зареждане на събитията…")}</p></div>;
-  return <div style={{color:"#eef6ff",padding:12,minWidth:320}}>
-    <h2>{t("Saturday Alien Invasion","Съботна извънземна инвазия")}</h2>
-    <p>{data.active?t("Event is active","Събитието е активно"):data.settled?t("Event results are final","Класирането е окончателно"):t("Scheduled for","Насрочено за")} {date(data.startsAt)} – {date(data.endsAt)}</p>
-    <p>{t("The first alien wave launches immediately from an alien base and reaches each participating alliance member after one minute. A stronger wave launches every minute. Alliance reinforcements sent to an active participant arrive in 30 seconds. The event ends when all participants are eliminated or wave 20 is completed.","Първата извънземна вълна потегля веднага от извънземна база и достига всеки участващ член на алианса след една минута. По-силна вълна потегля всяка минута. Подкрепленията към участник пристигат за 30 секунди. Събитието приключва, когато всички участници бъдат елиминирани или бъде завършена вълна 20.")}</p>
-    {data.alliance&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
-      <strong>{data.alliance.name}</strong>
-      {data.alliance.run&&<span> · {data.alliance.run.status==="active"?t("Participating","Участва"):t("Run complete","Участието приключи")}</span>}
-      {data.alliance.canStart&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Starting…","Стартиране…"):t("Start for my alliance","Стартирай за алианса")}</button></div>}
-      {data.alliance.run&&data.alliance.role==="Leader"&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Restarting…","Рестартиране…"):t("Restart from wave 1","Рестартирай от вълна 1")}</button></div>}
-      {data.myResult&&<div style={{marginTop:8,padding:10,borderRadius:8,background:"rgba(30,50,70,.7)"}}>
-        <p style={{margin:"0 0 6px"}}>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString()} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>
-        <p style={{margin:"0 0 6px"}}>{t("Waves survived","Издържани вълни")}: {Number(data.myResult.waves||0)} / 20</p>
-        {data.myResult.lastBattle&&<p style={{margin:"0 0 6px"}}>{t("Last attack","Последна атака")} · {t("Alien base level","Ниво на извънземната база")} {data.myResult.lastBattle.level}: {Number(data.myResult.lastBattle.alienCasualties||0).toLocaleString()} {t("aliens eliminated","извънземни елиминирани")} · {Number(data.myResult.lastBattle.remaining||0).toLocaleString()} {t("troops remaining","войници остават")}</p>}
-        {data.alliance.run?.status==="active"&&!data.myResult.eliminated&&<p style={{margin:0}}>{t("Next wave in","Следваща вълна след")}: {Math.max(0,Math.ceil((Number(data.myResult.nextAttackAt||labyrinthTick)-labyrinthTick)/1000))} {t("seconds","секунди")}</p>}
-      </div>}
-      {}
-      {data.alliance&&!data.alliance.run&&!data.alliance.canStart&&<p>{t("Only the alliance leader can start the event, and only during Saturday UTC.","Само лидерът на алианса може да стартира събитието в събота по UTC.")}</p>}
-    </div>}
-    {motherShip&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
-      <h2>{t("Mother Ship Hunt","Лов на кораба майка")}</h2>
-      <p>{motherShip.active?t("Event is active","Събитието е активно"):motherShip.settled?t("Results are final","Класирането е окончателно"):t("Scheduled weekly event","Седмично събитие")}: {date(motherShip.startsAt)} – {date(motherShip.endsAt)}</p>
-      <p>{t("Attacks remaining","Оставащи атаки")}: {motherShip.attacksRemaining} · {t("Mother Ship health","Живот на кораба майка")}: {Number(motherShip.hp||0).toLocaleString()}</p>
-      {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString()}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
-      <button type="button" onClick={()=>{window.location.href="/#/map?campaign=1";}}>{t("Open campaigns","Отвори кампаниите")}</button>
-    </div>}
-    <section style={{border:"1px solid #896da9",borderRadius:10,padding:12,marginTop:18,background:"linear-gradient(145deg,#171321,#211b2c)",color:"#f5edff"}}>
-      <h2 style={{color:"#e1bbff"}}>🧭 {t("The Labyrinth","Лабиринт")}</h2>
-      <p>{t("Enter the underground maze with your Cyber Knight. Find equipment, collect four crystal colors to open new squares, and reach Nova’s pink medicine vial at the far end.","Влез в подземния лабиринт с Киберрицаря. Откривай екипировка, събирай четирите цвята кристали, за да отваряш нови квадратчета, и стигни до розовото шишенце с лекарството за Nova.")}</p>
+   …2700 tokens truncated…. Откривай екипировка, събирай четирите цвята кристали, за да отваряш нови квадратчета, и стигни до розовото шишенце с лекарството за Nova.")}</p>
       {!labyrinth?<p>{t("Loading Labyrinth…","Зареждане на Лабиринта…")}</p>:!labyrinth.unlocked?<p>{t("Unlocks at Cyber Knight level 10.","Отключва се на ниво 10 на Киберрицаря.")} · {t("Your level","Твоето ниво")}: {labyrinth.knightLevel} / 10</p>:<>
         <p>{t("Daily missions","Дневни мисии")}: {labyrinth.missionsToday} / {labyrinth.missionsPerDay} · {t("Each mission takes one second and grants random equipment. One of the 10 missions each day also gives one random-colored crystal.","Всяка мисия трае една секунда и дава случайна екипировка. Една от десетте мисии за деня дава и един кристал със случаен цвят.")}</p>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"10px 0"}}>
