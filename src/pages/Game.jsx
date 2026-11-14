@@ -16,6 +16,24 @@ import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
 import AVATARS from "../shared/avatarCatalog";
 
+const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;
+const resolvedBattleReportIds = data => [
+  ...(data?.missions || []).filter(mission => mission.result).map(mission => `alien:${mission.id}`),
+  ...(data?.playerMissions || []).filter(mission => mission.result && !mission.incoming).map(mission => `player:${mission.id}`)
+];
+const unreadBattleReportCount = (data,userId) => {
+  let seen=[];
+  try{seen=JSON.parse(localStorage.getItem(reportReadStorageKey(userId))||`[]`);}catch{}
+  const read=new Set(Array.isArray(seen)?seen:[]);
+  return resolvedBattleReportIds(data).filter(id=>!read.has(id)).length;
+};
+const rememberBattleReports = (data,userId) => {
+  let seen=[];
+  try{seen=JSON.parse(localStorage.getItem(reportReadStorageKey(userId))||`[]`);}catch{}
+  const all=new Set([...(Array.isArray(seen)?seen:[]),...resolvedBattleReportIds(data)]);
+  localStorage.setItem(reportReadStorageKey(userId),JSON.stringify([...all].slice(-500)));
+};
+
 function MarketPanel() {
   const {t,label}=useLanguage();
   const resources=["Gold","Iron","Water","Solar"];
@@ -257,6 +275,8 @@ function Game() {
   const [showQuests, setShowQuests] = useState(false);
   const [showReports,setShowReports]=useState(false);
   const [unreadIncoming,setUnreadIncoming]=useState(0);
+  const [unreadBattleReports,setUnreadBattleReports]=useState(0);
+  const [hospitalWoundedCount,setHospitalWoundedCount]=useState(0);
   const [incomingAlert,setIncomingAlert]=useState(false);
   const lastUnreadRef=useRef(0);
   const handleReportsRead=useCallback(async()=>{
@@ -264,7 +284,7 @@ function Game() {
     try{
       const reportApi=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
       const response=await fetch(reportApi+"/reports/"+encodeURIComponent(sessionStorage.getItem("userId")),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
-      if(response.ok){const data=await response.json();const count=Number(data.unreadIncoming)||0;setUnreadIncoming(count);lastUnreadRef.current=count;}
+      if(response.ok){const data=await response.json();const userId=sessionStorage.getItem("userId");rememberBattleReports(data,userId);setUnreadBattleReports(0);const count=Number(data.unreadIncoming)||0;setUnreadIncoming(count);lastUnreadRef.current=count;}
     }catch{}
   },[]);
   const [showAlliance,setShowAlliance]=useState(false);
@@ -292,12 +312,25 @@ function Game() {
         if(!active)return;
         const count=Number(data.unreadIncoming)||0;
         setUnreadIncoming(count);
+        setUnreadBattleReports(unreadBattleReportCount(data,userId));
         if(count>0&&lastUnreadRef.current===0)setIncomingAlert(true);
         lastUnreadRef.current=count;
       }catch{}
     };
+    const refreshHospitalAlerts=async()=>{
+      try{
+        const userId=sessionStorage.getItem(`userId`);
+        const response=await fetch(api+`/hospital/`+encodeURIComponent(userId),{headers:{Authorization:`Bearer `+sessionStorage.getItem(`authToken`)},cache:`no-store`});
+        if(!response.ok)return;
+        const data=await response.json();
+        if(!active)return;
+        const count=(data.entries||[]).reduce((total,entry)=>total+Object.values(entry.wounded||{}).reduce((subtotal,value)=>subtotal+Math.max(0,Number(value)||0),0),0);
+        setHospitalWoundedCount(count);
+      }catch{}
+    };
     refreshAttackAlerts();
-    const timer=setInterval(refreshAttackAlerts,10000);
+    refreshHospitalAlerts();
+    const timer=setInterval(()=>{refreshAttackAlerts();refreshHospitalAlerts();},10000);
     return()=>{active=false;clearInterval(timer);};
   },[api]);
   const saveAvatar=async nextAvatar=>{
@@ -456,12 +489,12 @@ function Game() {
         <button onClick={() => (window.location.href = "/#/map?campaign=1")}>{t("Campaign","Кампании")}</button>
         <button onClick={()=>setShowEvents(true)}>{t("Events","Събития")}</button>
         <button onClick={()=>setShowMarket(true)}>{t("Market","Пазар")}</button>
-        <button onClick={()=>setShowHospital(true)}>{t("Hospital","Болница")}</button>
+        <button className={hospitalWoundedCount>0?"reports-nav-button reports-unread":""} onClick={()=>setShowHospital(true)}>{t("Hospital","Болница")}{hospitalWoundedCount>0&&<span className="reports-badge">{hospitalWoundedCount}</span>}</button>
         <button onClick={() => (window.location.href = "/#/map")}>{t("Map","Карта")}</button>
         <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
         <button onClick={()=>setMessageRecipient("")}>{t("Messages","Съобщения")}</button>
-        <button className={unreadIncoming>0?"reports-nav-button reports-unread":""} onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("Reports","Доклади")}{unreadIncoming>0&&<span className="reports-badge">{unreadIncoming}</span>}</button>
+        <button className={unreadIncoming+unreadBattleReports>0?"reports-nav-button reports-unread":""} onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("Reports","Доклади")}{unreadIncoming+unreadBattleReports>0&&<span className="reports-badge">{unreadIncoming+unreadBattleReports}</span>}</button>
         <button onClick={() => setShowInventory(true)}>{t("Inventory","Инвентар")}</button>
         <button onClick={() => setOptionsVisible(!optionsVisible)}>{t("Options","Настройки")}</button>
       </div>
