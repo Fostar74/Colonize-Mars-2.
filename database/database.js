@@ -1443,8 +1443,9 @@ class DatabaseManager {
         }));
         const {fight,playerTypes}=require("../shared/combatEngine");
         const validDefenders=Object.fromEntries(Object.entries(defender.army).filter(([unit,count])=>playerTypes[unit]&&Number(count)>0));
-        const result=fight(data.units||{},validDefenders,data.formation,{},{
+        const result=fight(data.units||{},validDefenders,data.formation,{unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{}},{
           playerDefense:true,
+          defenderUnitUpgrades:defender.unitUpgrades||{},
           defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit])
         });
         const defenderWounded={};
