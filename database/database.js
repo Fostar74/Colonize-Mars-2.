@@ -3,7 +3,7 @@ const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice} = require("../src/shared/unitEconomy");
+const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -661,7 +661,7 @@ class DatabaseManager {
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
-      const duration=Math.max(1000,Math.ceil(quantity*30000*(1-trainingBonus)));
+      const duration=Math.max(1000,Math.ceil(quantity*unitTrainingDuration(unit)*1000*(1-trainingBonus)));
       const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
       const job={unit,quantity,startsAt,endsAt:startsAt+duration};
       const trainingQueues={...current.trainingQueues,[category]:[...queue,job]};
@@ -696,7 +696,7 @@ class DatabaseManager {
   }
 
   upgradeUnit(userId,unit,stat,slot){
-    const {categories,upgradeDuration}=require("../src/shared/unitEconomy");
+    const {categories,upgradeDuration,unitUpgradeDetails}=require("../src/shared/unitEconomy");
     if(!Object.values(categories).some(group=>group.includes(unit))||!["attack","defense"].includes(stat)||![0,1].includes(slot))return {error:"Invalid upgrade selection."};
     return db.transaction(()=>{
       const current=this.syncGame(userId);
@@ -706,12 +706,13 @@ class DatabaseManager {
       if(jobs[nextSlot])return {error:"This upgrade slot is occupied."};
       if(jobs.some(j=>j&&j.unit===unit&&j.stat===stat))return {error:"This unit stat is already upgrading."};
       const level=Number(current.unitUpgrades[unit]?.[stat]||1);
-      if(level>=20)return {error:"Maximum upgrade level."};
-      const price=upgradePrice(level,current.allianceBonuses.discount);
+      const specific=unitUpgradeDetails(unit,stat,level,current.allianceBonuses.discount,current.allianceBonuses.speed);
+      if(level>=(specific?.maxLevel||20))return {error:"Maximum upgrade level."};
+      const price=specific?.cost||upgradePrice(level,current.allianceBonuses.discount);
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
       const completionXp=2*Object.values(price).reduce((total,cost)=>total+cost,0);
-      const durationMs = upgradeDuration(level,current.allianceBonuses.speed);
+      const durationMs = specific?.durationMs||upgradeDuration(level,current.allianceBonuses.speed);
       const job = {unit,stat,level:level+1,completionXp,durationMs};
       if (nextSlot === 0) job.endsAt = Date.now() + durationMs;
       jobs[nextSlot] = job;
