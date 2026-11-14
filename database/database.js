@@ -1824,7 +1824,7 @@ class DatabaseManager {
   startSaturdayAllianceInvasion(userId) {
     const now=Date.now(),window=this.saturdayInvasionWindow(now);
     if(now<window.startsAt||now>=window.endsAt)return {error:"The Saturday invasion can only be started on Saturday (UTC)."};
-    return db.transaction(()=>{
+    const started=db.transaction(()=>{
       const member=db.prepare("SELECT m.alliance_id,m.role,a.name FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId);
       if(!member)return {error:"Join an alliance before starting the event."};
       if(member.role!=="Leader")return {error:"Only the alliance leader can start this event."};
@@ -1833,9 +1833,11 @@ class DatabaseManager {
       if(prior)return {error:"Your alliance has already started this Saturday's invasion."};
       const runId=db.prepare("INSERT INTO saturday_invasion_runs(week_start,alliance_id,started_by,started_at) VALUES (?,?,?,?)").run(window.startsAt,member.alliance_id,userId,now).lastInsertRowid;
       const members=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=?").all(member.alliance_id);
-      for(const row of members)db.prepare("INSERT INTO saturday_invasion_members(run_id,user_id,next_attack_at) VALUES (?,?,?)").run(runId,row.user_id,now+30000);
+      for(const row of members)db.prepare("INSERT INTO saturday_invasion_members(run_id,user_id,next_attack_at) VALUES (?,?,?)").run(runId,row.user_id,now);
       return {success:true,runId,alliance:member.name,participants:members.length,message:"Saturday invasion started for your alliance."};
     })();
+    if(started.success)this.resolveSaturdayAllianceInvasions(now);
+    return started;
   }
 
   resolveSaturdayAllianceInvasions(now=Date.now()) {
@@ -1881,7 +1883,7 @@ class DatabaseManager {
           const remaining=Object.values(survivors).reduce((sum,count)=>sum+Number(count||0),0);
           const eliminated=remaining<=0;
           const battle={level,rounds:result.rounds,enemyUnits:Object.values(aliens).reduce((sum,count)=>sum+count,0),alienCasualties:Math.max(0,score),troopsLost:lost,troopsWounded:lost,remaining};
-          db.prepare("UPDATE saturday_invasion_members SET score=score+?,waves=waves+1,eliminated=?,next_attack_at=?,last_battle=? WHERE run_id=? AND user_id=?").run(Math.max(0,score),eliminated?1:0,eliminated?event.ends_at:now+30000,JSON.stringify(battle),event.id,participant.user_id);
+          db.prepare("UPDATE saturday_invasion_members SET score=score+?,waves=waves+1,eliminated=?,next_attack_at=?,last_battle=? WHERE run_id=? AND user_id=?").run(Math.max(0,score),eliminated?1:0,eliminated?event.ends_at:now+60000,JSON.stringify(battle),event.id,participant.user_id);
         }
         const alive=db.prepare("SELECT COUNT(*) AS n FROM saturday_invasion_members WHERE run_id=? AND eliminated=0").get(event.id).n;
         if(!alive){
@@ -1929,7 +1931,7 @@ class DatabaseManager {
     const alliance=db.prepare("SELECT a.id,a.name,m.role FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?").get(userId)||null;
     const myRun=alliance?db.prepare("SELECT id,status FROM saturday_invasion_runs WHERE week_start=? AND alliance_id=?").get(window.startsAt,alliance.id):null;
     const alliances=db.prepare("SELECT a.id,a.name,r.status,COALESCE(SUM(m.score),0) AS score,COUNT(DISTINCT m.user_id) AS participants,SUM(CASE WHEN m.eliminated=1 THEN 1 ELSE 0 END) AS eliminated FROM saturday_invasion_runs r JOIN alliances a ON a.id=r.alliance_id LEFT JOIN saturday_invasion_members m ON m.run_id=r.id WHERE r.week_start=? GROUP BY a.id,r.status ORDER BY score DESC,a.name COLLATE NOCASE").all(window.startsAt).map((row,index)=>({...row,rank:index+1}));
-    const players=db.prepare("SELECT u.id AS userId,u.username,m.score,m.waves,m.eliminated,r.status AS runStatus,r.alliance_id,a.name AS alliance FROM saturday_invasion_members m JOIN users u ON u.id=m.user_id JOIN saturday_invasion_runs r ON r.id=m.run_id JOIN alliances a ON a.id=r.alliance_id WHERE r.week_start=? ORDER BY m.score DESC,u.username COLLATE NOCASE").all(window.startsAt).map((row,index)=>({...row,rank:index+1}));
+    const players=db.prepare("SELECT u.id AS userId,u.username,m.score,m.waves,m.eliminated,m.next_attack_at AS nextAttackAt,m.last_battle AS lastBattleJson,r.status AS runStatus,r.alliance_id,a.name AS alliance FROM saturday_invasion_members m JOIN users u ON u.id=m.user_id JOIN saturday_invasion_runs r ON r.id=m.run_id JOIN alliances a ON a.id=r.alliance_id WHERE r.week_start=? ORDER BY m.score DESC,u.username COLLATE NOCASE").all(window.startsAt).map((row,index)=>({...row,lastBattle:row.lastBattleJson?JSON.parse(row.lastBattleJson):null,rank:index+1}));
     const mine=alliance?players.find(row=>row.userId===userId&&row.alliance_id===alliance.id)||null:null;
     const season=db.prepare("SELECT settled FROM saturday_invasion_seasons WHERE week_start=?").get(window.startsAt);
     return {name:"Saturday Alien Invasion",startsAt:window.startsAt,endsAt:window.endsAt,active:isOpen,settled:!!season?.settled,alliance:alliance?{...alliance,run:myRun||null,canStart:isOpen&&alliance.role==="Leader"&&!myRun}:null,myResult:mine,alliances,players,rewards:[50000,30000,15000].map((amount,index)=>({rank:index+1,resources:amount})),nextStartsAt:window.startsAt};
