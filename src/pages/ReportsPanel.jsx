@@ -23,7 +23,7 @@ export default function ReportsPanel({onClose,onRead}) {
         if(active){
           let seen=[];try{seen=JSON.parse(localStorage.getItem(reportReadStorageKey(userId))||"[]");}catch{}
           const read=new Set(Array.isArray(seen)?seen:[]);
-          const unreadIds=[...(body.missions||[]).filter(m=>m.result&&!read.has("alien:"+m.id)).map(m=>"alien:"+m.id),...(body.playerMissions||[]).filter(m=>m.result&&!m.incoming&&!read.has("player:"+m.id)).map(m=>"player:"+m.id)];
+          const unreadIds=[...(body.missions||[]).filter(m=>m.result&&!read.has("alien:"+m.id)).map(m=>"alien:"+m.id),...(body.playerMissions||[]).filter(m=>m.result&&!m.incoming&&!read.has("player:"+m.id)).map(m=>"player:"+m.id),...(body.gatheringReports||[]).filter(report=>!read.has("gathering:"+report.id)).map(report=>"gathering:"+report.id)];
           setNewReportIds(unreadIds);setData(body);
         }
         await fetch(api+"/reports/read",{method:"POST",headers:{"Content-Type":"application/json",...auth()},body:JSON.stringify({userId})});
