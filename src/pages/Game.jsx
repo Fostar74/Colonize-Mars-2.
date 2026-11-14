@@ -517,7 +517,7 @@ function Game() {
         </div>
       )}
 
-      {showInformation&&<div className="popup" style={{zIndex:1007}}><div className="popup-header"><span>{t("UNIT INFORMATION","ИНФОРМАЦИЯ ЗА ВОЙСКИТЕ")}</span><button className="close-button" onClick={()=>setShowInformation(false)}>X</button></div><div className="popup-content"><InformationPanel/></div></div>}
+      {showInformation&&<div className="popup" style={{zIndex:1007}}><div className="popup-header" style={{gap:16}}><span>{t("UNIT INFORMATION","ИНФОРМАЦИЯ ЗА ВОЙСКИТЕ")}</span><button className="close-button" aria-label={t("Close","Затвори")} onClick={()=>setShowInformation(false)}>X</button></div><div className="popup-content"><InformationPanel/></div></div>}
       {showBattleSimulator&&<div className="popup" style={{zIndex:1004}}>
         <div className="popup-header"><span>{t("COMBAT SIMULATOR","БОЕН СИМУЛАТОР")}</span><button className="close-button" onClick={()=>setShowBattleSimulator(false)}>X</button></div>
         <div className="popup-content"><BattleSimulator/></div>
