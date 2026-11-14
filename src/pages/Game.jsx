@@ -314,6 +314,7 @@ function Game() {
         setUnreadIncoming(count);
         setUnreadBattleReports(unreadBattleReportCount(data,userId));
         if(count>0&&lastUnreadRef.current===0)setIncomingAlert(true);
+        if(count===0)setIncomingAlert(false);
         lastUnreadRef.current=count;
       }catch{}
     };
