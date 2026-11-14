@@ -926,7 +926,7 @@ class DatabaseManager {
   }
 
   listPlayerNotifications(userId){
-    const notifications=db.prepare("SELECT id,kind,alliance_name AS allianceName,created_at AS createdAt FROM player_notifications WHERE recipient_id=? AND read_at IS NULL AND created_at>=? ORDER BY id LIMIT 20").all(userId,Date.now()-86400000);
+    const notifications=db.prepare("SELECT id,kind,alliance_name AS allianceName,created_at AS createdAt FROM player_notifications WHERE recipient_id=? AND read_at IS NULL ORDER BY id LIMIT 20").all(userId);
     return {notifications};
   }
 
@@ -1865,6 +1865,7 @@ class DatabaseManager {
       if(prior)return {error:"Your alliance has already started this Saturday's invasion."};
       const runId=db.prepare("INSERT INTO saturday_invasion_runs(week_start,alliance_id,started_by,started_at) VALUES (?,?,?,?)").run(window.startsAt,member.alliance_id,userId,now).lastInsertRowid;
       const members=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=?").all(member.alliance_id);
+      db.prepare("DELETE FROM player_notifications WHERE kind='saturday_invasion_started' AND recipient_id IN (SELECT user_id FROM alliance_members WHERE alliance_id=?)").run(member.alliance_id);
       const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'saturday_invasion_started', ?, ?)");
       for(const row of members){
         db.prepare("INSERT INTO saturday_invasion_members(run_id,user_id,next_attack_at) VALUES (?,?,?)").run(runId,row.user_id,now);
