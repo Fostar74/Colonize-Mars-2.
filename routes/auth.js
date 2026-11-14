@@ -107,18 +107,27 @@ router.post("/login", async (req, res) => {
 
 router.get("/map/bases", requireSessionForMap, (req, res) => {
   try {
-    res.json({ bases: db.getPublicBases() });
+    res.json({ bases: db.getPublicBases(), ...db.getMapResources(req.mapUserId) });
   } catch (error) {
-    console.error("Map bases error:", error);
-    res.status(500).json({ message: "Could not load player bases." });
+    console.error("Map data error:", error);
+    res.status(500).json({ message: "Could not load the map." });
   }
 });
 function requireSessionForMap(req, res, next) {
   const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
   const session = match && sessions.get(match[1]);
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
+  req.mapUserId=session.userId;
   next();
 }
+
+router.post("/map/gathering", requireSession, (req,res)=>{
+  try{
+    const result=db.startGathering(Number(req.body.userId),Number(req.body.mineId));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json({...result,...db.getMapResources(Number(req.body.userId))});
+  }catch(error){console.error("Gathering march:",error);res.status(500).json({message:"Could not start the gathering march."});}
+});
 
 router.post("/upgrade-building", requireSession, (req, res) => {
   try {
