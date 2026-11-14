@@ -253,8 +253,6 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_attacks (id INTEGER PRIMARY KEY AUTOINCREMENT,run_id INTEGER NOT NULL REFERENCES saturday_invasion_runs(id),user_id INTEGER NOT NULL REFERENCES users(id),level INTEGER NOT NULL,origin_x INTEGER NOT NULL,origin_y INTEGER NOT NULL,launched_at INTEGER NOT NULL,arrives_at INTEGER NOT NULL,resolved_at INTEGER,result TEXT)");
     db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_attacks_due ON saturday_invasion_attacks(resolved_at,arrives_at)");
     db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_attacks_run ON saturday_invasion_attacks(run_id,user_id,resolved_at)");
-    const reinforcementColumns=new Set(db.prepare("PRAGMA table_info(alliance_reinforcements)").all().map(column=>column.name));
-    if(!reinforcementColumns.has("delivered_at"))db.exec("ALTER TABLE alliance_reinforcements ADD COLUMN delivered_at INTEGER");
     db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_members_due ON saturday_invasion_members(run_id,eliminated,next_attack_at)");
     db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_runs_week ON saturday_invasion_runs(week_start,status)");
     db.exec("CREATE TABLE IF NOT EXISTS labyrinth_players (user_id INTEGER PRIMARY KEY REFERENCES users(id), mission_day TEXT NOT NULL, missions_today INTEGER NOT NULL DEFAULT 0, crystal_mission INTEGER NOT NULL DEFAULT 0, last_mission_at INTEGER NOT NULL DEFAULT 0, crystals TEXT NOT NULL DEFAULT '{\"yellow\":0,\"blue\":0,\"orange\":0,\"purple\":0}', maze TEXT NOT NULL, current_room TEXT NOT NULL, visited TEXT NOT NULL DEFAULT '[]', rooms_opened INTEGER NOT NULL DEFAULT 1, deepest_depth INTEGER NOT NULL DEFAULT 0, total_moves INTEGER NOT NULL DEFAULT 0, medicine_found INTEGER NOT NULL DEFAULT 0, completed_at INTEGER)");
@@ -332,6 +330,8 @@ function initializeDatabase() {
       writeTradeNotification(trade.id,trade.sender_id,trade.recipient_id,trade.sender_name,JSON.parse(trade.resources),trade.traded_at);
     }
     db.exec("CREATE TABLE IF NOT EXISTS alliance_reinforcements (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), sender_id INTEGER NOT NULL REFERENCES users(id), recipient_id INTEGER NOT NULL REFERENCES users(id), units TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, recall_at INTEGER, returned_at INTEGER)");
+    const reinforcementColumns=new Set(db.prepare("PRAGMA table_info(alliance_reinforcements)").all().map(column=>column.name));
+    if(!reinforcementColumns.has("delivered_at"))db.exec("ALTER TABLE alliance_reinforcements ADD COLUMN delivered_at INTEGER");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_treasury (alliance_id INTEGER PRIMARY KEY REFERENCES alliances(id), resources TEXT NOT NULL DEFAULT '{}', bonuses TEXT NOT NULL DEFAULT '{}')");
     db.exec(`CREATE TABLE IF NOT EXISTS alliance_research_jobs (
       alliance_id INTEGER PRIMARY KEY REFERENCES alliances(id) ON DELETE CASCADE,
