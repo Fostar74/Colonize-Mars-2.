@@ -47,7 +47,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
   for(let side=0;side<2;side++)for(const group of sides[side]){
     if(side!==playerSide&&!defenderIsPlayer)continue;
     const upgrades=side===0?bonuses.unitUpgrades?.[group.unit]:options.defenderUnitUpgrades?.[group.unit];
-    if(group.unit==="Explorer Trooper"){const stats=explorerCombatStats(upgrades||{});group.hp=stats.health;group.attackVs=stats.attack;}
+    if(group.unit==="Explorer Trooper"||group.unit==="Exo-Soldier"){const stats=unitCombatStats(group.unit,upgrades||{});group.hp=stats.health;group.attackVs=stats.attack;}
     const categoryBonus=side!==playerSide?0:group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
     const research=bonuses.unitResearch?.[group.unit];
     const attackMultiplier=1+((Number(categoryBonus)||0)+(side!==playerSide?0:Number(bonuses.leadership)||0)+(side!==playerSide?0:Number(bonuses.allAttack)||0)+(research?.attack||0))/100;
