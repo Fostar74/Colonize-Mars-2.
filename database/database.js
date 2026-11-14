@@ -264,6 +264,24 @@ function initializeDatabase() {
     CREATE INDEX IF NOT EXISTS scout_missions_user ON scout_missions(user_id,id);`);
     db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
     db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
+    db.exec("CREATE TABLE IF NOT EXISTS resource_mines (id INTEGER PRIMARY KEY AUTOINCREMENT, resource TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, amount INTEGER NOT NULL DEFAULT 5000, claimed_by INTEGER REFERENCES users(id), launched_at INTEGER, arrives_at INTEGER, gathering_started_at INTEGER, gathering_rate REAL)");
+    db.exec("CREATE INDEX IF NOT EXISTS resource_mines_claimed ON resource_mines(claimed_by,arrives_at)");
+    if (db.prepare("SELECT COUNT(*) AS count FROM resource_mines").get().count === 0) {
+      const blocked = new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row => row.x + ":" + row.y));
+      for (const base of alienBases) blocked.add(base.x + ":" + base.y);
+      const chooseMineTile = () => {
+        for (let attempt = 0; attempt < 10000; attempt++) {
+          const x = 1 + Math.floor(Math.random() * 100), y = 1 + Math.floor(Math.random() * 100), key = x + ":" + y;
+          if (!blocked.has(key)) { blocked.add(key); return {x,y}; }
+        }
+        throw new Error("No free map tile is available for a resource mine.");
+      };
+      const insertMine = db.prepare("INSERT INTO resource_mines(resource,x,y,amount) VALUES (?,?,?,5000)");
+      for (const resource of ["gold","iron","water","solar"]) for (let count = 0; count < 4; count++) {
+        const tile = chooseMineTile();
+        insertMine.run(resource,tile.x,tile.y);
+      }
+    }
     db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
@@ -2674,6 +2692,74 @@ class DatabaseManager {
     }
   }
 
+
+  mineCapacity(userId) {
+    const tier=Number(this.playerTalents(userId).talents["Mining Operations"]||0);
+    return 4 + [0,1,3,6][Math.max(0,Math.min(3,tier))];
+  }
+
+  settleResourceMines(now=Date.now()) {
+    return db.transaction(()=>{
+      const active=db.prepare("SELECT * FROM resource_mines WHERE claimed_by IS NOT NULL ORDER BY id").all();
+      let settled=0;
+      for(const mine of active){
+        if(!mine.gathering_started_at || !mine.gathering_rate) continue;
+        const finishAt=mine.gathering_started_at+Math.ceil(mine.amount/mine.gathering_rate*3600000);
+        if(now<finishAt) continue;
+        const current=this.syncGame(mine.claimed_by);
+        if(current){
+          const key={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
+          current.resources[key]=(Number(current.resources[key])||0)+Number(mine.amount);
+          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+            .run(JSON.stringify(current.resources),mine.claimed_by);
+        }
+        const blocked=new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row=>row.x+":"+row.y));
+        for(const base of alienBases)blocked.add(base.x+":"+base.y);
+        for(const other of db.prepare("SELECT x,y FROM resource_mines WHERE id<>?").all(mine.id))blocked.add(other.x+":"+other.y);
+        let tile=null;
+        for(let attempt=0;attempt<10000&&!tile;attempt++){
+          const x=1+Math.floor(Math.random()*100),y=1+Math.floor(Math.random()*100);
+          if(!blocked.has(x+":"+y))tile={x,y};
+        }
+        if(!tile)throw new Error("No free map tile is available for a replacement resource mine.");
+        db.prepare("UPDATE resource_mines SET x=?,y=?,amount=5000,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,gathering_started_at=NULL,gathering_rate=NULL WHERE id=?")
+          .run(tile.x,tile.y,mine.id);
+        settled++;
+      }
+      return settled;
+    })();
+  }
+
+  getMapResources(userId) {
+    this.settleResourceMines();
+    const mines=db.prepare(`SELECT m.id,m.resource,m.x,m.y,m.amount,m.claimed_by,m.launched_at,m.arrives_at,
+      m.gathering_started_at,m.gathering_rate,u.username AS owner
+      FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by ORDER BY m.id`).all();
+    const activeMineCount=mines.filter(mine=>Number(mine.claimed_by)===Number(userId)).length;
+    return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId)};
+  }
+
+  startGathering(userId,mineId) {
+    return db.transaction(()=>{
+      this.settleResourceMines();
+      const mine=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(Number(mineId));
+      if(!mine) return {error:"Resource mine not found."};
+      if(mine.claimed_by) return {error:"This mine is already being gathered."};
+      const activeCount=db.prepare("SELECT COUNT(*) AS count FROM resource_mines WHERE claimed_by=?").get(userId).count;
+      const capacity=this.mineCapacity(userId);
+      if(activeCount>=capacity)return {error:"All your mine gathering slots are occupied ("+capacity+")."};
+      const base=db.prepare("SELECT b.x,b.y,u.username FROM base_positions b JOIN users u ON u.id=b.user_id WHERE b.user_id=?").get(userId);
+      if(!base)return {error:"Your base could not be found."};
+      const now=Date.now(),distance=Math.hypot(base.x-mine.x,base.y-mine.y);
+      const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
+      const arrivesAt=now+Math.max(10000,Math.ceil(distance*1000/(1+speedBonus)));
+      const rate=1000*(1+this.protocolBonus(userId,"Mining Operations")/100);
+      db.prepare("UPDATE resource_mines SET claimed_by=?,launched_at=?,arrives_at=?,gathering_started_at=?,gathering_rate=? WHERE id=? AND claimed_by IS NULL")
+        .run(userId,now,arrivesAt,arrivesAt,rate,mine.id);
+      const current=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(mine.id);
+      return {success:true,mine:current,launchedAt:now,arrivesAt,rate,activeMineCount:activeCount+1,gatheringCapacity:capacity};
+    })();
+  }
 
   getPublicBases() {
     return db.prepare(`
