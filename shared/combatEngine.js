@@ -55,7 +55,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     if(group.attackVs)for(const key of Object.keys(group.attackVs))group.attackVs[key]*=attackMultiplier;
     group.hp*=1+((side!==playerSide?0:Number(bonuses.allHealth)||0)+(research?.health||0)+(side===playerSide&&group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
   }
-  const dodgeChance=Math.max(0,Math.min(0.15,(Number(bonuses.dodge)||0)/100));
+  const dodgeMax=Math.max(0,Math.min(15,Number(bonuses.dodge)||0));
   const reviveRate=Math.max(0,Math.min(0.15,(Number(bonuses.revive)||0)/100));
   const report=[];let rounds=0;
   const alive=side=>side.some(g=>g.count>0);
@@ -76,10 +76,16 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
       }
       const hits=new Map();
       for(const shot of shots){
-        // Evasion applies to incoming alien volleys only. The target group
-        // dodges the volley, not an arbitrary percentage of its casualties.
-        shot.dodged=shot.side!==playerSide&&Math.random()<dodgeChance;
-        if(!shot.dodged)hits.set(shot.target,(hits.get(shot.target)||0)+shot.damage);
+        // Probability Matrix reduces each incoming enemy volley by a random
+        // whole percentage from five points below the tier maximum up to max.
+        shot.evadedPercent=0;
+        if(shot.side!==playerSide&&dodgeMax>0){
+          const minimum=Math.max(0,dodgeMax-5);
+          shot.evadedPercent=minimum+Math.floor(Math.random()*(dodgeMax-minimum+1));
+        }
+        shot.dodged=shot.evadedPercent>0;
+        shot.appliedDamage=shot.damage*(1-shot.evadedPercent/100);
+        if(shot.appliedDamage>0)hits.set(shot.target,(hits.get(shot.target)||0)+shot.appliedDamage);
       }
       const casualties=new Map();
       for(const [target,damage] of hits){
@@ -94,7 +100,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         const total=hits.get(shot.target)||0;
         const killed=casualties.get(shot.target)||0;
         const previous=assigned.get(shot.target)||0;
-        const allocation=shot.dodged||!total?0:Math.min(killed-previous,Math.floor(killed*shot.damage/total));
+        const allocation=shot.dodged||!total?0:Math.min(killed-previous,Math.floor(killed*(shot.appliedDamage??shot.damage)/total));
         shot.kills=allocation;
         assigned.set(shot.target,previous+allocation);
       }
@@ -106,7 +112,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
           shot.kills++;remainder--;
         }
       }
-      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?(attackerIsAlien?"Alien Base":"Player"):(defenderIsPlayer?"Player Defense":"Alien Base"),unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:shot.dodged?0:Math.round(shot.damage),dodged:!!shot.dodged,kills:shot.kills});
+      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?(attackerIsAlien?"Alien Base":"Player"):(defenderIsPlayer?"Player Defense":"Alien Base"),unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:Math.round(shot.appliedDamage??shot.damage),dodged:!!shot.dodged,evadedPercent:shot.evadedPercent||0,kills:shot.kills});
     }
     // Restore a percentage of casualties at the end of each round, capped
     // at the original deployed group size. Fractions accumulate per group.
