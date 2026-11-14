@@ -257,7 +257,14 @@ function Game() {
   const [unreadIncoming,setUnreadIncoming]=useState(0);
   const [incomingAlert,setIncomingAlert]=useState(false);
   const lastUnreadRef=useRef(0);
-  const handleReportsRead=useCallback(()=>{setUnreadIncoming(0);lastUnreadRef.current=0;setIncomingAlert(false);},[]);
+  const handleReportsRead=useCallback(async()=>{
+    setIncomingAlert(false);
+    try{
+      const reportApi=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
+      const response=await fetch(reportApi+"/reports/"+encodeURIComponent(sessionStorage.getItem("userId")),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
+      if(response.ok){const data=await response.json();const count=Number(data.unreadIncoming)||0;setUnreadIncoming(count);lastUnreadRef.current=count;}
+    }catch{}
+  },[]);
   const [showAlliance,setShowAlliance]=useState(false);
   const [showRankings,setShowRankings]=useState(false);
   const [showEvents,setShowEvents]=useState(false);
@@ -555,7 +562,7 @@ function Game() {
         </div>
       </div>}
 
-      {incomingAlert&&unreadIncoming>0&&<div className="incoming-attack-alert" role="alert"><span className="incoming-attack-lamp" />{t("Incoming attack! Open battle reports.","Входяща атака! Отвори бойните доклади.")}<button onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("View reports","Виж докладите")}</button><button aria-label={t("Dismiss","Затвори")} onClick={()=>setIncomingAlert(false)}>×</button></div>}
+      {incomingAlert&&unreadIncoming>0&&<div className="incoming-attack-alert" role="alert"><span className="incoming-attack-lamp" />{t("Incoming attack is on the way. A report will be ready after battle.","Към теб идва атака. Доклад ще има след битката.")}<button aria-label={t("Dismiss","Затвори")} onClick={()=>setIncomingAlert(false)}>×</button></div>}
       {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}
       {showQuests && (
         <div className="popup">

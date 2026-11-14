@@ -187,12 +187,18 @@ function initializeDatabase() {
       returns_at INTEGER,
       returned_at INTEGER,
       result TEXT,
-      seen_at INTEGER
+      seen_at INTEGER,
+      attacker_seen_at INTEGER,
+      defender_seen_at INTEGER
     )`);
     if (!db.prepare("PRAGMA table_info(player_missions)").all().some(column => column.name === "seen_at")) {
       db.exec("ALTER TABLE player_missions ADD COLUMN seen_at INTEGER");
       db.prepare("UPDATE player_missions SET seen_at=? WHERE seen_at IS NULL AND resolved_at IS NOT NULL").run(Date.now());
     }
+    const playerMissionColumns=new Set(db.prepare("PRAGMA table_info(player_missions)").all().map(column=>column.name));
+    if(!playerMissionColumns.has("attacker_seen_at"))db.exec("ALTER TABLE player_missions ADD COLUMN attacker_seen_at INTEGER");
+    if(!playerMissionColumns.has("defender_seen_at"))db.exec("ALTER TABLE player_missions ADD COLUMN defender_seen_at INTEGER");
+    db.prepare("UPDATE player_missions SET attacker_seen_at=COALESCE(attacker_seen_at,seen_at),defender_seen_at=COALESCE(defender_seen_at,seen_at) WHERE seen_at IS NOT NULL").run();
     db.exec(`CREATE TABLE IF NOT EXISTS interbase_trades (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       sender_id INTEGER NOT NULL REFERENCES users(id),
@@ -1367,7 +1373,7 @@ class DatabaseManager {
         const defender=this.syncGame(mission.defender_id);
         if(!attacker||!defender){
           const failed={victory:false,rounds:0,report:[],survivors:data.units||{},defenderSurvivors:{},defendersRemaining:0,error:"A player base is unavailable."};
-          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL WHERE id=?").run(now,now+60000,JSON.stringify(failed),mission.id);
+          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?").run(now,now+60000,JSON.stringify(failed),mission.id);
           continue;
         }
         const shield=db.prepare("SELECT expires_at FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(mission.defender_id,now);
@@ -1376,7 +1382,7 @@ class DatabaseManager {
           const shielded={victory:false,rounds:0,report:[],survivors:data.units||{},defenderInitial:defender.army||{},defenderSurvivors:defender.army||{},
             defendersRemaining:Object.values(defender.army||{}).reduce((sum,count)=>sum+Number(count||0),0),
             loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0,cargoCapacity:0,shielded:true};
-          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL WHERE id=?")
+          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?")
             .run(now,now+travelMs,JSON.stringify(shielded),mission.id);
           continue;
         }
@@ -1417,7 +1423,7 @@ class DatabaseManager {
         for(const [unit,count] of Object.entries(result.defenderSurvivors||{})) defender.army[unit]=count;
         db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(defender.army),mission.defender_id);
         const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
-        db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL WHERE id=?")
+        db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?")
           .run(now,now+travelMs,JSON.stringify(result),mission.id);
       }
       return true;
@@ -1440,13 +1446,15 @@ class DatabaseManager {
         defenderInitial:{...defenderArmy},defenderSurvivors:{...defenderArmy},
         loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0,cargoCapacity:0};
       const returnAt=now+Math.max(1000,mission.arrives_at-now);
-      db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL WHERE id=?").run(now,returnAt,JSON.stringify(result),id);
+      db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?").run(now,returnAt,JSON.stringify(result),id);
       return {success:true,missionId:id,returnsAt:returnAt};
     })();
   }
 
   markIncomingReportsRead(userId) {
-    db.prepare("UPDATE player_missions SET seen_at=? WHERE defender_id=? AND seen_at IS NULL").run(Date.now(),Number(userId));
+    const id=Number(userId),now=Date.now();
+    db.prepare("UPDATE player_missions SET defender_seen_at=?,seen_at=? WHERE defender_id=? AND resolved_at IS NOT NULL AND defender_seen_at IS NULL").run(now,now,id);
+    db.prepare("UPDATE player_missions SET attacker_seen_at=? WHERE attacker_id=? AND resolved_at IS NOT NULL AND attacker_seen_at IS NULL").run(now,id);
     return {success:true};
   }
 
@@ -1456,9 +1464,17 @@ class DatabaseManager {
       JOIN users a ON a.id=m.attacker_id
       JOIN users d ON d.id=m.defender_id
       WHERE m.attacker_id=? OR m.defender_id=?
-      ORDER BY m.id DESC LIMIT 20`).all(userId,userId).map(({army,result,...mission})=>{
+      ORDER BY m.id DESC LIMIT 20`).all(userId,userId).map(({army,result,seen_at,attacker_seen_at,defender_seen_at,...mission})=>{
         const data=JSON.parse(army);
-        return {...mission,...data,result:result?JSON.parse(result):null,incoming:mission.defender_id===userId};
+        const incoming=Number(mission.defender_id)===Number(userId);
+        const parsed=result?JSON.parse(result):null;
+        if(parsed&&!incoming){
+          delete parsed.defenderInitial;
+          delete parsed.defenderSurvivors;
+          delete parsed.defenderWounded;
+          delete parsed.defendersRemaining;
+        }
+        return {...mission,...data,result:parsed,incoming,unread:incoming?defender_seen_at==null:attacker_seen_at==null};
       });
   }
 
