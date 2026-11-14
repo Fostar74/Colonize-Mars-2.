@@ -25,6 +25,12 @@ const formationTypes = {
 };
 const formationUnitTypes = Object.fromEntries(Object.entries(unitEconomy.categories)
   .flatMap(([category, names]) => names.map(name => [name, [...formationTypes[category]]])));
+const formatDuration = milliseconds => {
+  const total=Math.max(0,Math.ceil(Number(milliseconds||0)/1000));
+  const hours=Math.floor(total/3600),minutes=Math.floor((total%3600)/60),seconds=total%60;
+  return [hours,minutes,seconds].map(value=>String(value).padStart(2,"0")).join(":");
+};
+
 formationUnitTypes["Mech Walker"][2] = 4;
 
 function FormationBoard({ rows, setRows }) {
