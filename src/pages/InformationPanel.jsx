@@ -81,21 +81,21 @@ export default function InformationPanel(){
   {section?.id==="units"&&<>
    <h2>{t("Units and Upgrades","Единици и Подобрения")}</h2>
    <div style={cardGrid}>
-    <button onClick={()=>setPage("infantry")} style={card}><span style={{fontSize:44}} aria-hidden="true">⚔</span><span>{t("Infantry","Пехота")}</span></button>
-    {infantryCategories.map(item=><button key={item.id} onClick={()=>setPage(item.id)} style={card}>
+    <button onClick={()=>setPage("ground")} style={card}><span style={{fontSize:44}} aria-hidden="true">⚔</span><span>{t("Ground","Сухопътни")}</span></button>
+    {infantryCategories.filter(item=>item.id!=="ground").map(item=><button key={item.id} onClick={()=>setPage(item.id)} style={card}>
      <span style={{fontSize:38}} aria-hidden="true">{item.id==="ground"?"🛡":item.id==="ranged"?"⌖":item.id==="mobile"?"🚀":item.id==="heavy"?"⚙":"✦"}</span>
      <span>{t(item.en,item.bg)}</span>
     </button>)}
    </div>
   </>}
-  {page==="infantry"&&<>
-   <h2>{t("Infantry","Пехота")}</h2>
+  {page==="ground"&&<>
+   <h2>{t("Ground","Сухопътни")}</h2>
    {unit(explorerTrooper,"Войник изследовател",["Infantry unit with the strongest attack against ground and ranged units. Best placed in the first row.","Пехотна единица с най-силна атака срещу сухопътни и стрелкови единици. Най-добре се поставя на първи ред."])}
    {unit(nanoShieldman,"Нано щитоносец",["Fastest infantry unit. Strongest against mobile and heavy systems. Range 2 allows placement in row 1 or 2.","Най-бързата пехотна единица. Най-силна срещу мобилни и тежки системи. Обхват 2 позволява разполагане на първи или втори ред."])}
    {unit(exoSoldier,"Екзовойник",["Infantry unit with equal attack against all unit groups and the highest health among infantry. Best placed in the first row.","Пехотна единица с еднаква атака срещу всички групи и най-много живот сред пехотата. Най-добре се поставя на първи ред."])}
    {unit(plasmaBladesman,"Плазмен мечоносец",["Infantry unit with the strongest attack against heavy systems. Best placed in the first row.","Пехотна единица с най-силна атака срещу тежки системи. Най-добре се поставя на първи ред."])}
   </>}
-  {category&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Information for this troop category will be added later.","Информацията за тази категория войски ще бъде добавена по-късно.")}</p></>}
+  {category&&page!=="ground"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Information for this troop category will be added later.","Информацията за тази категория войски ще бъде добавена по-късно.")}</p></>}
   {section?.id==="skills"&&(combatAugmentation?<><h2>{t("Combat Augmentation","Бойно усилване")}</h2>
    <p>{t("Infantry is the backbone of an army. These fighters combine solid attack and health with low population cost, and can be decisive in battle. Place them in the front rows to keep aggressive enemies away from your ranged units. Combat Augmentation is especially useful if you rely on infantry.","Пехотата е гръбнакът на армията. Тези бойци съчетават добра атака и здраве с ниска цена на население и могат да бъдат решаващи в битка. Поставяйте ги на предните редове, за да държат агресивните противници далеч от стрелковите ви единици. Бойно усилване е особено полезно, ако разчитате на пехота.")}</p>
    <p>{t("The protocol adds the listed percentage to both the attack and health of all your infantry units. In the current game, it applies to all units in the Infantry group.","Протоколът добавя посочения процент към атаката и здравето на всички ваши пехотни единици. В текущата версия на играта той важи за всички единици от група Пехота.")}</p>
