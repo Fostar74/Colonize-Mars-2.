@@ -314,6 +314,15 @@ function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS messages_recipient ON player_messages(recipient_id,id);
       CREATE INDEX IF NOT EXISTS messages_alliance ON player_messages(alliance_id,id);`);
     db.exec("CREATE TABLE IF NOT EXISTS trade_message_notifications (trade_id INTEGER PRIMARY KEY REFERENCES interbase_trades(id), message_id INTEGER NOT NULL REFERENCES player_messages(id))");
+    db.exec(`CREATE TABLE IF NOT EXISTS player_notifications (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      kind TEXT NOT NULL,
+      alliance_name TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      read_at INTEGER
+    )`);
+    db.exec("CREATE INDEX IF NOT EXISTS player_notifications_unread ON player_notifications(recipient_id,read_at,id)");
     const messageColumns=db.prepare("PRAGMA table_info(player_messages)").all().map(column=>column.name);
     if(!messageColumns.includes("message_type"))db.exec("ALTER TABLE player_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'private'");
     db.exec("UPDATE player_messages SET message_type='trade' WHERE id IN (SELECT message_id FROM trade_message_notifications) OR body LIKE 'Marketplace offer #% accepted by%' OR body LIKE 'Marketplace purchase completed from%'");
@@ -914,6 +923,16 @@ class DatabaseManager {
         .run(userId,target?.id||null,member?.alliance_id||null,content,now,scope);
       return {message:"Message sent."};
     })();
+  }
+
+  listPlayerNotifications(userId){
+    const notifications=db.prepare("SELECT id,kind,alliance_name AS allianceName,created_at AS createdAt FROM player_notifications WHERE recipient_id=? AND read_at IS NULL AND created_at>=? ORDER BY id LIMIT 20").all(userId,Date.now()-86400000);
+    return {notifications};
+  }
+
+  markPlayerNotificationRead(userId, notificationId){
+    const result=db.prepare("UPDATE player_notifications SET read_at=? WHERE id=? AND recipient_id=? AND read_at IS NULL").run(Date.now(),notificationId,userId);
+    return {success:result.changes>0};
   }
 
   rankings(userId){
@@ -1846,7 +1865,11 @@ class DatabaseManager {
       if(prior)return {error:"Your alliance has already started this Saturday's invasion."};
       const runId=db.prepare("INSERT INTO saturday_invasion_runs(week_start,alliance_id,started_by,started_at) VALUES (?,?,?,?)").run(window.startsAt,member.alliance_id,userId,now).lastInsertRowid;
       const members=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=?").all(member.alliance_id);
-      for(const row of members)db.prepare("INSERT INTO saturday_invasion_members(run_id,user_id,next_attack_at) VALUES (?,?,?)").run(runId,row.user_id,now);
+      const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'saturday_invasion_started', ?, ?)");
+      for(const row of members){
+        db.prepare("INSERT INTO saturday_invasion_members(run_id,user_id,next_attack_at) VALUES (?,?,?)").run(runId,row.user_id,now);
+        notify.run(row.user_id,member.name,now);
+      }
       return {success:true,runId,alliance:member.name,participants:members.length,message:"Saturday invasion started for your alliance."};
     })();
     if(started.success)this.resolveSaturdayAllianceInvasions(now);

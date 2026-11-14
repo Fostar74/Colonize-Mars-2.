@@ -200,6 +200,17 @@ router.route("/messages/:scope/:userId")
     const result=db.sendMessage(Number(req.params.userId),req.params.scope,req.body.recipient,req.body.body);
     res.status(result.error?400:201).json(result.error?{message:result.error}:result);
   });
+router.get("/notifications/:userId",requireSession,(req,res)=>{
+  try{res.json(db.listPlayerNotifications(Number(req.params.userId)));}
+  catch(error){console.error("Player notifications:",error);res.status(500).json({message:"Notifications unavailable."});}
+});
+router.post("/notifications/:userId/read",requireSession,(req,res)=>{
+  try{
+    const notificationId=Number(req.body.notificationId);
+    if(!Number.isSafeInteger(notificationId)||notificationId<1)return res.status(400).json({message:"Choose a valid notification."});
+    res.json(db.markPlayerNotificationRead(Number(req.params.userId),notificationId));
+  }catch(error){console.error("Mark notification read:",error);res.status(500).json({message:"Could not update notification."});}
+});
 
 router.get("/rankings/:userId",requireSession,(req,res)=>{try{res.json(db.rankings(Number(req.params.userId)));}catch(e){console.error("Rankings:",e);res.status(500).json({message:"Rankings unavailable."});}});
 router.get("/alliance/:userId",requireSession,(req,res)=>{

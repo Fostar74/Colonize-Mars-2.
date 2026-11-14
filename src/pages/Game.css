@@ -281,8 +281,10 @@
 @keyframes reportsLamp { 0%,100% { box-shadow:0 0 0 rgba(255,0,0,0); } 50% { box-shadow:0 0 14px 5px rgba(255,0,0,.85); } }
 .incoming-attack-alert { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:10001; display:flex; align-items:center; gap:12px; max-width:calc(100vw - 24px); padding:12px 16px; border:2px solid #f44; border-radius:10px; background:#241010; color:#fff; box-shadow:0 0 18px #f00; }
 .incoming-attack-alert button { padding:8px 10px; cursor:pointer; }
+.event-start-alert { position:fixed; top:16px; left:50%; transform:translateX(-50%); z-index:10002; display:flex; align-items:center; gap:12px; max-width:calc(100vw - 24px); padding:12px 16px; border:2px solid #5ad5ff; border-radius:10px; background:#102536; color:#fff; box-shadow:0 0 18px #1688ad; }
+.event-start-alert button { padding:8px 10px; cursor:pointer; white-space:nowrap; }
 .incoming-attack-lamp { width:15px; height:15px; flex:none; border-radius:50%; background:#f00; box-shadow:0 0 12px 4px #f00; animation:reportsLamp .8s infinite; }
-@media(max-width:600px) { .incoming-attack-alert { top:6px; flex-wrap:wrap; justify-content:center; text-align:center; } }
+@media(max-width:600px) { .incoming-attack-alert,.event-start-alert { top:6px; flex-wrap:wrap; justify-content:center; text-align:center; } }
 
 @media(max-width:700px) {
   .top-resource-bar { flex-wrap: wrap; justify-content: flex-start; gap: 2px; padding: 5px 7px; }

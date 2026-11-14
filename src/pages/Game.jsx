@@ -302,6 +302,7 @@ function Game() {
   const [unreadBattleReports,setUnreadBattleReports]=useState(0);
   const [hospitalWoundedCount,setHospitalWoundedCount]=useState(0);
   const [incomingAlert,setIncomingAlert]=useState(false);
+  const [eventNotification,setEventNotification]=useState(null);
   const lastUnreadRef=useRef(0);
   const handleReportsRead=useCallback(async()=>{
     setIncomingAlert(false);
@@ -349,6 +350,21 @@ function Game() {
     document.addEventListener("visibilitychange",onVisible);
     return()=>{active=false;window.clearInterval(timer);document.removeEventListener("visibilitychange",onVisible);};
   },[api]);
+  useEffect(()=>{
+    let active=true;
+    const refreshEventNotifications=async()=>{
+      try{
+        const userId=sessionStorage.getItem("userId");
+        const response=await fetch(api+"/notifications/"+encodeURIComponent(userId),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
+        if(!response.ok)return;
+        const data=await response.json();
+        if(active&&!eventNotification&&(data.notifications||[]).length)setEventNotification(data.notifications[0]);
+      }catch{}
+    };
+    refreshEventNotifications();
+    const timer=setInterval(refreshEventNotifications,10000);
+    return()=>{active=false;clearInterval(timer);};
+  },[api,eventNotification]);
 
   useEffect(()=>{
     let active=true;
@@ -508,6 +524,19 @@ function Game() {
     window.location.href = "/";
   };
 
+  const closeEventNotification=async openEvent=>{
+    const notification=eventNotification;
+    if(openEvent)setShowEvents(true);
+    if(!notification){setEventNotification(null);return;}
+    try{
+      const response=await fetch(api+"/notifications/"+encodeURIComponent(sessionStorage.getItem("userId"))+"/read",{
+        method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
+        body:JSON.stringify({notificationId:notification.id})
+      });
+      if(response.ok)setEventNotification(null);
+    }catch{}
+  };
+
   return (
     <div
       className="game-container"
@@ -650,6 +679,12 @@ function Game() {
       </div>}
 
       {incomingAlert&&unreadIncoming>0&&<div className="incoming-attack-alert" role="alert"><span className="incoming-attack-lamp" />{t("Incoming attack is on the way. A report will be ready after battle.","Към теб идва атака. Доклад ще има след битката.")}<button aria-label={t("Dismiss","Затвори")} onClick={()=>setIncomingAlert(false)}>×</button></div>}
+      {eventNotification&&<div className="event-start-alert" role="alert">
+        <span aria-hidden="true">🚨</span>
+        <span>{t("The Saturday Alien Invasion has started for your alliance:","Съботната извънземна инвазия започна за алианса:")} <strong>{eventNotification.allianceName}</strong> · {t("First attack arrives in 1 minute.","Първата атака пристига след 1 минута.")}</span>
+        <button type="button" onClick={()=>closeEventNotification(true)}>{t("View event","Виж събитието")}</button>
+        <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>closeEventNotification(false)}>×</button>
+      </div>}
       {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}
       {showQuests && (
         <div className="popup">
