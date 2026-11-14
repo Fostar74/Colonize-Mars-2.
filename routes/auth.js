@@ -308,6 +308,7 @@ router.post("/alien-stations/recall",requireSession,(req,res)=>{
     res.json(result);
   }catch(error){console.error("Station defense recall:",error);res.status(500).json({message:"Station defense recall failed."});}
 });
+router.get("/app-version",requireSession,(req,res)=>res.set("Cache-Control","no-store").json({version:process.env.RENDER_GIT_COMMIT||process.env.APP_VERSION||"local"}));
 router.get("/reports/:userId",requireSession,(req,res)=>{
   try{
     const campaign=db.getAlienCampaign(Number(req.params.userId));
