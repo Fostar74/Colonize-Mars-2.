@@ -187,6 +187,10 @@ router.get("/rankings/:userId",requireSession,(req,res)=>{try{res.json(db.rankin
 router.get("/alliance/:userId",requireSession,(req,res)=>{
   try{res.json(db.allianceState(Number(req.params.userId)));}catch(e){console.error(e);res.status(500).json({message:"Alliance unavailable."});}
 });
+router.post("/alliance/description",requireSession,(req,res)=>{
+  try{const result=db.saveAllianceDescription(Number(req.body.userId),req.body.description);if(result.error)return res.status(400).json({message:result.error});res.json(result);}
+  catch(e){console.error(e);res.status(500).json({message:"Could not update the alliance profile."});}
+});
 router.post("/alliance/create",requireSession,(req,res)=>{
   try{const result=db.createAlliance(Number(req.body.userId),req.body.name);if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot create alliance."});}
 });
