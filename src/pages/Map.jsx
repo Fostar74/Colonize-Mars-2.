@@ -525,7 +525,7 @@ function Map() {
       } catch(err){setMarchNotice(err.message);} finally{setMarchLoading(false);}
   };
   const dispatchGathering = async mine => {
-    if(!mine?.id)return;
+    if(!mine?.id){setMarchNotice(t("Select a resource mine to start gathering.","Избери мина, за да изпратиш поход за добив."));return;}
     setMarchLoading(true);setMarchNotice("");
     try{
       const api=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
@@ -902,7 +902,7 @@ function Map() {
                 const allowed=!blockedByShield&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own&&!sameAllianceTarget)): type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
-                  type==="Gather"?(field||selectedTarget?.type==="mine")&&!selectedTarget?.claimed_by:
+                  type==="Gather"?selectedTarget?.type==="mine"&&!selectedTarget?.claimed_by:
                   type==="Trade"?!field&&!alien&&!own&&(campaign.tradeModuleLevel||0)>=3:
                   type==="Relocation"?field:false);
                 return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}
