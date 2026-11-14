@@ -550,7 +550,8 @@ class DatabaseManager {
       const categoryForUnit=unit=>Object.keys(trainingCategories).find(cat=>trainingCategories[cat].includes(unit));
       // Preserve existing pre-upgrade training without duplicating or discarding it.
       if(trainingJob){const category=categoryForUnit(trainingJob.unit);if(category){trainingQueues[category]=[trainingJob,...(trainingQueues[category]||[])];trainingJob=null;}}
-      let queuedBuildingJob = state.queued_building_job ? JSON.parse(state.queued_building_job) : null;
+      const storedBuildingQueue = state.queued_building_job ? JSON.parse(state.queued_building_job) : null;
+      let buildingQueue = Array.isArray(storedBuildingQueue) ? storedBuildingQueue : (storedBuildingQueue ? [storedBuildingQueue] : []);
       let changed = false;
       // Resource production is calculated from server time, including while logged out.
       const elapsedTicks = Math.floor(Math.max(0, now - state.production_at) / 10000);
@@ -574,10 +575,10 @@ class DatabaseManager {
       while (buildingJob && buildingJob.endsAt <= now) {
         structures[buildingJob.name] = buildingJob.level;
         const finishedAt = buildingJob.endsAt;
-        buildingJob = queuedBuildingJob
-          ? {...queuedBuildingJob, startedAt: finishedAt, endsAt: finishedAt + queuedBuildingJob.duration}
+        const nextBuilding = buildingQueue.shift();
+        buildingJob = nextBuilding
+          ? {...nextBuilding, startedAt: finishedAt, endsAt: finishedAt + nextBuilding.duration}
           : null;
-        queuedBuildingJob = null;
         changed = true;
       }
       for(const category of Object.keys(trainingCategories)){
@@ -618,12 +619,12 @@ class DatabaseManager {
       upgradeJobs[0] = activeUpgrade || null;
       upgradeJobs[1] = queuedUpgrade || null;
       db.prepare("UPDATE game_runtime SET production_at=?, production_carry=?, building_job=?, queued_building_job=?, training_job=?, army=?, barracks_reserve=?, training_queues=?, upgrade_jobs=?, unit_upgrades=? WHERE user_id=?")
-        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, queuedBuildingJob ? JSON.stringify(queuedBuildingJob) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), JSON.stringify(barracksReserve), JSON.stringify(trainingQueues),JSON.stringify(upgradeJobs),JSON.stringify(unitUpgrades), userId);
+        .run(state.production_at + elapsedTicks * 10000, JSON.stringify(productionCarry), buildingJob ? JSON.stringify(buildingJob) : null, buildingQueue.length ? JSON.stringify(buildingQueue) : null, trainingJob ? JSON.stringify(trainingJob) : null, JSON.stringify(army), JSON.stringify(barracksReserve), JSON.stringify(trainingQueues),JSON.stringify(upgradeJobs),JSON.stringify(unitUpgrades), userId);
       if (changed) db.prepare("UPDATE game_progress SET resources=?, structures=?, last_saved=CURRENT_TIMESTAMP WHERE id=?")
         .run(JSON.stringify(resources), JSON.stringify(structures), row.id);
       return {
         castle: JSON.parse(row.castle_data), resources, structures, army,
-        buildingJob, queuedBuildingJob, trainingJob, trainingQueues, barracksReserve, upgradeJobs, unitUpgrades,
+        buildingJob, buildingQueue, queuedBuildingJob: buildingQueue[0] || null, trainingJob, trainingQueues, barracksReserve, upgradeJobs, unitUpgrades,
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
         allianceBonuses,
         productionPerHour: Object.fromEntries(Object.entries(rates).map(([key, name]) => [key, Number(structures[name] || 0) * productionMultiplier * 360])),
@@ -639,8 +640,10 @@ class DatabaseManager {
     return db.transaction(() => {
       const current = this.syncGame(userId);
       if (!current) return { error: "Player progress not found." };
-      if (current.queuedBuildingJob) return { error: "Construction queue is full (2 slots)." };
-      const level = Number(current.structures[name] || 0) + (current.buildingJob?.name === name ? 1 : 0);
+      const buildingQueue = current.buildingQueue || (current.queuedBuildingJob ? [current.queuedBuildingJob] : []);
+      if (current.buildingJob && buildingQueue.length >= 2) return { error: "Construction queue is full (3 total buildings)." };
+      const queuedLevels = buildingQueue.filter(job => job.name === name).length;
+      const level = Number(current.structures[name] || 0) + (current.buildingJob?.name === name ? 1 : 0) + queuedLevels;
       if (level >= 20) return { error: "Maximum building level reached." };
       const cost = buildingPrice(name, level + 1, current.allianceBonuses.discount);
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
@@ -649,7 +652,8 @@ class DatabaseManager {
       const startedAt=Date.now();
       const job = { name, level: level + 1, duration, startedAt, endsAt: startedAt + duration };
       if (current.buildingJob) {
-        db.prepare("UPDATE game_runtime SET queued_building_job=? WHERE user_id=?").run(JSON.stringify({name,level:level+1,duration}),userId);
+        buildingQueue.push({name,level:level+1,duration});
+        db.prepare("UPDATE game_runtime SET queued_building_job=? WHERE user_id=?").run(JSON.stringify(buildingQueue),userId);
       } else {
         db.prepare("UPDATE game_runtime SET building_job=? WHERE user_id=?").run(JSON.stringify(job),userId);
       }
@@ -658,7 +662,7 @@ class DatabaseManager {
       const spent=Object.values(cost).reduce((sum,n)=>sum+Number(n),0);
       db.prepare("INSERT INTO ranking_points(user_id,construction_points) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET construction_points=construction_points+excluded.construction_points").run(userId,spent);
       this.awardPlayerXp(userId,spent);
-      return { ...current, resources: current.resources, buildingJob: current.buildingJob || job, queuedBuildingJob: current.buildingJob ? {name,level:level+1,duration} : null };
+      return { ...current, resources: current.resources, buildingJob: current.buildingJob || job, buildingQueue: current.buildingQueue || buildingQueue, queuedBuildingJob: current.buildingJob ? buildingQueue[0] || null : null };
     })();
   }
 
