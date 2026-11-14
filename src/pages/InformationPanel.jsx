@@ -59,7 +59,11 @@ export default function InformationPanel(){
  const neuralCommand=selectedProtocol==="Neural Command";
  const combatAugmentation=selectedProtocol==="Combat Augmentation";
  const precisionTargeting=selectedProtocol==="Precision Targeting";
- const assaultMobility=selectedProtocol==="Assault Mobility";\n const hyperdriveNavigation=selectedProtocol==="Hyperdrive Navigation";\n const quantumLogistics=selectedProtocol==="Quantum Logistics";\n const nanoRegeneration=selectedProtocol==="Nano Regeneration";\n const siegeEngineering=selectedProtocol==="Siege Engineering";
+ const assaultMobility=selectedProtocol==="Assault Mobility";
+ const hyperdriveNavigation=selectedProtocol==="Hyperdrive Navigation";
+ const quantumLogistics=selectedProtocol==="Quantum Logistics";
+ const nanoRegeneration=selectedProtocol==="Nano Regeneration";
+ const siegeEngineering=selectedProtocol==="Siege Engineering";
  const nanoArmorSystems=selectedProtocol==="Nano Armor Systems";
  let crumbs=[{id:"home",en:"Home",bg:"Начало"}];
  if(section)crumbs.push({id:section.id,en:section.en,bg:section.bg});
