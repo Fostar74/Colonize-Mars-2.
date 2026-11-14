@@ -1078,7 +1078,7 @@ function Map() {
           {m.result.redCrystals>0&&<p>🔴 {t("Red crystals earned:","Спечелени червени кристали:")} {Number(m.result.redCrystals).toLocaleString()} {t("· credited to your balance","· добавени към личния ти баланс")}</p>}
           <p>{t("Survivors:","Оцелели:")} {Object.entries(m.result.survivors||{}).map(([u,n])=>localLabel(u)+": "+n).join(", ") || "None"}</p>
           {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
-            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${localLabel(e.unit)} restored` : <>{localLabel(e.attacker)}: {e.units} {localLabel(e.unit)} → {localLabel(e.target)} · {e.damage} {t("damage","щети")}{Number.isInteger(e.kills) ? ` · ${e.kills} ${t("defeated","убити")}` : ""}{e.dodged ? t(" · Evaded"," · Избегнат удар") : ""}</>}</p>)}
+            {round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored > 0 ? `Nano Regeneration: ${e.restored} ${localLabel(e.unit)} restored` : <>{localLabel(e.attacker)}: {e.units} {localLabel(e.unit)} → {localLabel(e.target)} · {e.damage} {t("damage","щети")}{Number.isInteger(e.kills) ? ` · ${e.kills} ${t("defeated","убити")}` : ""}{e.dodged ? ` · ${t("Evaded","Избегнат удар")} ${e.evadedPercent}%` : ""}</>}</p>)}
           </details>)}</div>}
         </details>)}
         {playerMarches.length>0 && <h3>{campaignTab==="reports"?t("Player Battle Reports","Доклади от битки с играчи"):t("Player Attacks","Атаки срещу играчи")}</h3>}
