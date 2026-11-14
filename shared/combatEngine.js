@@ -100,7 +100,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         const total=hits.get(shot.target)||0;
         const killed=casualties.get(shot.target)||0;
         const previous=assigned.get(shot.target)||0;
-        const allocation=shot.dodged||!total?0:Math.min(killed-previous,Math.floor(killed*shot.damage/total));
+        const allocation=shot.dodged||!total?0:Math.min(killed-previous,Math.floor(killed*(shot.appliedDamage??shot.damage)/total));
         shot.kills=allocation;
         assigned.set(shot.target,previous+allocation);
       }
