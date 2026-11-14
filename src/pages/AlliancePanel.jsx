@@ -13,10 +13,11 @@ export default function AlliancePanel({supportTarget,playerAction}){
   const { t , label: localLabel} = useLanguage();
  const playerName=player=>playerAction ? playerAction(player) : player.username;
  const [reinforceRecipient,setReinforceRecipient]=useState(supportTarget?.id || ""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
- const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[tab,setTab]=useState(supportTarget ? "reinforcements" : "members");
+ const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[description,setDescription]=useState(""),[tab,setTab]=useState(supportTarget ? "reinforcements" : "members");
  const [crystalKind,setCrystalKind]=useState("green"),[crystalAmount,setCrystalAmount]=useState("");
  const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
+ useEffect(()=>{if(state?.alliance)setDescription(state.alliance.description||"");},[state?.alliance?.id,state?.alliance?.description]);
  const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":path==="market/buy"?"Purchase added to your Inventory.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  const donateCrystals=async()=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alien-stations/donate",{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),kind:crystalKind,amount:Number(crystalAmount)})});const d=await r.json();if(!r.ok)throw Error(d.message||"Donation failed");setCrystalAmount("");setMessage(t("Crystals donated to the alliance.","Кристалите са дарени на алианса."));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  return <div style={{color:"#eef6ff",padding:15,minWidth:300}}>
@@ -39,6 +40,17 @@ export default function AlliancePanel({supportTarget,playerAction}){
    <p style={{marginTop:20}}>{t("To join an existing alliance, open","За да се присъединиш, отвори")} <strong>{t("Rankings → Alliances","Класиране → Алианси")}</strong> {t("and click Apply to Join beside its name. No typing or search required.","и натисни бутона за кандидатстване до името му.")}</p>
   </div>:<div>
    <h3>🛡 {state.alliance.name}</h3>
+   <section style={{margin:"12px 0",padding:12,border:"1px solid #47758e",borderRadius:8,background:"#142637"}}>
+    <h4 style={{marginTop:0}}>{t("Alliance profile","Профил на алианса")}</h4>
+    {state.alliance.description?<p style={{whiteSpace:"pre-wrap"}}>{state.alliance.description}</p>:<p>{t("The alliance has not added a profile message yet.","Алиансът все още няма представяне.")}</p>}
+    {["Leader","Co-Leader"].includes(state.alliance.role)&&<>
+     <label style={{display:"block",marginBottom:8}}>{t("Public message for other players","Публично съобщение за останалите играчи")}
+      <textarea aria-label={localLabel("Alliance profile message")} maxLength={600} rows={4} value={description} onChange={e=>setDescription(e.target.value)} style={{display:"block",width:"100%",boxSizing:"border-box",marginTop:6,padding:9}} placeholder={localLabel("Describe your alliance and invite players to join")}/>
+     </label>
+     <button type="button" disabled={busy||description===(state.alliance.description||"")} onClick={()=>action("description",{description})}>{t("Save profile message","Запази представянето")}</button>
+     <small style={{marginLeft:8}}>{description.length}/600</small>
+    </>}
+   </section>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
     {Object.entries({members:"Members",applications:"Applications",research:"Alliance Research",market:"Donation & Market"}).map(([key,label])=>
       <button key={key} onClick={()=>setTab(key)} style={{background:tab===key?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{localLabel(label)}</button>)}
