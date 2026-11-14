@@ -74,6 +74,26 @@ function calculateLoot(resources={},capacity=0) {
   return loot;
 }
 
+function disbandEmptyAlliance(allianceId){
+  const alliance=db.prepare("SELECT 1 FROM alliances WHERE id=?").get(allianceId);
+  if(!alliance||db.prepare("SELECT 1 FROM alliance_members WHERE alliance_id=? LIMIT 1").get(allianceId))return false;
+  db.prepare("DELETE FROM alliance_station_defenders WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_space_stations WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_reinforcements WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_help_clicks WHERE request_id IN (SELECT id FROM alliance_help WHERE alliance_id=?)").run(allianceId);
+  db.prepare("DELETE FROM alliance_help WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_help_history WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_invitations WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_applications WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM player_messages WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_crystal_bank WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_treasury WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM alliance_research_jobs WHERE alliance_id=?").run(allianceId);
+  db.prepare("DELETE FROM saturday_invasion_members WHERE run_id IN (SELECT id FROM saturday_invasion_runs WHERE alliance_id=?)").run(allianceId);
+  db.prepare("DELETE FROM saturday_invasion_runs WHERE alliance_id=?").run(allianceId);
+  return db.prepare("DELETE FROM alliances WHERE id=?").run(allianceId).changes>0;
+}
+
 function initializeDatabase() {
   try {
     console.log("Initializing database...");
@@ -296,6 +316,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS alliance_wallets (user_id INTEGER PRIMARY KEY REFERENCES users(id), points INTEGER NOT NULL DEFAULT 0, donations_today INTEGER NOT NULL DEFAULT 0, donation_date TEXT NOT NULL DEFAULT '')");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_market_buffs (user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(user_id,kind))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_history (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), requester_id INTEGER NOT NULL REFERENCES users(id), helper_id INTEGER NOT NULL REFERENCES users(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, reduction_ms INTEGER NOT NULL, helped_at INTEGER NOT NULL)");
+    db.transaction(()=>db.prepare("SELECT id FROM alliances WHERE NOT EXISTS (SELECT 1 FROM alliance_members WHERE alliance_id=alliances.id)").all().forEach(row=>disbandEmptyAlliance(row.id)))();
     console.log("Database initialized successfully");
   } catch (error) {
     console.error("Error initializing database:", error);
@@ -1170,7 +1191,8 @@ class DatabaseManager {
       if(target.role==="Co-Leader"&&actor.role!=="Leader"&&userId!==targetId)return {error:"Only leader can remove co-leader."};
       this.syncGame(targetId);
       db.prepare("DELETE FROM alliance_members WHERE user_id=?").run(targetId);
-      return {success:true};
+      const disbanded=disbandEmptyAlliance(actor.alliance_id);
+      return {success:true,disbanded};
     })();
   }
   allianceTransfer(userId,targetId){
