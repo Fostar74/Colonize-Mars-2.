@@ -1140,7 +1140,15 @@ class DatabaseManager {
       const target=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(targetId);
       if(!actor||!target||actor.alliance_id!==target.alliance_id)return {error:"Player is not in your alliance."};
       if(userId!==targetId&&!["Leader","Co-Leader"].includes(actor.role))return {error:"Insufficient permission to remove member."};
-      if(target.role==="Leader")return {error:"Transfer leadership before the leader can leave."};
+      if(target.role==="Leader"&&userId!==targetId)return {error:"The alliance leader cannot be removed by another member."};
+      if(target.role==="Leader"){
+        const successor=db.prepare(`SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?
+          ORDER BY CASE role WHEN 'Co-Leader' THEN 0 WHEN 'General' THEN 1 WHEN 'Strategist' THEN 2 WHEN 'Treasurer' THEN 3 WHEN 'Diplomat' THEN 4 ELSE 5 END,user_id LIMIT 1`)
+          .get(actor.alliance_id,targetId);
+        if(!successor)return {error:"You are the only member. Invite another player before leaving."};
+        db.prepare("UPDATE alliance_members SET role='Leader' WHERE user_id=?").run(successor.user_id);
+        db.prepare("UPDATE alliances SET leader_id=? WHERE id=?").run(successor.user_id,actor.alliance_id);
+      }
       if(target.role==="Co-Leader"&&actor.role!=="Leader"&&userId!==targetId)return {error:"Only leader can remove co-leader."};
       this.syncGame(targetId);
       db.prepare("DELETE FROM alliance_members WHERE user_id=?").run(targetId);
