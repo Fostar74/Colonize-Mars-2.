@@ -20,7 +20,8 @@ import AVATARS from "../shared/avatarCatalog";
 const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;
 const resolvedBattleReportIds = data => [
   ...(data?.missions || []).filter(mission => mission.result).map(mission => `alien:${mission.id}`),
-  ...(data?.playerMissions || []).filter(mission => mission.result && !mission.incoming).map(mission => `player:${mission.id}`)
+  ...(data?.playerMissions || []).filter(mission => mission.result && !mission.incoming).map(mission => `player:${mission.id}`),
+  ...(data?.gatheringReports || []).map(report => `gathering:${report.id}`)
 ];
 const unreadBattleReportCount = (data,userId) => {
   let seen=[];

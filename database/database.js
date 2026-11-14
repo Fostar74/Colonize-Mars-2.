@@ -268,6 +268,8 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
     db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
     db.exec("CREATE TABLE IF NOT EXISTS resource_mines (id INTEGER PRIMARY KEY AUTOINCREMENT, resource TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, amount INTEGER NOT NULL DEFAULT 5000, claimed_by INTEGER REFERENCES users(id), launched_at INTEGER, arrives_at INTEGER, origin_x INTEGER, origin_y INTEGER, gathering_started_at INTEGER, gathering_rate REAL)");
+    db.exec("CREATE TABLE IF NOT EXISTS resource_gathering_reports (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), mine_id INTEGER NOT NULL, resource TEXT NOT NULL, amount INTEGER NOT NULL, units TEXT NOT NULL DEFAULT '{}', returned_at INTEGER NOT NULL, reason TEXT NOT NULL, x INTEGER, y INTEGER)");
+    db.exec("CREATE INDEX IF NOT EXISTS resource_gathering_reports_user ON resource_gathering_reports(user_id,id)");
     if (!db.prepare("PRAGMA table_info(resource_mines)").all().some(column => column.name === "gathering_units")) db.exec("ALTER TABLE resource_mines ADD COLUMN gathering_units TEXT NOT NULL DEFAULT '{}' ");
     db.exec("CREATE INDEX IF NOT EXISTS resource_mines_claimed ON resource_mines(claimed_by,arrives_at)");
     {
@@ -2178,6 +2180,7 @@ class DatabaseManager {
   }
 
   getAlienCampaign(userId) {
+    const gatheringReports=this.getResourceGatheringReports(userId);
     this.resolvePlayerMissions(userId);
     this.resolveAlienMissions(userId);
     const current = this.syncGame(userId);
@@ -2211,7 +2214,7 @@ class DatabaseManager {
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,mothershipEvent:this.getMothershipEvent(userId)};
+    return {scoutMissions,playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,gatheringReports,mothershipEvent:this.getMothershipEvent(userId)};
   }
 
   getAlienStationStatus(userId){
@@ -2821,6 +2824,8 @@ class DatabaseManager {
           db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
             .run(JSON.stringify(current.resources),mine.claimed_by);
           db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mine.claimed_by);
+          db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
+            .run(mine.claimed_by,mine.id,mine.resource,Math.floor(Number(mine.amount)||0),mine.gathering_units||"{}",now,"depleted",mine.x,mine.y);
         }
         const blocked=new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row=>row.x+":"+row.y));
         for(const base of alienBases)blocked.add(base.x+":"+base.y);
@@ -2837,6 +2842,12 @@ class DatabaseManager {
       }
       return settled;
     })();
+  }
+
+  getResourceGatheringReports(userId) {
+    this.settleResourceMines();
+    return db.prepare("SELECT id,mine_id AS mineId,resource,amount,units,returned_at AS returnedAt,reason,x,y FROM resource_gathering_reports WHERE user_id=? ORDER BY id DESC LIMIT 50")
+      .all(Number(userId)).map(report=>({...report,units:JSON.parse(report.units||"{}")}));
   }
 
   getMapResources(userId) {
@@ -2908,6 +2919,8 @@ class DatabaseManager {
       for(const [unit,count] of Object.entries(returnedUnits))current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
+        .run(userId,mine.id,mine.resource,gathered,JSON.stringify(returnedUnits),now,"recalled",mine.x,mine.y);
       db.prepare(`UPDATE resource_mines SET amount=?,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,
         gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=? AND claimed_by=?`).run(Math.max(0,Number(mine.amount)-gathered),mine.id,userId);
       return {success:true,returnedUnits,resource:resourceKey,amountCollected:gathered,...this.getMapResources(userId)};
