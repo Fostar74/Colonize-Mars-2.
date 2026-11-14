@@ -1,5 +1,6 @@
 import { useLanguage } from "../language";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import StructurePanel from "./StructurePanel";
 import BattleSimulator from "./BattleSimulator";
 import CyberKnightPanel from "./CyberKnightPanel";
@@ -161,6 +162,7 @@ function HospitalPanel() {
 
 function EventsPanel() {
   const {language,t}=useLanguage();
+  const navigate=useNavigate();
   const [data,setData]=useState(null);
   const [motherShip,setMotherShip]=useState(null);
   const [labyrinth,setLabyrinth]=useState(null);
@@ -248,7 +250,7 @@ function EventsPanel() {
       <p>{motherShip.active?t("Event is active","Събитието е активно"):motherShip.settled?t("Results are final","Класирането е окончателно"):t("Scheduled weekly event","Седмично събитие")}: {date(motherShip.startsAt)} – {date(motherShip.endsAt)}</p>
       <p>{t("Attacks remaining","Оставащи атаки")}: {motherShip.attacksRemaining} · {t("Mother Ship health","Живот на кораба майка")}: {Number(motherShip.hp||0).toLocaleString()}</p>
       {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString()}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
-      <button type="button" onClick={()=>{window.location.href="/#/map?campaign=1";}}>{t("Open campaigns","Отвори кампаниите")}</button>
+      <button type="button" onClick={()=>navigate("/map?campaign=1")}>{t("Open campaigns","Отвори кампаниите")}</button>
     </div>}
     <section style={{border:"1px solid #896da9",borderRadius:10,padding:12,marginTop:18,background:"linear-gradient(145deg,#171321,#211b2c)",color:"#f5edff"}}>
       <h2 style={{color:"#e1bbff"}}>🧭 {t("The Labyrinth","Лабиринт")}</h2>
@@ -284,6 +286,7 @@ function EventsPanel() {
 
 function Game() {
   const {language, choose, t, label: localLabel} = useLanguage();
+  const navigate=useNavigate();
   const [showUpgradeCenter, setShowUpgradeCenter] = useState(false);
   const [showBattleSimulator,setShowBattleSimulator]=useState(false);
   const [showPopup, setShowPopup] = useState(false);
@@ -436,7 +439,7 @@ function Game() {
 
   const showPlayerBase=()=>{
     sessionStorage.setItem("mapPlayerTarget",playerMenu.username);
-    window.location.href="/#/map";
+    navigate("/map");
   };
 
   const invitePlayer=async()=>{
@@ -565,11 +568,11 @@ function Game() {
         <button onClick={() => setShowCyberKnight(true)}>{t("Cyber Knight","Киберрицар")}</button>
         <button onClick={()=>setShowTalents(true)}>{t("Commander Protocols","Протоколи на командира")}</button>
         <button onClick={() => setShowQuests(true)}>{t("Quests","Мисии")}</button>
-        <button onClick={() => (window.location.href = "/#/map?campaign=1")}>{t("Campaign","Кампании")}</button>
+        <button onClick={() => navigate("/map?campaign=1")}>{t("Campaign","Кампании")}</button>
         <button onClick={()=>setShowEvents(true)}>{t("Events","Събития")}</button>
         <button onClick={()=>setShowMarket(true)}>{t("Market","Пазар")}</button>
         <button className={hospitalWoundedCount>0?"reports-nav-button reports-unread":""} onClick={()=>setShowHospital(true)}>{t("Hospital","Болница")}{hospitalWoundedCount>0&&<span className="reports-badge">{hospitalWoundedCount}</span>}</button>
-        <button onClick={() => (window.location.href = "/#/map")}>{t("Map","Карта")}</button>
+        <button onClick={() => navigate("/map")}>{t("Map","Карта")}</button>
         <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
         <button onClick={()=>setMessageRecipient("")}>{t("Messages","Съобщения")}</button>

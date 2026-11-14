@@ -3,7 +3,7 @@ import { useLanguage } from "../language";
 // Colonize Mars Map.jsx with full formatting, mines, and alien bases
 
 import React, { useEffect, useRef, useState } from "react";
-import { useLocation } from "react-router-dom";
+import { useLocation, useNavigate } from "react-router-dom";
 import hqIconFile from "../images/hq-icon.png";
 import goldMineImg from "../images/mine-gold.png";
 import ironMineImg from "../images/mine-iron.png";
@@ -98,6 +98,7 @@ function FormationBoard({ rows, setRows }) {
 }
 
 function Map() {
+  const navigate=useNavigate();
   const { t , label: localLabel} = useLanguage();
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
@@ -790,7 +791,7 @@ function Map() {
             {mapMenuOpen ? "▲" : "▼"}
           </button>
       <button
-        onClick={() => (window.location.href = "/#/game")}
+        onClick={() => navigate("/game")}
         style={{
           padding: "10px 14px",
           backgroundColor: "#444",
@@ -939,7 +940,7 @@ function Map() {
             <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
             {marchDraft.type==="Trade" ? <div>
               <p>{t("Direct transfers have been replaced by the marketplace. Publish an offer from your base; the other player must accept it before resources move.","Директното изпращане е заменено с пазар. Публикувай оферта от базата си; другият играч трябва да я приеме, преди ресурсите да се преместят.")}</p>
-              <button type="button" onClick={()=>{window.location.href="/#/game?market=1";}}>{t("Open marketplace","Отвори пазара")}</button>
+              <button type="button" onClick={()=>navigate("/game?market=1")}>{t("Open marketplace","Отвори пазара")}</button>
               <button type="button" onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div> : <>
             {marchDraft.type === "Attack" && (marchDraft.target.type === "alien"||marchDraft.target.type==="mothership") && <>
@@ -1022,7 +1023,7 @@ function Map() {
       {marchSuccess && <div role="dialog" aria-modal="true" aria-label={t("March sent","Походът е изпратен")} style={{position:"fixed",inset:0,zIndex:60,background:"rgba(0,0,0,.72)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(640px,94vw)",padding:28,textAlign:"center",background:"#f4efdf",color:"#181818",border:"3px solid #857450",borderRadius:10,boxShadow:"0 12px 50px #000"}}>
           <h2>{t("March sent successfully!","Походът е изпратен успешно!")}</h2><p>{localLabel(marchSuccess)}</p>
-          {marchSuccess.includes("Mother Ship")&&<button type="button" onClick={()=>{window.location.href="/#/game?hospital=1";}}>{t("Open Hospital","Отвори болницата")}</button>} <button type="button" onClick={()=>setMarchSuccess("")} style={{background:"#26765e",color:"white",padding:"10px 24px"}}>{t("Continue","Продължи")}</button>
+          {marchSuccess.includes("Mother Ship")&&<button type="button" onClick={()=>navigate("/game?hospital=1")}>{t("Open Hospital","Отвори болницата")}</button>} <button type="button" onClick={()=>setMarchSuccess("")} style={{background:"#26765e",color:"white",padding:"10px 24px"}}>{t("Continue","Продължи")}</button>
         </div>
       </div>}
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
