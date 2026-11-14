@@ -3,7 +3,7 @@ const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails} = require("../src/shared/unitEconomy");
+const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails,unitTrainingDuration,unitUpgradeDetails} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -1836,6 +1836,7 @@ class DatabaseManager {
           const alliance=current.allianceBonuses||{};
           const result=combat.fight(aliens,army,null,{
             unitResearch:alliance.units||{},
+            unitUpgrades:participant.unit_upgrades?JSON.parse(participant.unit_upgrades):{},
             infantryAttack:this.protocolBonus(participant.user_id,"Infantry Command"),
             infantryHealth:this.protocolBonus(participant.user_id,"Infantry Command"),
             mobileAttack:this.protocolBonus(participant.user_id,"Mobile Warfare"),
@@ -2279,7 +2280,9 @@ class DatabaseManager {
         rangedAttack:this.protocolBonus(userId,"Precision Fire"),
         allHealth:this.protocolBonus(userId,"Reinforced Armor")+(alliance.health||0)+(activeBuffs.some(buff=>buff.kind==="health")?10:0),
         allAttack:(alliance.attack||0)+(activeBuffs.some(buff=>buff.kind==="attack")?10:0),
+        unitUpgrades:current.unitUpgrades,
         unitResearch:Object.fromEntries(Object.keys(selected).map(unit=>[unit,alliance.units?.[unit]||{}])),
+        unitUpgrades:current.unitUpgrades,
         infantryAttack:this.protocolBonus(userId,"Infantry Command"),
         infantryHealth:this.protocolBonus(userId,"Infantry Command"),
         mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
@@ -2344,7 +2347,7 @@ class DatabaseManager {
       };
       const origin={x:current.castle.x,y:current.castle.y};
       const allianceId=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId)?.alliance_id||null;
-      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,allianceId,origin,target}),now,arrivesAt);
+      const mission=db.prepare("INSERT INTO alien_missions(user_id,level,army,launched_at,arrives_at) VALUES (?,?,?,?,?)").run(userId,level,JSON.stringify({units:selected,formation:battleFormation,cyberKnightLevel:campaign.knightLevel,allianceCombat,unitUpgrades:current.unitUpgrades,allianceId,origin,target}),now,arrivesAt);
       if(campaign.used>=20&&Number(campaign.bonusMissions||0)>0)db.prepare("UPDATE alien_rewards SET bonus_missions=MAX(0,bonus_missions-1) WHERE user_id=?").run(userId);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,origin,target,remaining:campaign.remaining-1};
     })();
@@ -2369,6 +2372,7 @@ class DatabaseManager {
           allHealth:this.protocolBonus(userId,"Reinforced Armor") + (armyData.allianceCombat?.health || 0),
           allAttack:armyData.allianceCombat?.attack || 0,
           unitResearch:armyData.allianceCombat?.units,
+          unitUpgrades:armyData.unitUpgrades,
           infantryAttack:this.protocolBonus(userId,"Infantry Command"),
           infantryHealth:this.protocolBonus(userId,"Infantry Command"),
           mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
