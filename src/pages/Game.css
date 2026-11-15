@@ -148,7 +148,17 @@
   padding: 8px 14px;
   font-weight: bold;
   cursor: pointer;
+  display:inline-flex;
+  align-items:center;
+  gap:9px;
 }
+.castle-top-bar {display:flex;align-items:center;justify-content:space-between;gap:12px;position:relative;}
+.castle-name-btn.has-building-help {background:#6c3b20;box-shadow:0 0 0 2px #ffad4a;}
+.hq-help-badge {display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:50%;background:#e54535;color:#fff;font-size:13px;line-height:1;}
+.utc-clock {display:flex;align-items:center;gap:8px;color:#dff5ff;font-size:14px;text-shadow:0 1px 3px #000;}
+.utc-clock strong {font-variant-numeric:tabular-nums;letter-spacing:.04em;}
+.hq-help-toast {position:absolute;z-index:1001;top:calc(100% + 8px);left:10px;max-width:min(92vw,520px);padding:10px 14px;border:1px solid #59c8dc;border-radius:9px;background:#10222e;color:#f2fbff;box-shadow:0 4px 16px #0009;}
+@media(max-width:600px){.utc-clock{font-size:12px;gap:5px}.castle-top-bar{padding:8px}.castle-name-btn{padding:8px 10px}}
 
 .bottom-bar {
   position: fixed;

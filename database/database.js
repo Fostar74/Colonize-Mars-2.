@@ -1308,6 +1308,17 @@ class DatabaseManager {
       return {requestId:Number(id)};
     })();
   }
+  helpAllAlliance(userId){
+    const requests=this.allianceState(userId)?.requests||[];
+    let helped=0,totalReductionMs=0;
+    for(const request of requests){
+      if(request.helped||Number(request.requester_id)===Number(userId))continue;
+      const result=this.helpAlliance(userId,Number(request.id));
+      if(!result.error){helped++;totalReductionMs+=Number(result.reductionMs)||0;}
+    }
+    return {helped,totalReductionMs,tokens:this.getTokens(userId).balance};
+  }
+
   helpAlliance(userId,requestId){
     if(!Number.isSafeInteger(requestId)||requestId<1)return {error:"Invalid help request."};
     return db.transaction(()=>{
