@@ -1,7 +1,6 @@
 import { useLanguage } from "../language";
 import React, { useState, useEffect } from "react";
 import "./CyberKnightPanel.css";
-import knightImage from "../images/cyber-knight-plasma.jpg";
 import craftingCosts from "../shared/craftingCosts";
 import {rarityUnlockLevel} from "../shared/cyberKnightEquipment";
 import GameProgressManager from "../utils/gameProgress";
@@ -29,7 +28,6 @@ function CyberKnightPanel({ onClose }) {
   const [crafting, setCrafting] = useState(false);
   const [craftMessage, setCraftMessage] = useState("");
   const [equipmentNotice, setEquipmentNotice] = useState("");
-  const [imageFailed, setImageFailed] = useState(false);
 
   const progressManager = new GameProgressManager();
 
@@ -158,9 +156,6 @@ function CyberKnightPanel({ onClose }) {
                 {currentItem&&<span className={`equipped-rarity rarity-${rarityClasses[currentItem.rarity]||"common"}`}>✓</span>}
               </button>})}
             </section>)}
-            <div className="cyber-image-container">
-              {imageFailed ? <div role="img" aria-label="Cyber Knight" className="cyber-image-fallback">{t("CYBER KNIGHT","КИБЕРРИЦАР")}</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
-            </div>
           </div>
         </div>
       </div>
