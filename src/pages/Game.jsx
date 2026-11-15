@@ -131,7 +131,8 @@ function HospitalPanel() {
     try{
       const response=await fetch(api+"/hospital/treat",{method:"POST",headers,body:JSON.stringify({userId})});
       const data=await response.json();if(!response.ok)throw Error(data.message||"Could not start treatment.");
-      await refresh();setNotice(t("Treatment started. Wounded units will be ready in one minute.","Лечението започна. Ранените ще са готови след една минута."));
+      await refresh();
+      setNotice(data.queued?t("Treatment queued after the current batch.","Лечението е добавено след текущата опашка."):t("Treatment started. The recovery time is shown above.","Лечението започна. Времето за възстановяване е показано по-горе."));
       window.dispatchEvent(new Event("game-progress-updated"));
     }catch(error){setNotice(error.message);}finally{setBusy(false);}
   };
@@ -168,8 +169,8 @@ function HospitalPanel() {
       {entry.status==="event"&&entry.recoveryAt&&<div>{t("Returns to the garrison after:","Войниците се връщат в гарнизона след:")} {new Date(entry.recoveryAt).toLocaleString()}</div>}
     </article>)}
     {!entries.length&&<div style={card}>{t("No wounded troops. Your garrison is ready.","Няма ранени войници. Гарнизонът е в готовност.")}</div>}
-    {!!waiting.length&&<button type="button" disabled={busy||!!active} onClick={treat} style={{padding:"11px 18px",border:0,borderRadius:7,color:"white",fontWeight:"bold",background:"#26853a",cursor:"pointer"}}>
-      {busy?t("Starting treatment…","Лечението започва…"):t("Treat wounded troops","Лекувай ранените войници")}
+    {!!waiting.length&&<button type="button" disabled={busy} onClick={treat} style={{padding:"11px 18px",border:0,borderRadius:7,color:"white",fontWeight:"bold",background:"#26853a",cursor:busy?"wait":"pointer",opacity:busy?.7:1}}>
+      {busy?t("Adding to treatment queue…","Добавяне в опашката за лечение…"):active?t("Queue wounded troops","Добави ранените в опашката"):t("Treat wounded troops","Лекувай ранените войници")}
     </button>}
     <p style={{fontSize:12,marginBottom:0}}>{t("Only 30% of troops lost in alien base and player battles are sent here. Treatment is free and takes the same time as training those units. Event casualties return automatically after the event.","В болницата отиват 30% от загубените войници при битки с извънземни бази и играчи. Лечението е безплатно и отнема същото време като обучението на тези единици. Загубите от събития се възстановяват автоматично след края им.")}</p>
   </div>;

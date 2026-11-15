@@ -1779,18 +1779,18 @@ class DatabaseManager {
   startHospitalTreatment(userId) {
     return db.transaction(()=>{
       const now=Date.now(),current=this.syncGame(userId);if(!current)return {error:"Player not found."};
-      const active=db.prepare("SELECT 1 FROM hospital_entries WHERE user_id=? AND status='healing' LIMIT 1").get(userId);
-      if(active)return {error:"A hospital treatment is already underway."};
+      const active=db.prepare("SELECT MAX(heals_at) AS heals_at FROM hospital_entries WHERE user_id=? AND status='healing'").get(userId);
       const rows=db.prepare("SELECT * FROM hospital_entries WHERE user_id=? AND source IN ('player-defense','player-attack','alien-base') AND status='waiting' ORDER BY created_at,id").all(userId);
       if(!rows.length)return {error:"There are no wounded troops waiting for treatment."};
       const durationMs=rows.reduce((total,row)=>{
         const wounded=JSON.parse(row.wounded||"{}");
         return total+Object.entries(wounded).reduce((unitTotal,[unit,count])=>unitTotal+Math.max(0,Number(count)||0)*unitTrainingDuration(unit)*1000,0);
       },0);
-      const healsAt=now+Math.max(1000,durationMs);
+      const startsAt=Math.max(now,Number(active?.heals_at)||now);
+      const healsAt=startsAt+Math.max(1000,durationMs);
       const update=db.prepare("UPDATE hospital_entries SET status='healing',healing_cost=?,heals_at=? WHERE id=? AND status='waiting'");
       for(const row of rows)update.run(JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),healsAt,row.id);
-      return {healsAt,cost:{Gold:0,Iron:0,Water:0,Solar:0}};
+      return {healsAt,startsAt,queued:startsAt>now,cost:{Gold:0,Iron:0,Water:0,Solar:0}};
     })();
   }
 
