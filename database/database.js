@@ -1813,11 +1813,26 @@ class DatabaseManager {
       this.awardPlayerXp(attack.user_id,xp);
       db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(attack.user_id);
       db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=1+CAST((prestige+1)/20 AS INTEGER) WHERE user_id=?").run(attack.user_id);
-      const wounded=army;
-      const eventEnds=db.prepare("SELECT ends_at FROM mothership_events WHERE id=?").get(eventId)?.ends_at||null;
-      this.recordHospitalWounds(attack.user_id,"mothership",eventId,wounded,"event",eventEnds);
+      // Mother Ship attacks are score runs: return the entire committed army after every battle.
+      for(const [unit,count] of Object.entries(army))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),attack.user_id);
       db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=? WHERE id=?").run(now,damage,xp,attack.id);
       db.prepare("UPDATE mothership_events SET hp_remaining=MAX(1,hp_remaining-?) WHERE id=?").run(damage,eventId);
+    }
+    // Release troops from earlier versions that kept Mother Ship armies in event hospital until closing.
+    const held=db.prepare("SELECT * FROM hospital_entries WHERE source='mothership' AND source_id=? AND status='event'").all(eventId);
+    for(const row of held){
+      const current=this.syncGame(row.user_id);if(!current)continue;
+      for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),row.user_id);
+      db.prepare("UPDATE hospital_entries SET status='healed',recovered_at=? WHERE id=? AND status='event'").run(now,row.id);
+    }
+    const legacy=db.prepare("SELECT * FROM mothership_hospital WHERE event_id=? AND status IN ('waiting','healing')").all(eventId);
+    for(const row of legacy){
+      const current=this.syncGame(row.user_id);if(!current)continue;
+      for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),row.user_id);
+      db.prepare("UPDATE mothership_hospital SET status='healed' WHERE id=? AND status IN ('waiting','healing')").run(row.id);
     }
     return due.length;
     })();
@@ -1861,7 +1876,7 @@ class DatabaseManager {
       for(const key of Object.keys(resources))current.resources[key]=(Number(current.resources[key])||0)+Math.ceil(resources[key]);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),user_id);
       db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
-        .run(user_id,user_id,null,rank>0&&rank<=10?"Mother Ship Hunt reward: global rank "+rank+"; +20 Cyber Knight missions, equipment and resources. Wounded troops returned automatically. / Награда от Лова на Майчиния кораб: глобално място "+rank+"; +20 мисии на Киберрицаря, екипировка и ресурси. Ранените войници са възстановени автоматично.":"Mother Ship Hunt consolation resources were delivered. Wounded troops returned automatically. / Получи утешителни ресурси след Лова на Майчиния кораб. Ранените войници са възстановени автоматично.",Date.now());
+        .run(user_id,user_id,null,rank>0&&rank<=10?"Mother Ship Hunt reward: global rank "+rank+"; +20 Cyber Knight missions, equipment and resources. Your full army returns after every battle. / Награда от Лова на Майчиния кораб: глобално място "+rank+"; +20 мисии на Киберрицаря, екипировка и ресурси. Цялата ти армия се връща след всяка битка.":"Mother Ship Hunt consolation resources were delivered. Your full army returns after every battle. / Получи утешителни ресурси след Лова на Майчиния кораб. Цялата ти армия се връща след всяка битка.",Date.now());
     }
     db.prepare("UPDATE mothership_events SET rewards_distributed=1 WHERE id=? AND rewards_distributed=0").run(eventId);
     return true;
