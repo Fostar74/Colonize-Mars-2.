@@ -2,10 +2,9 @@ import { useLanguage } from "../language";
 import React, { useEffect, useState } from "react";
 import "./LoginRegister.css";
 import background from "../images/mars-background.jpg";
-import cyberKnightImage from "../images/cyber-knight-expanded.png";
 import riseImage from "../images/cyber-knight-rise.jpg";
 import continuesImage from "../images/cyber-knight-continues.jpg";
-
+import leavingEarthImage from "../images/cyber-knight-leaving-earth.jpg";
 
 const API_BASE = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
 
@@ -35,7 +34,7 @@ function LoginRegister() {
   const slides = [
     { image: riseImage, title: t("Rise of Cyber Knight", "Възходът на Киберрицаря"), subtitle: t("The legend begins", "Легендата започва") },
     { image: continuesImage, title: t("Leaving Earth", "Напускане на Земята"), subtitle: t("The legend continues", "Легендата продължава") },
-    { image: cyberKnightImage, title: t("Cyber Knight", "Cyber Knight"), subtitle: t("The legend continues", "Легендата продължава") },
+    { image: leavingEarthImage, title: t("Leaving Earth", "Напускане на Земята"), subtitle: t("The legend of Cyber Knight · Part II", "Легендата за Киберрицаря · Част II") },
   ];
 
   useEffect(() => {
