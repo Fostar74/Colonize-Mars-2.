@@ -38,6 +38,17 @@ function CyberKnightPanel({ onClose }) {
     {side:"debuff",title:"Enemy reductions",titleBg:"Отслабване на противника",slots:["WEAPON","SHIELD","GLOVES"]}
   ];
   const rarityClasses={Common:"common",Uncommon:"uncommon",Rare:"rare",Epic:"epic",Legendary:"legendary"};
+  const effectText=effect=>{
+    const target=localLabel(effect.target),value=Number(effect.value)||0;
+    if(effect.kind==="unitAttack")return t("Attack of","Атака на")+" "+target+": +"+value+"%";
+    if(effect.kind==="unitHealth")return t("Health of","Живот на")+" "+target+": +"+value+"%";
+    if(effect.kind==="enemyUnitAttack")return t("Enemy attack of","Атака на противниковия")+" "+target+": −"+value+"%";
+    if(effect.kind==="enemyUnitHealth")return t("Enemy health of","Живот на противниковия")+" "+target+": −"+value+"%";
+    if(effect.kind==="protocolBoost")return t("Combat protocol","Боен протокол")+" "+target+": +"+value+"%";
+    if(effect.kind==="enemyProtocol")return t("Opponent combat protocol","Противников боен протокол")+" "+target+": −"+value+"%";
+    return effect.target+": "+value+"%";
+  };
+  const itemEffects=item=>(item?.effects||[]).length?item.effects.map(effectText):(item?.stats||[]);
 
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
@@ -183,7 +194,7 @@ function CyberKnightPanel({ onClose }) {
                   <p>{t("Rarity bonus:","Бонус според рядкостта:")} {item.rarityBonus??({Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1)}% · {t("Maximum:","Максимум:")} {item.maximumBonus||50}%</p>
                   {knightLevel<(rarityUnlockLevel[item.rarity]||1)&&<p role="status">{t("Unlocks at Cyber Knight level","Отключва се на ниво на Киберрицаря")} {rarityUnlockLevel[item.rarity]}</p>}
                   <ul>
-                    {(item.stats || []).map((s, i) => (
+                    {itemEffects(item).map((s, i) => (
                       <li key={i}>{s}</li>
                     ))}
                   </ul>
@@ -225,7 +236,7 @@ function CyberKnightPanel({ onClose }) {
         <div className="modal-window">
           <h3>{t("Equip","Екипирай")} {selectedItem.name}?</h3>
           <ul>
-            {(selectedItem.stats || []).map((s, i) => (
+            {itemEffects(selectedItem).map((s, i) => (
               <li key={i}>{s}</li>
             ))}
           </ul>
@@ -255,7 +266,7 @@ function CyberKnightPanel({ onClose }) {
                 {selectedItem.name} {t("- Level","– Ниво")} {itemLevel}
               </p>
               <ul>
-                {(selectedItem.stats || []).map((s, i) => (
+                {itemEffects(selectedItem).map((s, i) => (
                   <li key={i}>{s}</li>
                 ))}
               </ul>
@@ -266,7 +277,7 @@ function CyberKnightPanel({ onClose }) {
                 {selectedItem.name} {t("- Level","– Ниво")} {itemLevel + 1}
               </p>
               <ul>
-                {(selectedItem.stats || []).map((s, i) => (
+                {itemEffects(selectedItem).map((s, i) => (
                   <li key={i}>{s}</li>
                 ))}
               </ul>

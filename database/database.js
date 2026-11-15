@@ -1,7 +1,7 @@
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
-const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
+const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
 const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails} = require("../src/shared/unitEconomy");
@@ -2255,9 +2255,26 @@ class DatabaseManager {
     const nextLevel=Math.min(20,highestDefeated+1);
     const today=new Date().toISOString().slice(0,10);
     const used=db.prepare("SELECT COUNT(*) AS n FROM alien_missions WHERE user_id=? AND launched_at>=? AND launched_at<?").get(userId,Date.parse(today+"T00:00:00Z"),Date.parse(today+"T00:00:00Z")+86400000).n;
+    let equipmentState=this.getUserEquipment(userId);
     const missions=db.prepare("SELECT id,level,launched_at,arrives_at,resolved_at,returns_at,returned_at,result,army FROM alien_missions WHERE user_id=? ORDER BY id DESC LIMIT 15").all(userId).map(({army,result,...m})=>{
       const march=JSON.parse(army);
-      return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, origin:march.origin, target:march.target, result:result?JSON.parse(result):null};
+      const missionResult=result?JSON.parse(result):null;
+      if(missionResult?.equipmentReward){
+        if(missionResult.victory){
+          const itemId="alien-"+m.id;
+          let item=equipmentState?.gearInventory?.find(gear=>gear.id===itemId);
+          if(!item){
+            item=normalizeEquipmentItem(missionResult.equipmentReward);
+            equipmentState=equipmentState||{equippedItems:{},gearInventory:[],craftingPoints:{}};
+            equipmentState.gearInventory.push(item);
+            this.saveUserEquipment(userId,equipmentState.equippedItems,equipmentState.gearInventory,equipmentState.craftingPoints);
+          }
+          missionResult.equipmentReward=item;
+        }else delete missionResult.equipmentReward;
+        const serializedResult=JSON.stringify(missionResult);
+        if(serializedResult!==result)db.prepare("UPDATE alien_missions SET result=? WHERE id=?").run(serializedResult,m.id);
+      }
+      return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, origin:march.origin, target:march.target, result:missionResult};
     });
     const knight=db.prepare("SELECT victories,knight_level,prestige,bonus_missions FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1,prestige:0,bonus_missions:0};
     const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
@@ -2556,18 +2573,18 @@ class DatabaseManager {
         }
         result.wounded=wounded;
         if(Object.keys(wounded).length)this.recordHospitalWounds(userId,"alien-base",mission.id,wounded,"waiting");
-        // Every completed mission returns Cyber Knight gear, even if the force loses.
-        const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
-        const slot=slots[require("crypto").randomInt(slots.length)];
-        const stars=starsForAlienMission(mission.level);
-        const rarity=rarityByStars[stars];
-        const rarityBonus=rarityBonusPercent[rarity];
-        const rolled=rollEquipmentBonuses(slot,rarity,stars);
-        const item={id:"alien-"+mission.id,name:"Plasma "+slot[0]+slot.slice(1).toLowerCase(),slot,rarity,stars,level:0,stats:rolled.stats,effects:rolled.effects,bonusSlots:stars,rarityBonus,maximumBonus:50,obtainedFrom:"Alien Base "+mission.level};
-        const old=this.getUserEquipment(userId);
-        this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
-        result.equipmentReward=item;
         if(result.victory){
+          // Alien Base equipment is awarded only for a victory.
+          const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
+          const slot=slots[require("crypto").randomInt(slots.length)];
+          const stars=starsForAlienMission(mission.level);
+          const rarity=rarityByStars[stars];
+          const rarityBonus=rarityBonusPercent[rarity];
+          const rolled=rollEquipmentBonuses(slot,rarity,stars);
+          const item={id:"alien-"+mission.id,name:"Plasma "+slot[0]+slot.slice(1).toLowerCase(),slot,rarity,stars,level:0,stats:rolled.stats,effects:rolled.effects,bonusSlots:stars,rarityBonus,maximumBonus:50,obtainedFrom:"Alien Base "+mission.level};
+          const old=this.getUserEquipment(userId);
+          this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
+          result.equipmentReward=item;
         const greenCrystals=mission.level>=9&&mission.level<=19?Math.max(100,100+(mission.level-11)*50):0;
           const redCrystals=mission.level===20?1:0;
           if(greenCrystals){
@@ -2831,10 +2848,28 @@ class DatabaseManager {
     try {
       const equipment = this.equipmentQueries.getEquipment.get(userId);
       if (!equipment) return null;
-
+      const originalEquipped=JSON.parse(equipment.equipped_items||"{}");
+      const originalInventory=JSON.parse(equipment.gear_inventory||"[]");
+      const isLostAlienReward=item=>{
+        const match=/^alien-(\d+)$/.exec(String(item?.id||""));
+        if(!match)return false;
+        const mission=db.prepare("SELECT result FROM alien_missions WHERE id=? AND user_id=?").get(Number(match[1]),userId);
+        if(!mission?.result)return false;
+        try{return !JSON.parse(mission.result).victory;}catch{return false;}
+      };
+      const gearInventory=(Array.isArray(originalInventory)?originalInventory:[]).filter(item=>!isLostAlienReward(item)).map(normalizeEquipmentItem);
+      const inventoryById=new Map(gearInventory.filter(item=>item?.id).map(item=>[item.id,item]));
+      const equippedItems=Object.fromEntries(Object.entries(originalEquipped||{}).flatMap(([slot,item])=>{
+        if(!item||isLostAlienReward(item))return [];
+        const normalized=inventoryById.get(item.id)||normalizeEquipmentItem(item);
+        return [[slot,normalized]];
+      }));
+      if(JSON.stringify(equippedItems)!==JSON.stringify(originalEquipped)||JSON.stringify(gearInventory)!==JSON.stringify(originalInventory)){
+        this.equipmentQueries.updateEquipment.run(JSON.stringify(equippedItems),JSON.stringify(gearInventory),equipment.crafting_points,userId);
+      }
       return {
-        equippedItems: JSON.parse(equipment.equipped_items),
-        gearInventory: JSON.parse(equipment.gear_inventory),
+        equippedItems,
+        gearInventory,
         craftingPoints: JSON.parse(equipment.crafting_points),
         knightLevel:Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1),
         lastUpdated: equipment.last_updated,

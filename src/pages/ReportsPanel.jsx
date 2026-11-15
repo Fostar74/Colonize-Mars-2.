@@ -9,7 +9,7 @@ const diff=(initial,remaining)=>Object.fromEntries(Object.entries(initial||{}).m
 const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>unit+": "+Number(count).toLocaleString()).join(", ")||"0";
 
 export default function ReportsPanel({onClose,onRead}) {
-  const {t}=useLanguage();
+  const {t,label:localLabel}=useLanguage();
   const userId=sessionStorage.getItem("userId");
   const [data,setData]=useState(null);
   const [error,setError]=useState("");
@@ -67,6 +67,16 @@ export default function ReportsPanel({onClose,onRead}) {
   };
   const alienReport=m=>{
     const equipment=m.result.equipmentReward||m.result.reward?.item;
+    const effectLabel=effect=>{
+      const target=localLabel(effect.target),value=Number(effect.value)||0;
+      if(effect.kind==="unitAttack")return t("Attack of","Атака на")+" "+target+": +"+value+"%";
+      if(effect.kind==="unitHealth")return t("Health of","Живот на")+" "+target+": +"+value+"%";
+      if(effect.kind==="enemyUnitAttack")return t("Enemy attack of","Атака на противниковия")+" "+target+": −"+value+"%";
+      if(effect.kind==="enemyUnitHealth")return t("Enemy health of","Живот на противниковия")+" "+target+": −"+value+"%";
+      if(effect.kind==="protocolBoost")return t("Combat protocol","Боен протокол")+" "+target+": +"+value+"%";
+      if(effect.kind==="enemyProtocol")return t("Opponent combat protocol","Противников боен протокол")+" "+target+": −"+value+"%";
+      return effect.target+": "+value+"%";
+    };
     const reward=m.result.reward;
     const secondary=reward&&typeof reward==="object"&&!reward.item
       ?reward.type==="crafting"?t("Forge points","Точки за изковаване")+": "+reward.amount
@@ -77,7 +87,7 @@ export default function ReportsPanel({onClose,onRead}) {
     return <article key={"alien-"+m.id} style={card}>
     <h3>{t("Alien mission","Извънземна мисия")} #{m.id} · {t("Base level","Ниво на базата")} {m.level} · {m.result.victory?t("Victory","Победа"):t("Defeat","Поражение")}</h3>
     <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"}</p>
-    {equipment&&<p>🛡 {t("Cyber Knight equipment","Екипировка за Киберрицаря")}: <strong>{equipment.name}</strong> · {equipment.rarity} · {equipment.slot}</p>}
+    {equipment&&<><p>🛡 {t("Cyber Knight equipment","Екипировка за Киберрицаря")}: <strong>{equipment.name}</strong> · {localLabel(equipment.rarity)} · {localLabel(equipment.slot)}</p>{(equipment.effects||[]).length>0&&<ul>{equipment.effects.map((effect,index)=><li key={index}>{effectLabel(effect)}</li>)}</ul>}</>}
     {secondary&&<p>{t("Additional reward","Допълнителна награда")}: {secondary}</p>}
     {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {list(m.result.wounded)}</p>}
     {army(t("Starting army","Начална армия"),m.units)}{army(t("Losses","Загуби"),diff(m.units,m.result.survivors||{}))}{army(t("Survivors","Оцелели"),m.result.survivors||{})}
