@@ -296,8 +296,7 @@ function Game() {
   const [resources, setResources] = useState(null);
   const [utcClock,setUtcClock]=useState(()=>new Date().toISOString().slice(11,19));
   const [activeHelpCount,setActiveHelpCount]=useState(0);
-  const [helpBusy,setHelpBusy]=useState(false);
-  const [helpToast,setHelpToast]=useState("");
+
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [showInformation,setShowInformation]=useState(false);
   const [avatarId,setAvatarId]=useState(()=>sessionStorage.getItem("avatarId")||"pilot-m");
@@ -479,21 +478,6 @@ function Game() {
     }catch(_){/* Keep the last known count during temporary connectivity interruptions. */}
   };
 
-  const handleHeadquartersClick=async()=>{
-    setQuestTarget(null);
-    setShowPopup(true);
-    if(!activeHelpCount||helpBusy)return;
-    setHelpBusy(true);
-    try{
-      const response=await fetch(api+"/alliance/help-all",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:Number(sessionStorage.getItem("userId"))})});
-      const result=await response.json();
-      if(!response.ok)throw Error(result.message||"Помощта не бе изпратена.");
-      setHelpToast(result.helped>0?t("Helped "+result.helped+" construction requests and earned "+result.helped+" tokens.","Помогна на "+result.helped+" строежа и получи "+result.helped+" токена."):t("There are no active requests for help.","Няма активни заявки за помощ."));
-      await refreshActiveHelpCount();
-    }catch(error){setHelpToast(error.message||t("Could not help with construction.","Помощта за строежите не бе изпратена."));}
-    finally{setHelpBusy(false);window.setTimeout(()=>setHelpToast(""),8000);}
-  };
-
   const openQuestTarget = target => {
     setQuestTarget(target);
     setShowQuests(false);
@@ -522,7 +506,9 @@ function Game() {
     const clockTimer=setInterval(updateClock,1000);
     refreshActiveHelpCount();
     const helpTimer=setInterval(refreshActiveHelpCount,15000);
-    return()=>{clearInterval(clockTimer);clearInterval(helpTimer);};
+    const onHelpUpdated=()=>refreshActiveHelpCount();
+    window.addEventListener("alliance-help-updated",onHelpUpdated);
+    return()=>{clearInterval(clockTimer);clearInterval(helpTimer);window.removeEventListener("alliance-help-updated",onHelpUpdated);};
   },[]);
 
   // Keep the HUD synchronized with the server even when the base panel is closed.
@@ -617,12 +603,11 @@ function Game() {
       </div>
 
       <div className="castle-top-bar">
-        <button className={"castle-name-btn"+(activeHelpCount>0?" has-building-help":"")} aria-label={activeHelpCount>0?t("Headquarters. Click to help "+activeHelpCount+" active constructions.","Щаб. Натисни, за да помогнеш на "+activeHelpCount+" активни строежа."):t("Headquarters","Щаб")} onClick={handleHeadquartersClick}>
+        <button className={"castle-name-btn"+(activeHelpCount>0?" has-building-help":"")} aria-label={activeHelpCount>0?t("Headquarters. "+activeHelpCount+" active construction help requests.","Щаб. "+activeHelpCount+" активни заявки за помощ.") :t("Headquarters","Щаб")} title={activeHelpCount>0?t(activeHelpCount+" active construction help requests","Активни заявки за строителна помощ: "+activeHelpCount):undefined} onClick={() => {setQuestTarget(null);setShowPopup(true);}}>
           {language === "bg" ? castleName.replace("Headquarter","Щаб") : castleName}
           {activeHelpCount>0&&<span className="hq-help-badge" aria-label={String(activeHelpCount)}>{activeHelpCount}</span>}
         </button>
         <div className="utc-clock" aria-label={t("Server time in UTC","Сървърно време UTC")}><span>{t("Server time","Сървърно време")}</span><strong>{utcClock} UTC</strong></div>
-        {helpToast&&<div className="hq-help-toast" role="status">{helpToast}</div>}
       </div>
 
       <div className="bottom-bar">

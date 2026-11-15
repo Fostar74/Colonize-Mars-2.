@@ -274,10 +274,6 @@ router.post("/alliance/request-help",requireSession,(req,res)=>{
 router.post("/alliance/help",requireSession,(req,res)=>{
   try{const result=db.helpAlliance(Number(req.body.userId),Number(req.body.requestId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot help construction."});}
 });
-router.post("/alliance/help-all",requireSession,(req,res)=>{
-  try{res.json(db.helpAllAlliance(Number(req.body.userId)));}
-  catch(e){console.error(e);res.status(500).json({message:"Cannot help active constructions."});}
-});
 
 router.get("/inventory/:userId",requireSession,(req,res)=>{
   try {res.json(db.getInventory(Number(req.params.userId)));} catch(e){console.error(e);res.status(500).json({message:"Inventory unavailable."});}
