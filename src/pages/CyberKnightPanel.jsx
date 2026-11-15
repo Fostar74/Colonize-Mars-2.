@@ -6,6 +6,19 @@ import craftingCosts from "../shared/craftingCosts";
 import {rarityUnlockLevel} from "../shared/cyberKnightEquipment";
 import GameProgressManager from "../utils/gameProgress";
 
+function PlasmaGearIcon({slot}) {
+  const common={fill:"none",stroke:"currentColor",strokeWidth:2.4,strokeLinecap:"round",strokeLinejoin:"round"};
+  const shapes={
+    HELMET:<><path d="M14 31a18 18 0 0 1 36 0v8H14z"/><path d="M18 29h28l-5 8H23z"/><path d="M20 43h24M25 15l7-5 7 5"/></>,
+    ARMOR:<><path d="m19 15 13-6 13 6 7 6-5 11-4 23H19l-4-23-5-11z"/><path d="m23 17 9 7 9-7M22 37h20M25 47h14"/><path d="m32 25 4 5-4 5-4-5z"/></>,
+    BOOTS:<><path d="M12 13h13v19l7 5v8H12zM39 13h13v19l7 5v8H39z"/><path d="M14 51h18M41 51h17M17 19h7M44 19h7"/><path d="m17 45-3 6m32-6-3 6"/></>,
+    WEAPON:<><path d="m14 47 22-22 7 7-22 22z"/><path d="m31 24 8-8 11 11-8 8M40 15l5-5 10 10-5 5"/><path d="m13 48-4 9 9-4"/><path d="M47 30h10"/></>,
+    SHIELD:<><path d="M32 9 51 17v14c0 12-8 21-19 27-11-6-19-15-19-27V17z"/><path d="m19 21 13-5 13 5v10c0 8-5 14-13 19-8-5-13-11-13-19z"/><path d="M25 29h14M32 22v20"/></>,
+    GLOVES:<><path d="M19 53 14 37l2-5 5 4-2-17a3 3 0 0 1 6 0l2 12-1-19a3 3 0 0 1 6 0l1 18 1-14a3 3 0 0 1 6 0l-1 16 3-9a3 3 0 0 1 6 2l-4 20-8 10z"/><path d="m25 39 13 2M28 47h16"/></>
+  };
+  return <svg className="plasma-gear-icon" viewBox="0 0 64 64" aria-hidden="true" style={common}>{shapes[slot]}</svg>;
+}
+
 function CyberKnightPanel({ onClose }) {
   const { t , label: localLabel} = useLanguage();
   const [selectedSlot, setSelectedSlot] = useState(null);
@@ -19,7 +32,11 @@ function CyberKnightPanel({ onClose }) {
 
   const progressManager = new GameProgressManager();
 
-  const gearSlots = ["HELMET", "SHIELD", "BOOTS", "WEAPON", "ARMOR", "GLOVES"];
+  const gearColumns = [
+    {side:"benefit",title:"Your bonuses",titleBg:"Твоите бонуси",slots:["HELMET","ARMOR","BOOTS"]},
+    {side:"debuff",title:"Enemy reductions",titleBg:"Отслабване на противника",slots:["WEAPON","SHIELD","GLOVES"]}
+  ];
+  const rarityClasses={Common:"common",Uncommon:"uncommon",Rare:"rare",Epic:"epic",Legendary:"legendary"};
 
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
@@ -116,20 +133,19 @@ function CyberKnightPanel({ onClose }) {
         </div>
 
         <div className="cyber-panel-body">
-          <div className="cyber-image-container">
-            {imageFailed ? <div role="img" aria-label="Cyber Knight" style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",minHeight:280,color:"#00f0ff",fontSize:22}}>{t("CYBER KNIGHT","КИБЕРРИЦАР")}</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
-          </div>
-
-          <div style={{padding:"10px 14px",color:"#e7f8ff",background:"#142e43",borderRadius:8,marginBottom:12}}><strong>{t("Cyber Knight level:","Ниво на Киберрицаря:")} {knightLevel}/50 · {t("Gear inventory:","Екипировка:")} {inventory.length} {t("item(s)","предмета")}</strong><div style={{fontSize:12}}>{t("Rarity unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40.","Отключване на рядкостите: необикновена 10 · рядка 20 · епична 30 · легендарна 40.")}</div>{inventory.slice(-5).map(item=><div key={item.id||item.name} style={{fontSize:12}}>{item.name} · {item.slot} · {"★".repeat(Number(item.stars)||({Common:1,Uncommon:2,Rare:3,Epic:4,Legendary:5}[item.rarity]||1))}</div>)}</div>
-          <div className="equipment-slots">
-            {gearSlots.map((slot) => (
-              <div key={slot} className="gear-slot-wrapper">
-                <button className="gear-slot" onClick={() => handleSlotClick(slot)}>
-                  {localLabel(slot)}
-                </button>
-                {equippedItems[slot] && <div className="equipped-label">{equippedItems[slot].name}</div>}
-              </div>
-            ))}
+          <div className="equipment-status"><strong>{t("Cyber Knight level:","Ниво на Киберрицаря:")} {knightLevel}/50 <span>·</span> {t("Gear inventory:","Екипировка:")} {inventory.length}</strong><div>{t("Unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40","Отключване: необикновена 10 · рядка 20 · епична 30 · легендарна 40")}</div></div>
+          <div className="equipment-layout">
+            {gearColumns.map(column=><section key={column.side} className={`equipment-column ${column.side}`}>
+              <h3>{t(column.title,column.titleBg)}</h3>
+              {column.slots.map(slot=><button key={slot} className="gear-slot" onClick={()=>handleSlotClick(slot)}>
+                <span className="gear-icon-frame"><PlasmaGearIcon slot={slot}/></span>
+                <span className="gear-slot-text"><strong>{localLabel(slot)}</strong><small>{equippedItems[slot]?equippedItems[slot].name:t("Plasma gear slot","Плазменна екипировка")}</small></span>
+                {equippedItems[slot]&&<span className={`equipped-rarity ${rarityClasses[equippedItems[slot].rarity]||"common"}`}>★</span>}
+              </button>)}
+            </section>)}
+            <div className="cyber-image-container">
+              {imageFailed ? <div role="img" aria-label="Cyber Knight" className="cyber-image-fallback">{t("CYBER KNIGHT","КИБЕРРИЦАР")}</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
+            </div>
           </div>
         </div>
       </div>
@@ -147,7 +163,7 @@ function CyberKnightPanel({ onClose }) {
             {["Common", "Uncommon", "Rare", "Epic", "Legendary"].map((rarity) => (
               <button
                 key={rarity}
-                className={rarityTab === rarity ? "active" : ""}
+                className={`rarity-${rarityClasses[rarity]} ${rarityTab === rarity ? "active" : ""}`}
                 onClick={() => setRarityTab(rarity)}
               >
                 {localLabel(rarity)}
@@ -158,8 +174,8 @@ function CyberKnightPanel({ onClose }) {
           <div className="item-grid">
             {!itemsForSlot.length&&<p style={{color:"#d6e7f0"}}>{t("No","Няма")} {rarityTab} {t("items for","предмети за")} {localLabel(selectedSlot)}{t(". Try another rarity or check Gear Inventory above.",". Пробвай друга рядкост или виж инвентара по-горе.")}</p>}
             {itemsForSlot.map((item, index) => (
-                <div key={index} className="item-card">
-                  <h4>{item.name}</h4>
+                <div key={item.id||index} className={`item-card rarity-${rarityClasses[item.rarity]||"common"}`}>
+                  <div className="item-card-title"><span className="gear-icon-frame"><PlasmaGearIcon slot={item.slot||item.type}/></span><div><span className="rarity-label">{localLabel(item.rarity)}</span><h4>{localLabel(item.slot||item.type)} · {t("Plasma gear","Плазмена екипировка")}</h4></div></div>
                   <p>{t("Item Level:","Ниво на предмета:")} {item.level}</p>
                   <p>{"★".repeat(Number(item.stars)||({Common:1,Uncommon:2,Rare:3,Epic:4,Legendary:5}[item.rarity]||1))} · {t("Bonus slots:","Слотове за бонуси:")} {item.bonusSlots||1}</p>
                   <p>{t("Rarity bonus:","Бонус според рядкостта:")} {item.rarityBonus??({Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1)}% · {t("Maximum:","Максимум:")} {item.maximumBonus||50}%</p>
