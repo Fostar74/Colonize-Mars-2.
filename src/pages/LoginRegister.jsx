@@ -1,5 +1,5 @@
 import { useLanguage } from "../language";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import "./LoginRegister.css";
 import background from "../images/mars-background.jpg";
 import riseImage from "../images/cyber-knight-rise.jpg";
@@ -7,6 +7,10 @@ import continuesImage from "../images/cyber-knight-continues.jpg";
 import leavingEarthImage from "../images/cyber-knight-leaving-earth.jpg";
 
 const API_BASE = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
+const LANDING_TRACKS = [
+  { title: "Rise of Cyber Knight", src: "/music/rise-of-cyber-knight.mp3" },
+  { title: "Leaving Earth", src: "/music/leaving-earth.mp3" },
+];
 
 const dailyResetCountdown = () => {
   const now = new Date();
@@ -27,6 +31,9 @@ function LoginRegister() {
   const [message, setMessage] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
   const [resetCountdown, setResetCountdown] = useState(dailyResetCountdown);
+  const [trackIndex, setTrackIndex] = useState(0);
+  const [musicPlaying, setMusicPlaying] = useState(false);
+  const audioRef = useRef(null);
 
   const slides = [
     { image: riseImage, title: t("Rise of Cyber Knight", "Възходът на Киберрицаря"), subtitle: t("The legend begins", "Легендата започва") },
@@ -42,6 +49,20 @@ function LoginRegister() {
       window.clearInterval(resetTimer);
     };
   }, []);
+
+  useEffect(() => {
+    if (!musicPlaying || !audioRef.current) return;
+    audioRef.current.play().catch(() => setMusicPlaying(false));
+  }, [musicPlaying, trackIndex]);
+
+  const toggleLandingMusic = () => {
+    if (musicPlaying) {
+      audioRef.current?.pause();
+      setMusicPlaying(false);
+      return;
+    }
+    setMusicPlaying(true);
+  };
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -117,6 +138,28 @@ function LoginRegister() {
             {slides.map((slide, index) => (
               <button key={slide.image} type="button" aria-label={slide.title} aria-pressed={activeSlide === index} className={activeSlide === index ? "active" : ""} onClick={() => setActiveSlide(index)} />
             ))}
+          </div>
+          <div className="landing-soundtrack">
+            <audio
+              key={trackIndex}
+              ref={audioRef}
+              src={LANDING_TRACKS[trackIndex].src}
+              preload="none"
+              onEnded={() => setTrackIndex(index => (index + 1) % LANDING_TRACKS.length)}
+            />
+            <span className="soundtrack-note" aria-hidden="true">♫</span>
+            <div className="soundtrack-label">
+              <span>{t("CYBER KNIGHT SOUNDTRACK", "МУЗИКА ОТ CYBER KNIGHT")}</span>
+              <strong>{LANDING_TRACKS[trackIndex].title}</strong>
+            </div>
+            <div className="soundtrack-controls">
+              <button type="button" onClick={toggleLandingMusic} aria-label={musicPlaying ? t("Pause music", "Пауза на музиката") : t("Play music", "Пусни музиката")}>
+                {musicPlaying ? "Ⅱ" : "▶"} {musicPlaying ? t("Pause", "Пауза") : t("Play", "Пусни")}
+              </button>
+              <button type="button" onClick={() => setTrackIndex(index => (index + 1) % LANDING_TRACKS.length)} aria-label={t("Next song", "Следваща песен")}>
+                {t("Next", "Следваща")} ›
+              </button>
+            </div>
           </div>
         </section>
 
