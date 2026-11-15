@@ -69,7 +69,7 @@ export default function InformationPanel(){
  const acceleratedTraining=selectedProtocol==="Accelerated Training";
  const deepCoreExtraction=selectedProtocol==="Deep Core Extraction";
  const nanoArmorSystems=selectedProtocol==="Nano Armor Systems";
- let crumbs=[{id:"home",en:"Home",bg:"Начало"}];
+ let crumbs=[];
  if(section)crumbs.push({id:section.id,en:section.en,bg:section.bg});
  if(selectedProtocol){const selected=commanderProtocols.find(item=>item.en===selectedProtocol);crumbs.push({id:"protocol-detail",en:selected?.en||selectedProtocol,bg:selected?.bg||selectedProtocol});}
  if(page==="infantry"||category){
@@ -81,9 +81,8 @@ export default function InformationPanel(){
  const cardGrid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12};
  const card={display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:9,minHeight:140,padding:14,textAlign:"center",background:"#172432",border:"1px solid #54758a",borderRadius:10,color:"#f5f0e6",cursor:"pointer"};
  return <div style={{color:"#f5f0e6",padding:12}}>
-  <nav aria-label={t("Help navigation","Навигация в помощта")} style={{display:"flex",flexWrap:"wrap",alignItems:"center",marginBottom:14}}>{crumbs.map(breadcrumb)}</nav>
+  {crumbs.length>0&&<nav aria-label={t("Help navigation","Навигация в помощта")} style={{display:"flex",flexWrap:"wrap",alignItems:"center",marginBottom:14}}>{crumbs.map(breadcrumb)}</nav>}
   {home&&<>
-   <h2>{t("Home","Начало")}</h2>
    <div style={cardGrid}>{homeSections.map(item=><button key={item.id} onClick={()=>setPage(item.id)} style={card}>
     <img src={helpImage(item.image)} alt="" style={{width:72,height:72,objectFit:"contain"}}/>
     <span>{t(item.en,item.bg)}</span>

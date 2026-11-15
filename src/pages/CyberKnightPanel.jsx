@@ -28,6 +28,7 @@ function CyberKnightPanel({ onClose }) {
   const [selectedItem, setSelectedItem] = useState(null);
   const [crafting, setCrafting] = useState(false);
   const [craftMessage, setCraftMessage] = useState("");
+  const [equipmentNotice, setEquipmentNotice] = useState("");
   const [imageFailed, setImageFailed] = useState(false);
 
   const progressManager = new GameProgressManager();
@@ -88,6 +89,7 @@ function CyberKnightPanel({ onClose }) {
     const saved=await progressManager.saveEquipment(nextEquipped);
     if(!saved){alert("Could not save equipment. Please retry.");return;}
     setEquippedItems(nextEquipped);
+    setEquipmentNotice(t("Equipped","Екипирано")+": "+localLabel(slot)+" · "+item.rarity+" · Lv "+(Number(item.level)||0));
     setActiveModal(null);
     setSelectedItem(null);
   };
@@ -133,15 +135,15 @@ function CyberKnightPanel({ onClose }) {
         </div>
 
         <div className="cyber-panel-body">
-          <div className="equipment-status"><strong>{t("Cyber Knight level:","Ниво на Киберрицаря:")} {knightLevel}/50 <span>·</span> {t("Gear inventory:","Екипировка:")} {inventory.length}</strong><div>{t("Unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40","Отключване: необикновена 10 · рядка 20 · епична 30 · легендарна 40")}</div></div>
+          <div className="equipment-status"><strong>{t("Cyber Knight level:","Ниво на Киберрицаря:")} {knightLevel}/50 <span>·</span> {t("Gear inventory:","Екипировка:")} {inventory.length} <span>·</span> {t("Equipped:","Облечени:")} {Object.values(equippedItems).filter(Boolean).length}/6</strong><div>{t("Unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40","Отключване: необикновена 10 · рядка 20 · епична 30 · легендарна 40")}</div>{equipmentNotice&&<div className="equipment-confirmation" role="status">✓ {equipmentNotice}</div>}</div>
           <div className="equipment-layout">
             {gearColumns.map(column=><section key={column.side} className={`equipment-column ${column.side}`}>
               <h3>{t(column.title,column.titleBg)}</h3>
-              {column.slots.map(slot=><button key={slot} className="gear-slot" onClick={()=>handleSlotClick(slot)}>
+              {column.slots.map(slot=>{const currentItem=equippedItems[slot],slotCount=inventory.filter(item=>(item.slot||item.type||"").toUpperCase()===slot).length;return <button key={slot} className={`gear-slot ${currentItem?"is-equipped":""}`} onClick={()=>handleSlotClick(slot)} aria-pressed={!!currentItem}>
                 <span className="gear-icon-frame"><PlasmaGearIcon slot={slot}/></span>
-                <span className="gear-slot-text"><strong>{localLabel(slot)}</strong><small>{equippedItems[slot]?equippedItems[slot].name:t("Plasma gear slot","Плазменна екипировка")}</small></span>
-                {equippedItems[slot]&&<span className={`equipped-rarity ${rarityClasses[equippedItems[slot].rarity]||"common"}`}>★</span>}
-              </button>)}
+                <span className="gear-slot-text"><strong>{localLabel(slot)}</strong><small>{currentItem?t("Equipped","Екипирано")+" · "+currentItem.rarity+" · Lv "+(Number(currentItem.level)||0):t("Not equipped","Не е екипирано")}</small><small>{slotCount} {t("in inventory","в инвентара")}</small></span>
+                {currentItem&&<span className={`equipped-rarity rarity-${rarityClasses[currentItem.rarity]||"common"}`}>✓</span>}
+              </button>})}
             </section>)}
             <div className="cyber-image-container">
               {imageFailed ? <div role="img" aria-label="Cyber Knight" className="cyber-image-fallback">{t("CYBER KNIGHT","КИБЕРРИЦАР")}</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
@@ -187,13 +189,13 @@ function CyberKnightPanel({ onClose }) {
                   </ul>
                   <div className="item-buttons">
                     <button
-                      disabled={knightLevel<(rarityUnlockLevel[item.rarity]||1)}
+                      disabled={knightLevel<(rarityUnlockLevel[item.rarity]||1)||equippedItems[selectedSlot]?.id===item.id}
                       onClick={() => {
                         setSelectedItem(item);
                         setActiveModal("equip");
                       }}
                     >
-                      {t("EQUIP","ЕКИПИРАЙ")}
+                      {equippedItems[selectedSlot]?.id===item.id?t("EQUIPPED","ОБЛЕЧЕНО"):t("EQUIP","ЕКИПИРАЙ")}
                     </button>
                     <button
                       onClick={() => {

@@ -2556,6 +2556,17 @@ class DatabaseManager {
         }
         result.wounded=wounded;
         if(Object.keys(wounded).length)this.recordHospitalWounds(userId,"alien-base",mission.id,wounded,"waiting");
+        // Every completed mission returns Cyber Knight gear, even if the force loses.
+        const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
+        const slot=slots[require("crypto").randomInt(slots.length)];
+        const stars=starsForAlienMission(mission.level);
+        const rarity=rarityByStars[stars];
+        const rarityBonus=rarityBonusPercent[rarity];
+        const rolled=rollEquipmentBonuses(slot,rarity,stars);
+        const item={id:"alien-"+mission.id,name:"Plasma "+slot[0]+slot.slice(1).toLowerCase(),slot,rarity,stars,level:0,stats:rolled.stats,effects:rolled.effects,bonusSlots:stars,rarityBonus,maximumBonus:50,obtainedFrom:"Alien Base "+mission.level};
+        const old=this.getUserEquipment(userId);
+        this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
+        result.equipmentReward=item;
         if(result.victory){
         const greenCrystals=mission.level>=9&&mission.level<=19?Math.max(100,100+(mission.level-11)*50):0;
           const redCrystals=mission.level===20?1:0;
@@ -2571,18 +2582,7 @@ class DatabaseManager {
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
           db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
           db.prepare("UPDATE alien_rewards SET victories=victories+1 WHERE user_id=?").run(userId);
-          // Every victory grants Cyber Knight equipment. Its bonus values are provisional.
           const rewardType=["crafting","resources","army"][(mission.id-1)%3];
-          const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
-          const slot=slots[require("crypto").randomInt(slots.length)];
-          const stars=starsForAlienMission(mission.level);
-          const rarity=rarityByStars[stars];
-          const rarityBonus=rarityBonusPercent[rarity];
-          const rolled=rollEquipmentBonuses(slot,rarity,stars);
-          const item={id:"alien-"+mission.id,name:"Alien "+slot,slot,rarity,stars,level:0,stats:rolled.stats,effects:rolled.effects,bonusSlots:stars,rarityBonus,maximumBonus:50,obtainedFrom:"Alien Base "+mission.level};
-          const old=this.getUserEquipment(userId);
-          this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
-          result.equipmentReward=item;
           if(rewardType==="crafting"){
             const old=this.getUserEquipment(userId);
             const points={...(old?.craftingPoints||{})};

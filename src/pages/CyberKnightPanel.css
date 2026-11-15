@@ -8,6 +8,7 @@
 .cyber-panel-body{position:relative;z-index:1;display:flex;flex:1;min-height:0;flex-direction:column;gap:10px}
 .equipment-status{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:9px 13px;background:#0d2635;border:1px solid #2b819777;border-radius:10px;color:#c9f7ff;font-size:13px}
 .equipment-status strong{color:#e4fcff}.equipment-status span{color:#4de9ff}.equipment-status div{color:#89b9c6;font-size:12px;text-align:right}
+.equipment-status .equipment-confirmation{flex-basis:100%;color:#73f2a1;text-align:left;font-weight:700}
 .equipment-layout{display:grid;grid-template-columns:minmax(190px,1fr) minmax(210px,1.15fr) minmax(190px,1fr);align-items:stretch;gap:12px;flex:1;min-height:0}
 .equipment-column{display:flex;flex-direction:column;justify-content:center;gap:12px;padding:4px 0}
 .equipment-column h3{margin:0 0 2px;color:#7beeff;text-align:center;font-size:12px;letter-spacing:.14em;text-transform:uppercase}
@@ -21,6 +22,7 @@
 .plasma-gear-icon{width:37px;height:37px;filter:drop-shadow(0 0 4px currentColor)}
 .gear-slot-text{display:flex;flex-direction:column;gap:4px;min-width:0}.gear-slot-text strong{font-size:14px;letter-spacing:.03em}.gear-slot-text small{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#8bbbc6;font-size:11px}
 .equipped-rarity{position:absolute;top:5px;right:8px;font-size:14px;text-shadow:0 0 8px currentColor}
+.equipped-rarity.rarity-common{color:#f1f4f4}.equipped-rarity.rarity-uncommon{color:#50e28a}.equipped-rarity.rarity-rare{color:#55a8ff}.equipped-rarity.rarity-epic{color:#ce7bff}.equipped-rarity.rarity-legendary{color:#ff9c35}
 .cyber-image-container{position:relative;display:flex;justify-content:center;align-items:center;min-height:250px;overflow:hidden;border:1px solid #31c9f233;border-radius:16px;background:radial-gradient(ellipse at 50% 45%,#12527455,transparent 66%)}
 .cyber-image-container:after{content:"";position:absolute;inset:12px;border:1px solid #65eaff22;border-radius:12px;pointer-events:none}
 .cyber-image{position:relative;z-index:1;max-width:100%;max-height:100%;object-fit:contain;filter:drop-shadow(0 0 18px #05bde944)}

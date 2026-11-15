@@ -19,6 +19,7 @@ import AVATARS from "../shared/avatarCatalog";
 
 const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;
 const resolvedBattleReportIds = data => [
+  ...(data?.missions || []).filter(mission => mission.result).map(mission => `alien:${mission.id}`),
   ...(data?.playerMissions || []).filter(mission => mission.result).map(mission => `player:${mission.id}`),
   ...(data?.scoutMissions || []).filter(mission => mission.returned_at || mission.returnedAt).map(mission => `spy:${mission.id}`),
   ...(data?.gatheringReports || []).map(report => `gathering:${report.id}`)
@@ -650,7 +651,7 @@ function Game() {
         </div>
       )}
 
-      {showInformation&&<div className="popup" style={{zIndex:1007}}><div className="popup-header" style={{gap:16}}><span>{t("UNIT INFORMATION","ИНФОРМАЦИЯ ЗА ВОЙСКИТЕ")}</span><button className="close-button" aria-label={t("Close","Затвори")} onClick={()=>setShowInformation(false)}>X</button></div><div className="popup-content"><InformationPanel/></div></div>}
+      {showInformation&&<div className="popup" style={{zIndex:1007}}><div className="popup-header" style={{gap:16}}><span>{t("GAME INFORMATION","ИНФОРМАЦИЯ ЗА ИГРАТА")}</span><button className="close-button" aria-label={t("Close","Затвори")} onClick={()=>setShowInformation(false)}>X</button></div><div className="popup-content"><InformationPanel/></div></div>}
       {showBattleSimulator&&<div className="popup" style={{zIndex:1004}}>
         <div className="popup-header"><span>{t("COMBAT SIMULATOR","БОЕН СИМУЛАТОР")}</span><button className="close-button" onClick={()=>setShowBattleSimulator(false)}>X</button></div>
         <div className="popup-content"><BattleSimulator/></div>
