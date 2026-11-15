@@ -14,6 +14,8 @@ export default function ReportsPanel({onClose,onRead}) {
   const [data,setData]=useState(null);
   const [error,setError]=useState("");
   const [newReportIds,setNewReportIds]=useState([]);
+  const [clock,setClock]=useState(Date.now);
+  useEffect(()=>{const timer=window.setInterval(()=>setClock(Date.now()),1000);return()=>window.clearInterval(timer);},[]);
   useEffect(()=>{
     let active=true;
     (async()=>{
@@ -81,14 +83,23 @@ export default function ReportsPanel({onClose,onRead}) {
     const secondary=reward&&typeof reward==="object"&&!reward.item
       ?reward.type==="crafting"?t("Forge points","Точки за изковаване")+": "+reward.amount
       :reward.type==="resources"?t("Resources","Ресурси")+": "+Number(reward.amount||0).toLocaleString()
-      :reward.type==="army"?t("Troops","Войници")+": "+reward.amount+" "+reward.unit
+      :reward.type==="army"?t("Troops","Войници")+": "+Number(reward.amount||0).toLocaleString()+" "+localLabel(reward.unit)
       :""
       :"";
+    const gearNames={
+      HELMET:t("Plasma Helmet","Плазмен шлем"),ARMOR:t("Plasma Armor","Плазмена броня"),BOOTS:t("Plasma Boots","Плазмени ботуши"),
+      WEAPON:t("Plasma Weapon","Плазмено оръжие"),SHIELD:t("Plasma Shield","Плазмен щит"),GLOVES:t("Plasma Gloves","Плазмени ръкавици")
+    };
+    const returnStatus=m.returned_at?t("Army returned","Армията се прибра"):m.returns_at?`${t("Returning","Връща се")} · ${Math.max(0,Math.ceil((Number(m.returns_at)-clock)/1000))} ${t("sec.","сек.")}`:"";
     return <article key={"alien-"+m.id} style={card}>
-    <h3>{t("Alien mission","Извънземна мисия")} #{m.id} · {t("Base level","Ниво на базата")} {m.level} · {m.result.victory?t("Victory","Победа"):t("Defeat","Поражение")}</h3>
-    <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"}</p>
-    {equipment&&<><p>🛡 {t("Cyber Knight equipment","Екипировка за Киберрицаря")}: <strong>{equipment.name}</strong> · {localLabel(equipment.rarity)} · {localLabel(equipment.slot)}</p>{(equipment.effects||[]).length>0&&<ul>{equipment.effects.map((effect,index)=><li key={index}>{effectLabel(effect)}</li>)}</ul>}</>}
-    {secondary&&<p>{t("Additional reward","Допълнителна награда")}: {secondary}</p>}
+    <h3>{t("Attacks against aliens","Атаки срещу извънземни")}</h3>
+    <p>{t("Mission #","Мисия №")}{m.id} · {t("Alien Base level","Извънземна база ниво")} {m.level} · {m.result.victory?t("Victory","ПОБЕДА"):t("Defeat","ПОРАЖЕНИЕ")}{returnStatus&&" · "+returnStatus}</p>
+    {m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
+    <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"} · {t("Remaining alien defenders","Оставащи извънземни защитници")}: {m.result.defendersRemaining??0}</p>
+    {equipment&&<><p>🎁 {t("Cyber Knight gear reward","Получена екипировка за Киберрицаря")}: <strong>{gearNames[String(equipment.slot||equipment.type||"").toUpperCase()]||equipment.name}</strong> · {localLabel(equipment.rarity)} · {"★".repeat(Number(equipment.stars)||1)}</p>{(equipment.effects||[]).length>0&&<ul>{equipment.effects.map((effect,index)=><li key={index}>{effectLabel(effect)}</li>)}</ul>}</>}
+    {secondary&&<p>🎁 {t("Additional reward","Допълнителна награда")}: {secondary}</p>}
+    {Number(m.result.greenCrystals)>0&&<p>🎁 💚 {t("Green crystals","Зелени кристали")}: {Number(m.result.greenCrystals).toLocaleString()}</p>}
+    {Number(m.result.redCrystals)>0&&<p>🎁 🔴 {t("Red crystals","Червени кристали")}: {Number(m.result.redCrystals).toLocaleString()}</p>}
     {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {list(m.result.wounded)}</p>}
     {army(t("Starting army","Начална армия"),m.units)}{army(t("Losses","Загуби"),diff(m.units,m.result.survivors||{}))}{army(t("Survivors","Оцелели"),m.result.survivors||{})}
   </article>;
