@@ -14,7 +14,7 @@ import ReportsPanel from "./ReportsPanel";
 import InformationPanel from "./InformationPanel";
 
 import "./Game.css";
-import marsBackground from "../images/mars-background.jpg";
+import marsBackground from "../images/cyber-knight-expanded.png";
 import AVATARS from "../shared/avatarCatalog";
 
 const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;

@@ -4,6 +4,7 @@ import "./CyberKnightPanel.css";
 import craftingCosts from "../shared/craftingCosts";
 import {rarityUnlockLevel} from "../shared/cyberKnightEquipment";
 import GameProgressManager from "../utils/gameProgress";
+import cyberKnightImage from "../images/cyber-knight-expanded.png";
 
 function PlasmaGearIcon({slot}) {
   const common={fill:"none",stroke:"currentColor",strokeWidth:2.4,strokeLinecap:"round",strokeLinejoin:"round"};
@@ -155,7 +156,8 @@ function CyberKnightPanel({ onClose }) {
                 <span className="gear-slot-text"><strong>{localLabel(slot)}</strong><small>{currentItem?t("Equipped","Екипирано")+" · "+currentItem.rarity+" · Lv "+(Number(currentItem.level)||0):t("Not equipped","Не е екипирано")}</small><small>{slotCount} {t("in inventory","в инвентара")}</small></span>
                 {currentItem&&<span className={`equipped-rarity rarity-${rarityClasses[currentItem.rarity]||"common"}`}>✓</span>}
               </button>})}
-            </section>)}
+            </section>)} 
+            <div className="cyber-image-container"><img className="cyber-image" src={cyberKnightImage} alt="Cyber Knight in Martian armor" /></div>
           </div>
         </div>
       </div>
