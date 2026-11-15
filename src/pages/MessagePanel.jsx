@@ -73,8 +73,8 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
     {!messages.length && <p>{t("No messages yet.","Все още няма съобщения.")}</p>}
     <div style={{maxHeight:"40vh",overflowY:"auto"}}>
       {messages.map(message => <article key={message.id} style={{padding:8,borderBottom:"1px solid #47758e"}}>
-        <strong>{playerAction ? playerAction({id:message.senderId,username:message.sender}) : message.sender}</strong>
-        {!alliance && <> → {playerAction ? playerAction({id:message.recipientId,username:message.recipient}) : message.recipient}</>}
+        <strong>{message.messageType==="system"?t("Game System","Система на играта"):playerAction ? playerAction({id:message.senderId,username:message.sender}) : message.sender}</strong>
+        {!alliance && message.messageType!=="system" && <> → {playerAction ? playerAction({id:message.recipientId,username:message.recipient}) : message.recipient}</>}
         {" · "}<time>{new Date(message.sentAt).toLocaleString()}</time>
         <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{message.body}</div>
       </article>)}

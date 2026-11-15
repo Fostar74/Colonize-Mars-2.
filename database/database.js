@@ -905,10 +905,10 @@ class DatabaseManager {
     if(!["private","trade","alliance"].includes(scope))return {error:"Unknown message channel."};
     const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
     if(scope==="alliance"&&!member)return {error:"Join an alliance to view its chat."};
-    const filter=scope==="alliance" ? "m.alliance_id=?" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type=?";
-    const params=scope==="alliance" ? [member.alliance_id] : [userId,userId,scope];
-    const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,
-      sender.username AS sender,recipient.username AS recipient FROM player_messages m
+    const filter=scope==="alliance" ? "m.alliance_id=?" : `(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND ${scope==="private"?"m.message_type IN ('private','system')":"m.message_type=?"}`;
+    const params=scope==="alliance" ? [member.alliance_id] : scope==="private" ? [userId,userId] : [userId,userId,scope];
+    const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,m.message_type AS messageType,
+      CASE WHEN m.message_type='system' THEN 'Game System' ELSE sender.username END AS sender,recipient.username AS recipient FROM player_messages m
       JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
       WHERE ${filter} ORDER BY m.id DESC LIMIT 50`).all(...params);
     return {messages};
@@ -1852,20 +1852,18 @@ class DatabaseManager {
       const wounded={};
       for(const row of eventHospital)for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))wounded[unit]=(Number(wounded[unit])||0)+Number(count||0);
       for(const row of legacyHospital)for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))wounded[unit]=(Number(wounded[unit])||0)+Number(count||0);
-      const resources=this.mothershipHealingCost(wounded);
+      const resources={Gold:10000,Iron:10000,Water:10000,Solar:10000};
       const rank=rankings.findIndex(row=>row.user_id===user_id)+1;
       if(rank>0&&rank<=10){
-        const amount=rank===1?30000:rank===2?25000:rank===3?20000:10000;
-        for(const key of Object.keys(resources))resources[key]+=amount;
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(user_id);
         db.prepare("UPDATE alien_rewards SET bonus_missions=bonus_missions+20 WHERE user_id=?").run(user_id);
-        const old=this.getUserEquipment(user_id),inventory=[...(old?.gearInventory||[])],slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
-        const count=rank===1?3:rank===2?2:1;
-        for(let n=0;n<count;n++){
-          const slot=slots[(event.id+rank+n)%slots.length];
-          inventory.push({id:"mothership-"+event.id+"-"+user_id+"-"+n,name:"Mother Ship Relic",slot,rarity:rank===1?"Legendary":"Epic",level:0,stats:["Mother Ship Damage +5%","Army Attack +3%","Experience Gain +5%"],bonusSlots:3,obtainedFrom:"Mother Ship Hunt · Rank "+rank});
+        const old=this.getUserEquipment(user_id),inventory=[...(old?.gearInventory||[])],slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"],availableSlots=[...slots];
+        for(let n=0;n<3;n++){
+          const slotIndex=Math.floor(Math.random()*availableSlots.length),slot=availableSlots.splice(slotIndex,1)[0];
+          inventory.push({id:"mothership-"+event.id+"-"+user_id+"-"+n,name:"Mother Ship Relic · "+slot,slot,rarity:rank===1?"Legendary":"Epic",level:0,stats:[],bonusSlots:3,obtainedFrom:"Mother Ship Hunt · Rank "+rank});
         }
         this.saveUserEquipment(user_id,old?.equippedItems||{},inventory,old?.craftingPoints||{});
+        db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,1,1) ON CONFLICT(user_id) DO UPDATE SET balance=balance+1,total_earned=total_earned+1").run(user_id);
       }
       // Event troops are held as wounded and return automatically when the event closes.
       for(const [unit,count] of Object.entries(wounded))current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
@@ -1875,8 +1873,17 @@ class DatabaseManager {
       db.prepare("UPDATE mothership_hospital SET status='healed' WHERE user_id=? AND event_id=? AND status IN ('waiting','healing')").run(user_id,eventId);
       for(const key of Object.keys(resources))current.resources[key]=(Number(current.resources[key])||0)+Math.ceil(resources[key]);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),user_id);
-      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?)")
-        .run(user_id,user_id,null,rank>0&&rank<=10?"Mother Ship Hunt reward: global rank "+rank+"; +20 Cyber Knight missions, equipment and resources. Your full army returns after every battle. / Награда от Лова на Майчиния кораб: глобално място "+rank+"; +20 мисии на Киберрицаря, екипировка и ресурси. Цялата ти армия се връща след всяка битка.":"Mother Ship Hunt consolation resources were delivered. Your full army returns after every battle. / Получи утешителни ресурси след Лова на Майчиния кораб. Цялата ти армия се връща след всяка битка.",Date.now());
+    }
+    const leaderboard=rankings.length?rankings.map((row,index)=>`${index+1}. ${row.username} — ${Number(row.damage||0).toLocaleString()} damage · ${row.attacks} attacks / ${index+1}. ${row.username} — ${Number(row.damage||0).toLocaleString()} щети · ${row.attacks} атаки`).join("\n"):"No attacks were recorded. / Няма отчетени атаки.";
+    const insertMessage=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,NULL,?,?, 'system')");
+    const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'game_message', '', ?)");
+    for(const {id:userId} of db.prepare("SELECT id FROM users").all()){
+      const rank=rankings.findIndex(row=>row.user_id===userId)+1;
+      const personal=rank?`Your rank: ${rank}. / Твоето място: ${rank}.`:"You did not participate. / Не участва.",
+        winnerReward=rank>0&&rank<=10?"Green crystal ×1, 3 random Cyber Knight equipment pieces with 3 bonus slots each, +20 Cyber Knight missions. Bonus values will be announced separately. / Зелен кристал ×1, 3 случайни екипировки за Киберрицаря с по 3 слота за бонуси и +20 мисии на Киберрицаря. Стойностите на бонусите ще бъдат обявени допълнително.":"",
+        body=`MOTHER SHIP HUNT · FINAL RESULTS / ЛОВ НА КОРАБА МАЙКА · ФИНАЛНИ РЕЗУЛТАТИ\n\nFINAL RANKING / КЛАСИРАНЕ:\n${leaderboard}\n\nREWARDS / НАГРАДИ:\nEach participant: 10,000 each of Gold, Iron, Water and Solar. / Всеки участник: по 10 000 злато, желязо, вода и слънчева енергия.\nTop 10: ${winnerReward||"Green crystal ×1, 3 random Cyber Knight equipment pieces with 3 bonus slots each, +20 Cyber Knight missions. Bonus values will be announced separately. / Зелен кристал ×1, 3 случайни екипировки за Киберрицаря с по 3 слота за бонуси и +20 мисии на Киберрицаря. Стойностите на бонусите ще бъдат обявени допълнително."}\n\n${personal}`;
+      insertMessage.run(userId,userId,body,Date.now());
+      notify.run(userId,Date.now());
     }
     db.prepare("UPDATE mothership_events SET rewards_distributed=1 WHERE id=? AND rewards_distributed=0").run(eventId);
     return true;
