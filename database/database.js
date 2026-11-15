@@ -942,8 +942,8 @@ class DatabaseManager {
       if(scope==="broadcast"){
         const recipients=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId);
         if(!recipients.length)return {error:"Your alliance has no other members to notify."};
-        const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,'private')");
-        for(const row of recipients){insert.run(userId,row.user_id,member.alliance_id,content,now);notify.run(row.user_id,"alliance",now);}
+        const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?, ?, NULL, ?, ?,'private')");
+        for(const row of recipients){insert.run(userId,row.user_id,content,now);notify.run(row.user_id,"alliance",now);}
         return {message:"Alliance message sent to "+recipients.length+" members."};
       }
       db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,?)")
