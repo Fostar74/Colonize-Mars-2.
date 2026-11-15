@@ -880,21 +880,46 @@ class DatabaseManager {
       {label:"Gold × 15,000",kind:"resources",name:"Gold",amount:15000}
     ];
   }
-  getWheel(userId){
-    const state=this.getTokens(userId),now=Date.now();
-    return {tokens:state.balance,freeAvailableAt:state.last_free_spin+3600000,freeReady:now>=state.last_free_spin+3600000,serverTime:now,spinCost:50,prizes:this.wheelPrizes(),recent:db.prepare("SELECT spun_at,reward_id,free FROM wheel_spins WHERE user_id=? ORDER BY id DESC LIMIT 8").all(userId)};
+  getWheel(userId,now=Date.now()){
+    const state=this.getTokens(userId);
+    const hour=3600000, day=24*hour;
+    const dayStart=Math.floor(now/day)*day;
+    const hourStart=Math.floor(now/hour)*hour;
+    const prizes=this.wheelPrizes();
+    const today=db.prepare("SELECT spun_at,reward_id,free FROM wheel_spins WHERE user_id=? AND spun_at>=? AND spun_at<? ORDER BY id").all(userId,dayStart,dayStart+day);
+    const opened=Array(prizes.length).fill(null);
+    for(const spin of today.slice(0,prizes.length)){
+      // Older landings could award the same prize more than once.
+      const index=opened[spin.reward_id]===null?spin.reward_id:opened.indexOf(null);
+      opened[index]=prizes[spin.reward_id];
+    }
+    const remaining=opened.filter(prize=>prize===null).length;
+    const freeHours=new Set(today.filter(spin=>spin.free).map(spin=>Math.floor((spin.spun_at-dayStart)/hour)));
+    const currentHour=(hourStart-dayStart)/hour;
+    const freeReady=remaining>0&&!freeHours.has(currentHour);
+    const missedHours=currentHour-[...freeHours].filter(slot=>slot<currentHour).length;
+    const paidUsed=today.filter(spin=>!spin.free).length;
+    const paidAvailable=Math.max(0,Math.min(remaining-Number(freeReady),missedHours-paidUsed));
+    return {
+      tokens:state.balance,freeReady,freeAvailableAt:freeReady?now:remaining?hourStart+hour:dayStart+day,
+      serverTime:now,spinCost:50,prizes,opened,remaining,paidAvailable,
+      recent:db.prepare("SELECT spun_at,reward_id,free FROM wheel_spins WHERE user_id=? ORDER BY id DESC LIMIT 8").all(userId)
+    };
   }
   spinWheel(userId,paid){
     return db.transaction(()=>{
-      const state=this.getTokens(userId),now=Date.now();
+      const now=Date.now(),wheel=this.getWheel(userId,now);
+      if(!wheel.remaining)return {error:"All 12 craters have been opened today."};
       if(paid){
-        if(state.balance<50)return {error:"Not enough tokens (50 required)."};
-        db.prepare("UPDATE player_tokens SET balance=balance-50 WHERE user_id=?").run(userId);
-      }else{
-        if(now-state.last_free_spin<3600000)return {error:"Free spin is not ready yet."};
-        db.prepare("UPDATE player_tokens SET last_free_spin=? WHERE user_id=?").run(now,userId);
+        if(!wheel.paidAvailable)return {error:"There are no missed free landings available."};
+        if(wheel.tokens<wheel.spinCost)return {error:"Not enough tokens (50 required)."};
+        db.prepare("UPDATE player_tokens SET balance=balance-? WHERE user_id=?").run(wheel.spinCost,userId);
+      }else if(!wheel.freeReady){
+        return {error:"Free spin is not ready yet."};
       }
-      const index=require("crypto").randomInt(12),prize=this.wheelPrizes()[index];
+      const unopened=wheel.opened.flatMap((prize,index)=>prize===null?[index]:[]);
+      const index=unopened[require("crypto").randomInt(unopened.length)];
+      const prize=wheel.prizes[index];
       db.prepare("INSERT INTO wheel_spins(user_id,spun_at,reward_id,free) VALUES (?,?,?,?)").run(userId,now,index,paid?0:1);
       if(prize.kind==="resources"||prize.kind==="army")this.addInventoryReward(userId,prize.kind,prize.name,prize.amount);
       if(prize.kind==="crafting"){
@@ -908,8 +933,8 @@ class DatabaseManager {
         const item={id:"wheel-"+now+"-"+userId,name:"Wheel "+slot,slot,rarity:"Common",level:0,stats:[],obtainedFrom:"Activity Wheel"};
         this.saveUserEquipment(userId,gear?.equippedItems||{},[...(gear?.gearInventory||[]),item],gear?.craftingPoints||{});
       }
-      return {index,prize,wheel:this.getWheel(userId)};
-    })();
+      return {index,prize,wheel:this.getWheel(userId,now)};
+    }).immediate();
   }
 
   listMessages(userId, scope){
