@@ -36,6 +36,19 @@ const rememberBattleReports = (data,userId) => {
   const all=new Set([...(Array.isArray(seen)?seen:[]),...resolvedBattleReportIds(data)]);
   localStorage.setItem(reportReadStorageKey(userId),JSON.stringify([...all].slice(-500)));
 };
+const hospitalReadStorageKey = userId => `colonize-mars-read-hospital-alerts:${userId}`;
+const readHospitalAlertIds = userId => {
+  try {
+    const ids=JSON.parse(localStorage.getItem(hospitalReadStorageKey(userId))||`[]`);
+    return new Set(Array.isArray(ids)?ids.map(String):[]);
+  } catch {
+    return new Set();
+  }
+};
+const saveHospitalAlertIds = (userId,ids) => {
+  if(!userId)return;
+  try { localStorage.setItem(hospitalReadStorageKey(userId),JSON.stringify([...new Set(ids.map(String))])); } catch {}
+};
 
 function MarketPanel() {
   const {t,label}=useLanguage();
@@ -309,6 +322,7 @@ function Game() {
   const [unreadIncoming,setUnreadIncoming]=useState(0);
   const [unreadBattleReports,setUnreadBattleReports]=useState(0);
   const [hospitalWoundedCount,setHospitalWoundedCount]=useState(0);
+  const [hospitalEntries,setHospitalEntries]=useState([]);
   const [incomingAlert,setIncomingAlert]=useState(false);
   const [eventNotification,setEventNotification]=useState(null);
   const [messageNotifications,setMessageNotifications]=useState([]);
@@ -400,11 +414,20 @@ function Game() {
     const refreshHospitalAlerts=async()=>{
       try{
         const userId=sessionStorage.getItem(`userId`);
+        if(!userId)return;
         const response=await fetch(api+`/hospital/`+encodeURIComponent(userId),{headers:{Authorization:`Bearer `+sessionStorage.getItem(`authToken`)},cache:`no-store`});
         if(!response.ok)return;
         const data=await response.json();
         if(!active)return;
-        const count=(data.entries||[]).reduce((total,entry)=>total+Object.values(entry.wounded||{}).reduce((subtotal,value)=>subtotal+Math.max(0,Number(value)||0),0),0);
+        const entries=data.entries||[];
+        const activeIds=new Set(entries.map(entry=>String(entry.id)));
+        const previouslyRead=readHospitalAlertIds(userId);
+        const stillRead=[...previouslyRead].filter(id=>activeIds.has(id));
+        saveHospitalAlertIds(userId,stillRead);
+        const readIds=new Set(stillRead);
+        const unread=entries.filter(entry=>!readIds.has(String(entry.id)));
+        const count=unread.reduce((total,entry)=>total+Object.values(entry.wounded||{}).reduce((subtotal,value)=>subtotal+Math.max(0,Number(value)||0),0),0);
+        setHospitalEntries(entries);
         setHospitalWoundedCount(count);
       }catch{}
     };
@@ -617,7 +640,12 @@ function Game() {
         <button onClick={() => navigate("/map?campaign=1")}>{t("Campaign","Кампании")}</button>
         <button onClick={()=>setShowEvents(true)}>{t("Events","Събития")}</button>
         <button onClick={()=>setShowMarket(true)}>{t("Market","Пазар")}</button>
-        <button className={hospitalWoundedCount>0?"reports-nav-button reports-unread":""} onClick={()=>setShowHospital(true)}>{t("Hospital","Болница")}{hospitalWoundedCount>0&&<span className="reports-badge">{hospitalWoundedCount}</span>}</button>
+        <button className={hospitalWoundedCount>0?"reports-nav-button reports-unread":""} onClick={()=>{
+          const userId=sessionStorage.getItem("userId");
+          saveHospitalAlertIds(userId,hospitalEntries.map(entry=>entry.id));
+          setHospitalWoundedCount(0);
+          setShowHospital(true);
+        }}>{t("Hospital","Болница")}{hospitalWoundedCount>0&&<span className="reports-badge">{hospitalWoundedCount}</span>}</button>
         <button onClick={() => navigate("/map")}>{t("Map","Карта")}</button>
         <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
