@@ -4,7 +4,7 @@ import "./CyberKnightPanel.css";
 import craftingCosts from "../shared/craftingCosts";
 import {rarityUnlockLevel} from "../shared/cyberKnightEquipment";
 import GameProgressManager from "../utils/gameProgress";
-import cyberKnightImage from "../images/cyber-knight-expanded.png";
+import cyberKnightImage from "../images/cyber-knight-expanded.jpg";
 
 function PlasmaGearIcon({slot}) {
   const common={fill:"none",stroke:"currentColor",strokeWidth:2.4,strokeLinecap:"round",strokeLinejoin:"round"};
