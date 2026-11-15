@@ -1030,6 +1030,7 @@ function Map() {
           <button type="button" onClick={()=>setMarchSuccess("")} style={{background:"#26765e",color:"white",padding:"10px 24px"}}>{t("Continue","Продължи")}</button>
         </div>
       </div>}
+      <button type="button" onClick={()=>{setCampaignTab("active");setMarchHistoryOpen(true);}} style={{position:"absolute",right:18,bottom:22,zIndex:12,background:"#142b39",color:"#ccecff",border:"1px solid #64a9c9",padding:"12px 20px",borderRadius:8,cursor:"pointer"}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</button>
       {marchHistoryOpen && <div style={{position:"absolute",inset:0,zIndex:40,background:"rgba(0,0,0,.76)",display:"grid",placeItems:"center",padding:16}}>
         <div style={{width:"min(850px,95vw)",maxHeight:"85vh",overflowY:"auto",padding:24,background:"#122334",color:"#edf6ff",border:"1px solid #69a5c2",borderRadius:12}}>
           <div style={{display:"flex",justifyContent:"space-between"}}><h2 style={{margin:0}}>{t("🚀 CAMPAIGNS","🚀 КАМПАНИИ")}</h2><button onClick={()=>setMarchHistoryOpen(false)}>{t("✕ Close","✕ Затвори")}</button></div>
