@@ -43,20 +43,23 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     createGroups(attackerArmy,attackerIsAlien?alienTypes:playerTypes,formation),
     createGroups(defenderArmy,defenderIsPlayer?playerTypes:alienTypes,defenderIsPlayer?options.defenderFormation:null)
   ];
-  // Apply unit-specific upgrades to player units on both sides, and commander bonuses to the active player side.
+  const playerBonusesForSide=side=>side===playerSide?bonuses:(defenderIsPlayer&&side===1?options.defenderBonuses||null:null);
+  // Apply unit-specific upgrades and equipment to player units, and enemy debuffs to the opposing side.
   for(let side=0;side<2;side++)for(const group of sides[side]){
-    if(side!==playerSide&&!defenderIsPlayer)continue;
-    const upgrades=side===0?bonuses.unitUpgrades?.[group.unit]:options.defenderUnitUpgrades?.[group.unit];
+    const isPlayerSide=!!playerBonusesForSide(side);
+    const ownerBonuses=playerBonusesForSide(side)||{};
+    const enemyBonuses=side===playerSide?(options.defenderBonuses||{}):bonuses;
+    const upgrades=side===playerSide?bonuses.unitUpgrades?.[group.unit]:(options.defenderUnitUpgrades||options.defenderBonuses?.unitUpgrades||bonuses.unitUpgrades)?.[group.unit];
     if(group.unit==="Explorer Trooper"||group.unit==="Nano Shieldman"||group.unit==="Exo-Soldier"||group.unit==="Plasma Bladesman"){const stats=unitCombatStats(group.unit,upgrades||{});group.hp=stats.health;group.attackVs=stats.attack;}
-    const categoryBonus=side!==playerSide?0:group.category==="ranged"?bonuses.rangedAttack:group.category==="infantry"?bonuses.infantryAttack:group.category==="mobile"?bonuses.mobileAttack:group.category==="artillery"?bonuses.artilleryAttack:0;
-    const research=bonuses.unitResearch?.[group.unit];
-    const attackMultiplier=1+((Number(categoryBonus)||0)+(side!==playerSide?0:Number(bonuses.leadership)||0)+(side!==playerSide?0:Number(bonuses.allAttack)||0)+(research?.attack||0))/100;
+    const categoryBonus=group.category==="ranged"?ownerBonuses.rangedAttack:group.category==="infantry"?ownerBonuses.infantryAttack:group.category==="mobile"?ownerBonuses.mobileAttack:group.category==="artillery"?ownerBonuses.artilleryAttack:0;
+    const research=ownerBonuses.unitResearch?.[group.unit]||options.defenderUnitResearch?.[group.unit];
+    const unitEffect=ownerBonuses.unitEffects?.[group.unit]||{},enemyDebuff=enemyBonuses.enemyDebuffs?.[group.unit]||{};
+    const attackMultiplier=Math.max(0,1+((Number(categoryBonus)||0)+(Number(ownerBonuses.leadership)||0)+(Number(ownerBonuses.allAttack)||0)+(research?.attack||0)+(Number(unitEffect.attack)||0)-(Number(enemyDebuff.attack)||0))/100);
     group.attack*=attackMultiplier;
     if(group.attackVs)for(const key of Object.keys(group.attackVs))group.attackVs[key]*=attackMultiplier;
-    group.hp*=1+((side!==playerSide?0:Number(bonuses.allHealth)||0)+(research?.health||0)+(side===playerSide&&group.category==="infantry"?(Number(bonuses.infantryHealth)||0):0))/100;
+    const healthMultiplier=Math.max(.01,1+((Number(ownerBonuses.allHealth)||0)+(research?.health||0)+(group.category==="infantry"?(Number(ownerBonuses.infantryHealth)||0):0)+(Number(unitEffect.health)||0)-(Number(enemyDebuff.health)||0))/100);
+    group.hp*=healthMultiplier;
   }
-  const dodgeMax=Math.max(0,Math.min(15,Number(bonuses.dodge)||0));
-  const reviveRate=Math.max(0,Math.min(0.15,(Number(bonuses.revive)||0)/100));
   const report=[];let rounds=0;
   const alive=side=>side.some(g=>g.count>0);
   while(alive(sides[0])&&alive(sides[1])&&rounds<80){
@@ -79,7 +82,8 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         // Probability Matrix reduces each incoming enemy volley by a random
         // whole percentage from five points below the tier maximum up to max.
         shot.evadedPercent=0;
-        if(shot.side!==playerSide&&dodgeMax>0){
+        const targetBonuses=playerBonusesForSide(1-shot.side)||{},dodgeMax=Math.max(0,Math.min(15,Number(targetBonuses.dodge)||0));
+        if(dodgeMax>0){
           const minimum=Math.max(0,dodgeMax-5);
           shot.evadedPercent=minimum+Math.floor(Math.random()*(dodgeMax-minimum+1));
         }
@@ -116,13 +120,13 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     }
     // Restore a percentage of casualties at the end of each round, capped
     // at the original deployed group size. Fractions accumulate per group.
-    if(reviveRate>0){
-      for(const group of sides[playerSide]){
+    for(let side=0;side<2;side++){
+      const reviveRate=Math.max(0,Math.min(0.15,(Number(playerBonusesForSide(side)?.revive)||0)/100));
+      if(!reviveRate)continue;
+      for(const group of sides[side]){
         const missing=group.original-group.count;
         if(missing<=0)continue;
-        // Only casualties suffered during this round are eligible for
-        // regeneration; repeatedly healing the entire historical deficit
-        // would make the effective recovery exceed the selected tier.
+        // Only casualties suffered during this round are eligible for regeneration.
         const lostThisRound=Math.max(0,(group.roundStartCount??group.original)-group.count);
         group.reviveCarry=(group.reviveCarry||0)+lostThisRound*reviveRate;
         const restored=Math.min(missing,Math.floor(group.reviveCarry+1e-9));

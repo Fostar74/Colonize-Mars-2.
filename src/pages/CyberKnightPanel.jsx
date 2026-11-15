@@ -3,6 +3,7 @@ import React, { useState, useEffect } from "react";
 import "./CyberKnightPanel.css";
 import knightImage from "../images/CYBER-KNIGHT-3.png";
 import craftingCosts from "../shared/craftingCosts";
+import {rarityUnlockLevel} from "../shared/cyberKnightEquipment";
 import GameProgressManager from "../utils/gameProgress";
 
 function CyberKnightPanel({ onClose }) {
@@ -22,6 +23,7 @@ function CyberKnightPanel({ onClose }) {
 
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
+  const [knightLevel, setKnightLevel] = useState(1);
   const itemsForSlot = inventory.filter(item =>
     (item.slot || item.type || "").toUpperCase() === selectedSlot && String(item.rarity).toLowerCase() === rarityTab.toLowerCase()
   );
@@ -45,6 +47,7 @@ function CyberKnightPanel({ onClose }) {
         setEquippedItems(equipmentData.equippedItems || {});
         setInventory(equipmentData.gearInventory || []);
         setCraftingPoints(equipmentData.craftingPoints || {});
+        setKnightLevel(Number(equipmentData.knightLevel)||1);
       } else {
         const saved = sessionStorage.getItem("equippedItems");
         if (saved) {
@@ -117,7 +120,7 @@ function CyberKnightPanel({ onClose }) {
             {imageFailed ? <div role="img" aria-label="Cyber Knight" style={{display:"flex",alignItems:"center",justifyContent:"center",height:"100%",minHeight:280,color:"#00f0ff",fontSize:22}}>{t("CYBER KNIGHT","КИБЕРРИЦАР")}</div> : <img src={knightImage} alt="Cyber Knight" className="cyber-image" onError={() => setImageFailed(true)} />}
           </div>
 
-          <div style={{padding:"10px 14px",color:"#e7f8ff",background:"#142e43",borderRadius:8,marginBottom:12}}><strong>{t("Gear Inventory:","Инвентар за екипировка:")} {inventory.length} {t("item(s)","предмета")}</strong><div style={{fontSize:12}}>{t("Click a gear slot below. Wheel prizes are Common rarity unless otherwise stated.","Избери слот. Наградите от кацане са обикновени, освен ако е посочено друго.")}</div>{inventory.slice(-5).map(item=><div key={item.id||item.name} style={{fontSize:12}}>{item.name} · {item.slot} · {item.rarity}</div>)}</div>
+          <div style={{padding:"10px 14px",color:"#e7f8ff",background:"#142e43",borderRadius:8,marginBottom:12}}><strong>{t("Cyber Knight level:","Ниво на Киберрицаря:")} {knightLevel}/50 · {t("Gear inventory:","Екипировка:")} {inventory.length} {t("item(s)","предмета")}</strong><div style={{fontSize:12}}>{t("Rarity unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40.","Отключване на рядкостите: необикновена 10 · рядка 20 · епична 30 · легендарна 40.")}</div>{inventory.slice(-5).map(item=><div key={item.id||item.name} style={{fontSize:12}}>{item.name} · {item.slot} · {"★".repeat(Number(item.stars)||({Common:1,Uncommon:2,Rare:3,Epic:4,Legendary:5}[item.rarity]||1))}</div>)}</div>
           <div className="equipment-slots">
             {gearSlots.map((slot) => (
               <div key={slot} className="gear-slot-wrapper">
@@ -158,6 +161,9 @@ function CyberKnightPanel({ onClose }) {
                 <div key={index} className="item-card">
                   <h4>{item.name}</h4>
                   <p>{t("Item Level:","Ниво на предмета:")} {item.level}</p>
+                  <p>{"★".repeat(Number(item.stars)||({Common:1,Uncommon:2,Rare:3,Epic:4,Legendary:5}[item.rarity]||1))} · {t("Bonus slots:","Слотове за бонуси:")} {item.bonusSlots||1}</p>
+                  <p>{t("Rarity bonus:","Бонус според рядкостта:")} {item.rarityBonus??({Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1)}% · {t("Maximum:","Максимум:")} {item.maximumBonus||50}%</p>
+                  {knightLevel<(rarityUnlockLevel[item.rarity]||1)&&<p role="status">{t("Unlocks at Cyber Knight level","Отключва се на ниво на Киберрицаря")} {rarityUnlockLevel[item.rarity]}</p>}
                   <ul>
                     {(item.stats || []).map((s, i) => (
                       <li key={i}>{s}</li>
@@ -165,6 +171,7 @@ function CyberKnightPanel({ onClose }) {
                   </ul>
                   <div className="item-buttons">
                     <button
+                      disabled={knightLevel<(rarityUnlockLevel[item.rarity]||1)}
                       onClick={() => {
                         setSelectedItem(item);
                         setActiveModal("equip");

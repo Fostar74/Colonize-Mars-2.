@@ -1,6 +1,7 @@
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
+const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
 const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails} = require("../src/shared/unitEconomy");
@@ -239,6 +240,7 @@ function initializeDatabase() {
     if(!alienRewardColumns.includes("prestige"))db.exec("ALTER TABLE alien_rewards ADD COLUMN prestige INTEGER NOT NULL DEFAULT 0");
     if(!alienRewardColumns.includes("bonus_missions"))db.exec("ALTER TABLE alien_rewards ADD COLUMN bonus_missions INTEGER NOT NULL DEFAULT 0");
     db.exec("UPDATE alien_rewards SET prestige=victories WHERE prestige=0 AND victories>0");
+    db.exec("UPDATE alien_rewards SET knight_level=MIN(50,knight_level)");
     db.exec("CREATE TABLE IF NOT EXISTS mothership_events (id INTEGER PRIMARY KEY AUTOINCREMENT, week_start INTEGER NOT NULL UNIQUE, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, hp_remaining INTEGER NOT NULL, rewards_distributed INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS mothership_attacks (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL REFERENCES mothership_events(id), user_id INTEGER NOT NULL REFERENCES users(id), army TEXT NOT NULL, formation TEXT NOT NULL, origin_x INTEGER NOT NULL, origin_y INTEGER NOT NULL, knight_level INTEGER NOT NULL DEFAULT 1, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, damage INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL DEFAULT 0)");
     if(!db.prepare("PRAGMA table_info(mothership_attacks)").all().some(c=>c.name==="knight_level"))db.exec("ALTER TABLE mothership_attacks ADD COLUMN knight_level INTEGER NOT NULL DEFAULT 1");
@@ -802,6 +804,15 @@ class DatabaseManager {
     const tier=Math.max(0,Math.min(3,Number(JSON.parse(row.talents||"{}")[name])||0));
     const protocol=this.talentCatalog().find(item=>item.name===name);
     return tier&&protocol?protocol.values[tier-1]:0;
+  }
+  equipmentBonuses(userId){return equipmentCombatBonuses(this.getUserEquipment(userId)?.equippedItems||{});}
+  protocolBonusWithEquipment(userId,name,own={},opponent={}){
+    const added=Number(own.protocolBoosts?.[name]?.value)||0,removed=Number(opponent.enemyProtocolDebuffs?.[name]?.value)||0;
+    return Math.max(0,Math.min(100,this.protocolBonus(userId,name)+added-removed));
+  }
+  protocolCombatBonuses(userId,own={},opponent={}){
+    const value=name=>this.protocolBonusWithEquipment(userId,name,own,opponent);
+    return {rangedAttack:value("Precision Fire"),allHealth:value("Reinforced Armor"),infantryAttack:value("Infantry Command"),infantryHealth:value("Infantry Command"),leadership:value("Battle Command"),dodge:value("Evasion Protocol"),revive:value("Combat Recovery"),mobileAttack:value("Mobile Warfare"),artilleryAttack:value("Heavy Artillery")};
   }
   talentCatalog(){
     return [
@@ -1519,10 +1530,16 @@ class DatabaseManager {
         }));
         const {fight,playerTypes}=require("../shared/combatEngine");
         const validDefenders=Object.fromEntries(Object.entries(defender.army).filter(([unit,count])=>playerTypes[unit]&&Number(count)>0));
-        const result=fight(data.units||{},validDefenders,data.formation,{unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{}},{
+        const attackerGear=this.equipmentBonuses(mission.attacker_id),defenderGear=this.equipmentBonuses(mission.defender_id);
+        const attackerProtocols=this.protocolCombatBonuses(mission.attacker_id,attackerGear,defenderGear),defenderProtocols=this.protocolCombatBonuses(mission.defender_id,defenderGear,attackerGear);
+        const attackerAlliance=data.allianceCombat||attacker.allianceBonuses||{},defenderAlliance=defender.allianceBonuses||{};
+        const attackerCombat={...attackerProtocols,unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{},unitResearch:attackerAlliance.units||{},allAttack:Number(attackerAlliance.attack)||0,allHealth:Number(attackerAlliance.health)||0,unitEffects:attackerGear.unitEffects,enemyDebuffs:attackerGear.enemyDebuffs};
+        const defenderCombat={...defenderProtocols,unitResearch:defenderAlliance.units||{},allAttack:Number(defenderAlliance.attack)||0,allHealth:Number(defenderAlliance.health)||0,unitEffects:defenderGear.unitEffects,enemyDebuffs:defenderGear.enemyDebuffs};
+        const result=fight(data.units||{},validDefenders,data.formation,attackerCombat,{
           playerDefense:true,
           defenderUnitUpgrades:defender.unitUpgrades||{},
-          defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit])
+          defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit]),
+          defenderBonuses:defenderCombat
         });
         const defenderWounded={};
         for(const [unit,count] of Object.entries(validDefenders)){
@@ -1784,7 +1801,7 @@ class DatabaseManager {
       const current=this.syncGame(attack.user_id),army=JSON.parse(attack.army),formation=JSON.parse(attack.formation);
       if(!current)continue;
       const {playerTypes}=require("../shared/combatEngine");
-      const gear=this.getUserEquipment(attack.user_id),items=Object.values(gear?.equippedItems||{});
+      const gear=this.getUserEquipment(attack.user_id),items=Object.values(gear?.equippedItems||{}),gearEffects=this.equipmentBonuses(attack.user_id);
       let gearAttack=0,gearXp=0;
       for(const item of items)for(const stat of item?.stats||[]){
         if(typeof stat!=="string")continue;
@@ -1794,10 +1811,11 @@ class DatabaseManager {
       }
       const alliance=current.allianceBonuses||{},buffs=db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(attack.user_id,now);
       const buffAttack=buffs.some(b=>b.kind==="attack")?10:0,protocols={
-        infantry:this.protocolBonus(attack.user_id,"Infantry Command"),
-        ranged:this.protocolBonus(attack.user_id,"Precision Fire"),
-        mobile:this.protocolBonus(attack.user_id,"Mobile Warfare"),
-        artillery:this.protocolBonus(attack.user_id,"Heavy Artillery")
+        infantry:this.protocolBonusWithEquipment(attack.user_id,"Infantry Command",gearEffects),
+        ranged:this.protocolBonusWithEquipment(attack.user_id,"Precision Fire",gearEffects),
+        mobile:this.protocolBonusWithEquipment(attack.user_id,"Mobile Warfare",gearEffects),
+        artillery:this.protocolBonusWithEquipment(attack.user_id,"Heavy Artillery",gearEffects),
+        leadership:this.protocolBonusWithEquipment(attack.user_id,"Battle Command",gearEffects)
       };
       let damage=0;
       for(const group of formation){
@@ -1805,14 +1823,14 @@ class DatabaseManager {
         const upgrades=current.unitUpgrades?.[group.unit]||{};
         const upgradeBonus=Math.max(0,Number(upgrades.attack||1)-1)*10+Math.max(0,Number(upgrades.defense||1)-1)*3;
         const categoryBonus=protocols[type.category]||0;
-        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+this.protocolBonus(attack.user_id,"Battle Command")+Number(attack.knight_level||1)*2;
+        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+protocols.leadership+Number(attack.knight_level||1)*2+(Number(gearEffects.unitEffects[group.unit]?.attack)||0);
         damage+=Math.max(0,Number(group.count)||0)*Number(type.attack||0)*(1+attackBonus/100);
       }
       damage=Math.max(1,Math.floor(damage));
       const xp=Math.max(1,Math.floor(damage/1000*(1+gearXp/100)));
       this.awardPlayerXp(attack.user_id,xp);
       db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(attack.user_id);
-      db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=1+CAST((prestige+1)/20 AS INTEGER) WHERE user_id=?").run(attack.user_id);
+      db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=MIN(50,1+CAST((prestige+1)/20 AS INTEGER)) WHERE user_id=?").run(attack.user_id);
       // Mother Ship attacks are score runs: return the entire committed army after every battle.
       for(const [unit,count] of Object.entries(army))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),attack.user_id);
@@ -1951,14 +1969,10 @@ class DatabaseManager {
           const defense=this.getFormations(attack.user_id),preset=defense.defensePresets?.[String(defense.defenseSlot)]||{};
           const defenseFormation=Object.entries(army).map(([unit,count])=>({unit,count,row:Number(preset[unit])||Number(defaultRows[unit])||1}));
           const alliance=current.allianceBonuses||{};
+          const gear=this.equipmentBonuses(attack.user_id),protocols=this.protocolCombatBonuses(attack.user_id,gear);
           const result=combat.fight(aliens,army,null,{
-            unitResearch:alliance.units||{},
-            infantryAttack:this.protocolBonus(attack.user_id,"Infantry Command"),
-            infantryHealth:this.protocolBonus(attack.user_id,"Infantry Command"),
-            mobileAttack:this.protocolBonus(attack.user_id,"Mobile Warfare"),
-            artilleryAttack:this.protocolBonus(attack.user_id,"Heavy Artillery"),
-            dodge:this.protocolBonus(attack.user_id,"Evasion Protocol"),
-            revive:this.protocolBonus(attack.user_id,"Nano Regeneration")
+            ...protocols,unitResearch:alliance.units||{},unitUpgrades:current.unitUpgrades,allAttack:Number(alliance.attack)||0,allHealth:protocols.allHealth+(Number(alliance.health)||0),
+            unitEffects:gear.unitEffects,enemyDebuffs:gear.enemyDebuffs
           },{playerDefense:true,defenderFormation: defenseFormation,attackerIsAlien:true});
           const survivors=result.defenderSurvivors||{},wounded={};
           for(const [unit,count] of Object.entries(army)){const lost=Math.max(0,(Number(count)||0)-(Number(survivors[unit])||0));if(lost>0)wounded[unit]=lost;}
@@ -2441,19 +2455,13 @@ class DatabaseManager {
       if(Object.keys({...selected,...tally}).some(unit=>(selected[unit]||0)!==(tally[unit]||0)))return {error:"Formation does not match the selected troops."};
       const activeBuffs=db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,Date.now());
       const alliance=current.allianceBonuses||{};
+      const gear=this.equipmentBonuses(userId),protocols=this.protocolCombatBonuses(userId,gear);
       const result=fight(selected,this.getAlienArmy(level),formation,{
-        rangedAttack:this.protocolBonus(userId,"Precision Fire"),
-        allHealth:this.protocolBonus(userId,"Reinforced Armor")+(alliance.health||0)+(activeBuffs.some(buff=>buff.kind==="health")?10:0),
+        ...protocols,unitEffects:gear.unitEffects,enemyDebuffs:gear.enemyDebuffs,
+        allHealth:protocols.allHealth+(alliance.health||0)+(activeBuffs.some(buff=>buff.kind==="health")?10:0),
         allAttack:(alliance.attack||0)+(activeBuffs.some(buff=>buff.kind==="attack")?10:0),
         unitUpgrades:current.unitUpgrades,
         unitResearch:Object.fromEntries(Object.keys(selected).map(unit=>[unit,alliance.units?.[unit]||{}])),
-        unitUpgrades:current.unitUpgrades,
-        infantryAttack:this.protocolBonus(userId,"Infantry Command"),
-        infantryHealth:this.protocolBonus(userId,"Infantry Command"),
-        mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
-        artilleryAttack:this.protocolBonus(userId,"Heavy Artillery"),
-        dodge:this.protocolBonus(userId,"Evasion Protocol"),
-        revive:this.protocolBonus(userId,"Nano Regeneration")
       });
       const simulatedAt=Date.now();
       const insert=db.prepare("INSERT INTO battle_simulations(user_id,level,army,formation,simulated_at,result) VALUES (?,?,?,?,?,?)")
@@ -2532,19 +2540,13 @@ class DatabaseManager {
       for(const mission of due){
         const armyData=JSON.parse(mission.army);
         const {fight}=require("../shared/combatEngine");
+        const gear=this.equipmentBonuses(userId),protocols=this.protocolCombatBonuses(userId,gear);
         const result=fight(armyData.units,this.getAlienArmy(mission.level),armyData.formation,{
-          rangedAttack:this.protocolBonus(userId,"Precision Fire"),
-          allHealth:this.protocolBonus(userId,"Reinforced Armor") + (armyData.allianceCombat?.health || 0),
+          ...protocols,unitEffects:gear.unitEffects,enemyDebuffs:gear.enemyDebuffs,
+          allHealth:protocols.allHealth + (armyData.allianceCombat?.health || 0),
           allAttack:armyData.allianceCombat?.attack || 0,
           unitResearch:armyData.allianceCombat?.units,
           unitUpgrades:armyData.unitUpgrades,
-          infantryAttack:this.protocolBonus(userId,"Infantry Command"),
-          infantryHealth:this.protocolBonus(userId,"Infantry Command"),
-          mobileAttack:this.protocolBonus(userId,"Mobile Warfare"),
-          artilleryAttack:this.protocolBonus(userId,"Heavy Artillery"),
-          dodge:this.protocolBonus(userId,"Evasion Protocol"),
-          revive:this.protocolBonus(userId,"Combat Recovery"),
-           leadership:this.protocolBonus(userId,"Battle Command")
         });
         if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
         const wounded={};
@@ -2555,7 +2557,7 @@ class DatabaseManager {
         result.wounded=wounded;
         if(Object.keys(wounded).length)this.recordHospitalWounds(userId,"alien-base",mission.id,wounded,"waiting");
         if(result.victory){
-          const greenCrystals=mission.level>=11&&mission.level<=19?100+(mission.level-11)*50:0;
+        const greenCrystals=mission.level>=9&&mission.level<=19?Math.max(100,100+(mission.level-11)*50):0;
           const redCrystals=mission.level===20?1:0;
           if(greenCrystals){
             db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,greenCrystals,greenCrystals);
@@ -2572,10 +2574,12 @@ class DatabaseManager {
           // Every victory grants Cyber Knight equipment. Its bonus values are provisional.
           const rewardType=["crafting","resources","army"][(mission.id-1)%3];
           const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
-          const slot=slots[(mission.id-1)%slots.length];
-          const bonusCount=mission.level===20?5:Math.min(4,1+Math.floor(mission.level/5));
-          const rarity=mission.level===20?"Legendary":mission.level>=15?"Epic":mission.level>=10?"Rare":mission.level>=5?"Uncommon":"Common";
-          const item={id:"alien-"+mission.id,name:"Alien "+slot,slot,rarity,level:0,stats:[],bonusSlots:bonusCount,obtainedFrom:"Alien Base "+mission.level};
+          const slot=slots[require("crypto").randomInt(slots.length)];
+          const stars=starsForAlienMission(mission.level);
+          const rarity=rarityByStars[stars];
+          const rarityBonus=rarityBonusPercent[rarity];
+          const rolled=rollEquipmentBonuses(slot,rarity,stars);
+          const item={id:"alien-"+mission.id,name:"Alien "+slot,slot,rarity,stars,level:0,stats:rolled.stats,effects:rolled.effects,bonusSlots:stars,rarityBonus,maximumBonus:50,obtainedFrom:"Alien Base "+mission.level};
           const old=this.getUserEquipment(userId);
           this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
           result.equipmentReward=item;
@@ -2597,7 +2601,7 @@ class DatabaseManager {
           }
         }
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
-        db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=1+CAST((prestige+1)/20 AS INTEGER) WHERE user_id=?").run(userId);
+        db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=MIN(50,1+CAST((prestige+1)/20 AS INTEGER)) WHERE user_id=?").run(userId);
         db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),Date.now()+Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100))),JSON.stringify(result),mission.id);
       }
       return due.length;
@@ -2786,8 +2790,15 @@ class DatabaseManager {
 
   saveEquipmentFromClient(userId, equippedItems, gearInventory, craftingPoints) {
     const current = this.getUserEquipment(userId);
+    const knightLevel=Number(current?.knightLevel||1),inventory=current?.gearInventory||[];
+    for(const [slot,item] of Object.entries(equippedItems||{})){
+      if(!item)continue;
+      const saved=inventory.find(gear=>gear.id===item.id&&(gear.slot||gear.type||"").toUpperCase()===slot);
+      if(!saved)continue;
+      const required=rarityUnlockLevel[saved.rarity]||1;
+      if(knightLevel<required)return {error:`${saved.rarity} equipment unlocks at Cyber Knight level ${required}.`};
+    }
     if (gearInventory === undefined && craftingPoints === undefined) {
-      const inventory = current?.gearInventory || [];
       const equipped = Object.fromEntries(Object.entries(equippedItems).flatMap(([slot, item]) => {
         const saved = inventory.find(gear => gear.id === item?.id && (gear.slot || gear.type || "").toUpperCase() === slot);
         return saved ? [[slot, saved]] : [];
@@ -2825,6 +2836,7 @@ class DatabaseManager {
         equippedItems: JSON.parse(equipment.equipped_items),
         gearInventory: JSON.parse(equipment.gear_inventory),
         craftingPoints: JSON.parse(equipment.crafting_points),
+        knightLevel:Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1),
         lastUpdated: equipment.last_updated,
       };
     } catch (error) {

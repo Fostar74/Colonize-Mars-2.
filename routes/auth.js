@@ -625,7 +625,8 @@ router.post("/save-equipment", requireSession, async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    db.saveEquipmentFromClient(userId, equippedItems || {}, gearInventory, craftingPoints);
+    const result=db.saveEquipmentFromClient(userId, equippedItems || {}, gearInventory, craftingPoints);
+    if(result?.error)return res.status(400).json({message:result.error});
 
     res.status(200).json({ message: "Equipment saved successfully!" });
   } catch (error) {
@@ -679,7 +680,8 @@ router.post("/update-equipment", requireSession, async (req, res) => {
       return res.status(404).json({ message: "User not found." });
     }
 
-    db.saveEquipmentFromClient(userId, equippedItems || {}, gearInventory, craftingPoints);
+    const result=db.saveEquipmentFromClient(userId, equippedItems || {}, gearInventory, craftingPoints);
+    if(result?.error)return res.status(400).json({message:result.error});
 
     res.status(200).json({ message: "Equipment updated successfully!" });
   } catch (error) {
