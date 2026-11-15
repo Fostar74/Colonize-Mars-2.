@@ -605,7 +605,7 @@ function Game() {
       <div className="castle-top-bar">
         <button className={"castle-name-btn"+(activeHelpCount>0?" has-building-help":"")} aria-label={activeHelpCount>0?t("Headquarters. "+activeHelpCount+" active construction help requests.","Щаб. "+activeHelpCount+" активни заявки за помощ.") :t("Headquarters","Щаб")} title={activeHelpCount>0?t(activeHelpCount+" active construction help requests","Активни заявки за строителна помощ: "+activeHelpCount):undefined} onClick={() => {setQuestTarget(null);setShowPopup(true);}}>
           {language === "bg" ? castleName.replace("Headquarter","Щаб") : castleName}
-          {activeHelpCount>0&&<span className="hq-help-badge" aria-label={String(activeHelpCount)}>{activeHelpCount}</span>}
+          {activeHelpCount>0&&<span className="hq-help-badge" aria-label={String(activeHelpCount)}>{activeHelpCount>9?"9+":activeHelpCount}</span>}
         </button>
         <div className="utc-clock" aria-label={t("Server time in UTC","Сървърно време UTC")}><span>{t("Server time","Сървърно време")}</span><strong>{utcClock} UTC</strong></div>
       </div>

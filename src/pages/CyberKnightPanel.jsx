@@ -1,7 +1,7 @@
 import { useLanguage } from "../language";
 import React, { useState, useEffect } from "react";
 import "./CyberKnightPanel.css";
-import knightImage from "../images/CYBER-KNIGHT-3.png";
+import knightImage from "../images/cyber-knight-plasma.jpg";
 import craftingCosts from "../shared/craftingCosts";
 import {rarityUnlockLevel} from "../shared/cyberKnightEquipment";
 import GameProgressManager from "../utils/gameProgress";

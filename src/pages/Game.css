@@ -154,7 +154,7 @@
 }
 .castle-top-bar {display:flex;align-items:center;justify-content:space-between;gap:12px;position:relative;}
 .castle-name-btn.has-building-help {background:#6c3b20;box-shadow:0 0 0 2px #ffad4a;}
-.hq-help-badge {display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border-radius:50%;background:#e54535;color:#fff;font-size:13px;line-height:1;}
+.hq-help-badge {display:inline-grid;place-items:center;min-width:22px;height:22px;padding:0 5px;border:2px solid #eaf8ff;border-radius:999px;background:#168bff;color:#fff;font-size:13px;font-weight:900;line-height:1;box-shadow:0 0 10px #168bff99;}
 .utc-clock {display:flex;align-items:center;gap:8px;color:#dff5ff;font-size:14px;text-shadow:0 1px 3px #000;}
 .utc-clock strong {font-variant-numeric:tabular-nums;letter-spacing:.04em;}
 .hq-help-toast {position:absolute;z-index:1001;top:calc(100% + 8px);left:10px;max-width:min(92vw,520px);padding:10px 14px;border:1px solid #59c8dc;border-radius:9px;background:#10222e;color:#f2fbff;box-shadow:0 4px 16px #0009;}

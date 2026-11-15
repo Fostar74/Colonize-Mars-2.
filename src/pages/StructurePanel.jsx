@@ -83,6 +83,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
     }
     setAllianceHelpMessage(`Helped ${helped} alliance construction(s)${failed?`; ${failed} failed`:""}.`);
     await refreshAllianceHelp();
+    window.dispatchEvent(new Event("alliance-help-updated"));
     setAllianceHelpBusy(false);
   };
   useEffect(() => {
