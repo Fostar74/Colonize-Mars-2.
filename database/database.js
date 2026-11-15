@@ -385,7 +385,7 @@ class DatabaseManager {
       `),
 
       findByUsername: db.prepare(`
-        SELECT * FROM users WHERE username = ?
+        SELECT * FROM users WHERE username = ? COLLATE NOCASE
       `),
 
       findById: db.prepare(`

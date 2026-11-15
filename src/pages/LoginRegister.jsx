@@ -137,7 +137,7 @@ function LoginRegister() {
             {isRegister && (
               <input type="email" placeholder={t("Email", "Имейл")} value={email} required autoComplete="email" onChange={e => setEmail(e.target.value)} />
             )}
-            <input type="text" placeholder={t("Username", "Потребителско име")} value={username} required autoComplete="username" onChange={e => setUsername(e.target.value)} />
+            <input type="text" placeholder={isRegister ? t("Username", "Потребителско име") : t("Username or email", "Потребителско име или имейл")} value={username} required autoComplete="username" onChange={e => setUsername(e.target.value)} />
             <input
               type="password"
               minLength={isRegister ? 8 : undefined}
