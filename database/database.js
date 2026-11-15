@@ -2547,29 +2547,17 @@ class DatabaseManager {
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
           db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
           db.prepare("UPDATE alien_rewards SET victories=victories+1 WHERE user_id=?").run(userId);
-          // Level 3+ victories grant equipment plus the normal secondary mission reward.
-          // Equipment stats stay blank until the finalized bonus design is supplied.
-          const rewardType=mission.level>=3?["crafting","resources","army"][(mission.id-1)%3]:["equipment","crafting","resources","army"][(mission.id-1)%4];
-          if(mission.level>=3){
-            const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
-            const slot=slots[(mission.id-1)%slots.length];
-            const bonusCount=mission.level===20?5:Math.min(4,1+Math.floor(mission.level/5));
-            const rarity=mission.level===20?"Legendary":mission.level>=15?"Epic":mission.level>=10?"Rare":mission.level>=5?"Uncommon":"Common";
-            const item={id:"alien-"+mission.id,name:"Alien "+slot,slot,rarity,level:0,stats:[],bonusSlots:bonusCount,obtainedFrom:"Alien Base "+mission.level};
-            const old=this.getUserEquipment(userId);
-            this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
-            result.equipmentReward=item;
-          }
-          if(rewardType==="equipment"){
-            const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
-            const slot=slots[(mission.id-1)%slots.length];
-            const bonusCount=mission.level===20?5:Math.min(4,1+Math.floor(mission.level/5));
-            const rarity = mission.level === 20 ? "Legendary" : mission.level >= 15 ? "Epic" : mission.level >= 10 ? "Rare" : mission.level >= 5 ? "Uncommon" : "Common";
-            const item={id:"alien-"+mission.id,name:"Alien "+slot,slot,rarity,level:0,stats:[],bonusSlots:bonusCount,obtainedFrom:"Alien Base "+mission.level};
-            const old=this.getUserEquipment(userId);
-            this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
-            result.reward={type:"equipment",item};
-          }else if(rewardType==="crafting"){
+          // Every victory grants Cyber Knight equipment. Its bonus values are provisional.
+          const rewardType=["crafting","resources","army"][(mission.id-1)%3];
+          const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
+          const slot=slots[(mission.id-1)%slots.length];
+          const bonusCount=mission.level===20?5:Math.min(4,1+Math.floor(mission.level/5));
+          const rarity=mission.level===20?"Legendary":mission.level>=15?"Epic":mission.level>=10?"Rare":mission.level>=5?"Uncommon":"Common";
+          const item={id:"alien-"+mission.id,name:"Alien "+slot,slot,rarity,level:0,stats:[],bonusSlots:bonusCount,obtainedFrom:"Alien Base "+mission.level};
+          const old=this.getUserEquipment(userId);
+          this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
+          result.equipmentReward=item;
+          if(rewardType==="crafting"){
             const old=this.getUserEquipment(userId);
             const points={...(old?.craftingPoints||{})};
             const amount = 20 + 5 * (mission.level - 1);
