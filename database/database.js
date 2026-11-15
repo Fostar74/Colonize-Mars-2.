@@ -915,19 +915,33 @@ class DatabaseManager {
   }
 
   sendMessage(userId, scope, recipient, body){
-    if(!["private","alliance"].includes(scope))return {error:"Unknown message channel."};
+    if(!["private","alliance","broadcast"].includes(scope))return {error:"Unknown message channel."};
     const content=typeof body==="string" ? body.trim() : "";
     if(!content || content.length>500)return {error:"Enter a message between 1 and 500 characters."};
     return db.transaction(()=>{
       const now=Date.now();
       const latest=db.prepare("SELECT sent_at FROM player_messages WHERE sender_id=? ORDER BY id DESC LIMIT 1").get(userId);
       if(latest && now-latest.sent_at<1000)return {error:"Wait a moment before sending another message."};
-      const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
-      if(scope==="alliance"&&!member)return {error:"Join an alliance to use its chat."};
+      const member=(scope==="alliance"||scope==="broadcast") && db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
+      if((scope==="alliance"||scope==="broadcast")&&!member)return {error:"Join an alliance to use this channel."};
+      if(scope==="broadcast"&&!["Leader","Co-Leader"].includes(member.role))return {error:"Only the alliance leader or co-leader can send a mass message."};
       const target=scope==="private" && typeof recipient==="string" && this.findUserByUsername(recipient.trim());
       if(scope==="private"&&(!target||target.id===userId))return {error:"Choose another existing player."};
+      const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'player_message', ?, ?)");
+      if(scope==="broadcast"){
+        const recipients=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId);
+        if(!recipients.length)return {error:"Your alliance has no other members to notify."};
+        const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,'private')");
+        for(const row of recipients){insert.run(userId,row.user_id,member.alliance_id,content,now);notify.run(row.user_id,"alliance",now);}
+        return {message:"Alliance message sent to "+recipients.length+" members."};
+      }
       db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,?)")
         .run(userId,target?.id||null,member?.alliance_id||null,content,now,scope);
+      if(scope==="private")notify.run(target.id,"",now);
+      if(scope==="alliance"){
+        const recipients=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId);
+        for(const row of recipients)notify.run(row.user_id,"alliance",now);
+      }
       return {message:"Message sent."};
     })();
   }
@@ -1513,12 +1527,19 @@ class DatabaseManager {
         const defenderWounded={};
         for(const [unit,count] of Object.entries(validDefenders)){
           const killed=Math.max(0,Number(count||0)-Number(result.defenderSurvivors?.[unit]||0));
-          const saved=Math.floor(killed*0.10);
+          const saved=Math.floor(killed*0.30);
           if(saved>0)defenderWounded[unit]=saved;
         }
         result.defenderInitial={...validDefenders};
         result.defenderWounded=defenderWounded;
         if(Object.keys(defenderWounded).length)this.recordHospitalWounds(mission.defender_id,"player-defense",mission.id,defenderWounded,"waiting");
+        const attackerWounded={};
+        for(const [unit,count] of Object.entries(data.units||{})){
+          const saved=Math.floor(Math.max(0,Number(count||0)-Number(result.survivors?.[unit]||0))*0.30);
+          if(saved>0)attackerWounded[unit]=saved;
+        }
+        result.attackerWounded=attackerWounded;
+        if(Object.keys(attackerWounded).length)this.recordHospitalWounds(mission.attacker_id,"player-attack",mission.id,attackerWounded,"waiting");
         const cargo=calculateCargoCapacity(result.survivors||{});
         const loot=result.victory ? calculateLoot(defender.resources,cargo) : {Gold:0,Iron:0,Water:0,Solar:0};
         result.cargoCapacity=cargo;
@@ -1687,7 +1708,7 @@ class DatabaseManager {
   recordHospitalWounds(userId,source,sourceId,wounded,status="waiting",recoveryAt=null) {
     const cleaned=Object.fromEntries(Object.entries(wounded||{}).map(([unit,count])=>[unit,Math.max(0,Math.floor(Number(count)||0))]).filter(([,count])=>count>0));
     if(!Object.keys(cleaned).length)return null;
-    const cost=status==="waiting"?this.mothershipHealingCost(cleaned):{Gold:0,Iron:0,Water:0,Solar:0};
+    const cost={Gold:0,Iron:0,Water:0,Solar:0};
     const result=db.prepare("INSERT INTO hospital_entries(user_id,source,source_id,wounded,status,healing_cost,created_at,heals_at) VALUES (?,?,?,?,?,?,?,?)")
       .run(userId,source,sourceId,JSON.stringify(cleaned),status,JSON.stringify(cost),Date.now(),recoveryAt);
     return Number(result.lastInsertRowid);
@@ -1742,21 +1763,16 @@ class DatabaseManager {
       const now=Date.now(),current=this.syncGame(userId);if(!current)return {error:"Player not found."};
       const active=db.prepare("SELECT 1 FROM hospital_entries WHERE user_id=? AND status='healing' LIMIT 1").get(userId);
       if(active)return {error:"A hospital treatment is already underway."};
-      const rows=db.prepare("SELECT * FROM hospital_entries WHERE user_id=? AND source='player-defense' AND status='waiting' ORDER BY created_at,id").all(userId);
+      const rows=db.prepare("SELECT * FROM hospital_entries WHERE user_id=? AND source IN ('player-defense','player-attack','alien-base') AND status='waiting' ORDER BY created_at,id").all(userId);
       if(!rows.length)return {error:"There are no wounded troops waiting for treatment."};
-      const cost={Gold:0,Iron:0,Water:0,Solar:0};
-      const treatments=rows.map(row=>{
-        const rowCost=this.mothershipHealingCost(JSON.parse(row.wounded||"{}"));
-        for(const key of Object.keys(cost))cost[key]+=Number(rowCost[key]||0);
-        return {id:row.id,cost:rowCost};
-      });
-      for(const [key,amount] of Object.entries(cost))if(Number(current.resources[key]||0)<amount)return {error:"Not enough "+key+" for hospital treatment."};
-      for(const [key,amount] of Object.entries(cost))current.resources[key]-=amount;
-      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
-      const healsAt=now+60000;
+      const durationMs=rows.reduce((total,row)=>{
+        const wounded=JSON.parse(row.wounded||"{}");
+        return total+Object.entries(wounded).reduce((unitTotal,[unit,count])=>unitTotal+Math.max(0,Number(count)||0)*unitTrainingDuration(unit)*1000,0);
+      },0);
+      const healsAt=now+Math.max(1000,durationMs);
       const update=db.prepare("UPDATE hospital_entries SET status='healing',healing_cost=?,heals_at=? WHERE id=? AND status='waiting'");
-      for(const treatment of treatments)update.run(JSON.stringify(treatment.cost),healsAt,treatment.id);
-      return {healsAt,cost};
+      for(const row of rows)update.run(JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),healsAt,row.id);
+      return {healsAt,cost:{Gold:0,Iron:0,Water:0,Solar:0}};
     })();
   }
 
@@ -2509,6 +2525,13 @@ class DatabaseManager {
            leadership:this.protocolBonus(userId,"Battle Command")
         });
         if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
+        const wounded={};
+        for(const [unit,count] of Object.entries(armyData.units||{})){
+          const saved=Math.floor(Math.max(0,Number(count||0)-Number(result.survivors?.[unit]||0))*0.30);
+          if(saved>0)wounded[unit]=saved;
+        }
+        result.wounded=wounded;
+        if(Object.keys(wounded).length)this.recordHospitalWounds(userId,"alien-base",mission.id,wounded,"waiting");
         if(result.victory){
           const greenCrystals=mission.level>=11&&mission.level<=19?100+(mission.level-11)*50:0;
           const redCrystals=mission.level===20?1:0;
@@ -2524,7 +2547,19 @@ class DatabaseManager {
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
           db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
           db.prepare("UPDATE alien_rewards SET victories=victories+1 WHERE user_id=?").run(userId);
-          const rewardType=["equipment","crafting","resources","army"][(mission.id-1)%4];
+          // Level 3+ victories grant equipment plus the normal secondary mission reward.
+          // Equipment stats stay blank until the finalized bonus design is supplied.
+          const rewardType=mission.level>=3?["crafting","resources","army"][(mission.id-1)%3]:["equipment","crafting","resources","army"][(mission.id-1)%4];
+          if(mission.level>=3){
+            const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
+            const slot=slots[(mission.id-1)%slots.length];
+            const bonusCount=mission.level===20?5:Math.min(4,1+Math.floor(mission.level/5));
+            const rarity=mission.level===20?"Legendary":mission.level>=15?"Epic":mission.level>=10?"Rare":mission.level>=5?"Uncommon":"Common";
+            const item={id:"alien-"+mission.id,name:"Alien "+slot,slot,rarity,level:0,stats:[],bonusSlots:bonusCount,obtainedFrom:"Alien Base "+mission.level};
+            const old=this.getUserEquipment(userId);
+            this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
+            result.equipmentReward=item;
+          }
           if(rewardType==="equipment"){
             const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
             const slot=slots[(mission.id-1)%slots.length];
@@ -2826,6 +2861,8 @@ class DatabaseManager {
           db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mine.claimed_by);
           db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
             .run(mine.claimed_by,mine.id,mine.resource,Math.floor(Number(mine.amount)||0),mine.gathering_units||"{}",now,"depleted",mine.x,mine.y);
+          db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'gathering_return', ?, ?)")
+            .run(mine.claimed_by,key+" · "+Number(mine.amount).toLocaleString(),now);
         }
         const blocked=new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row=>row.x+":"+row.y));
         for(const base of alienBases)blocked.add(base.x+":"+base.y);
@@ -2921,6 +2958,9 @@ class DatabaseManager {
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
         .run(userId,mine.id,mine.resource,gathered,JSON.stringify(returnedUnits),now,"recalled",mine.x,mine.y);
+      const displayResource=resourceKey||mine.resource;
+      db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'gathering_return', ?, ?)")
+        .run(userId,displayResource+" · "+gathered.toLocaleString(),now);
       db.prepare(`UPDATE resource_mines SET amount=?,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,
         gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=? AND claimed_by=?`).run(Math.max(0,Number(mine.amount)-gathered),mine.id,userId);
       return {success:true,returnedUnits,resource:resourceKey,amountCollected:gathered,...this.getMapResources(userId)};

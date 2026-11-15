@@ -15,12 +15,13 @@ export default function AlliancePanel({supportTarget,playerAction}){
  const playerName=player=>playerAction ? playerAction(player) : player.username;
  const [reinforceRecipient,setReinforceRecipient]=useState(supportTarget?.id || ""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
  const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[description,setDescription]=useState(""),[tab,setTab]=useState(supportTarget ? "reinforcements" : "members");
- const [crystalKind,setCrystalKind]=useState("green"),[crystalAmount,setCrystalAmount]=useState("");
+ const [crystalKind,setCrystalKind]=useState("green"),[crystalAmount,setCrystalAmount]=useState(""),[broadcastBody,setBroadcastBody]=useState("");
  const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
  useEffect(()=>{if(state?.alliance)setDescription(state.alliance.description||"");},[state?.alliance?.id,state?.alliance?.description]);
  const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":path==="market/buy"?"Purchase added to your Inventory.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  const donateCrystals=async()=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alien-stations/donate",{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),kind:crystalKind,amount:Number(crystalAmount)})});const d=await r.json();if(!r.ok)throw Error(d.message||"Donation failed");setCrystalAmount("");setMessage(t("Crystals donated to the alliance.","Кристалите са дарени на алианса."));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
+ const sendAllianceBroadcast=async event=>{event.preventDefault();setBusy(true);setMessage("");try{const r=await fetch(api+"/messages/broadcast/"+encodeURIComponent(getUserId()),{method:"POST",headers:headers(),body:JSON.stringify({body:broadcastBody})});const d=await r.json();if(!r.ok)throw Error(d.message||"Message could not be sent.");setBroadcastBody("");setMessage(d.message||t("Alliance message sent.","Съобщението до алианса е изпратено."));}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  return <div style={{color:"#eef6ff",padding:15,minWidth:300}}>
   <h2>{t("Alliance Command","Командване на алианса")}</h2>
   {message&&<p role="status">{localLabel(message)}</p>}
@@ -58,6 +59,11 @@ export default function AlliancePanel({supportTarget,playerAction}){
    </div>
    {tab==="members"&&<div>
     {!!state.reinforcements?.length && <button onClick={()=>setTab("reinforcements")}>{t("Active Support (","Активни подкрепления (")}{state.reinforcements.length})</button>}
+    {["Leader","Co-Leader"].includes(state.alliance.role)&&<form onSubmit={sendAllianceBroadcast} style={{margin:"12px 0",padding:12,border:"1px solid #47758e",borderRadius:8,background:"#142637"}}>
+     <h3 style={{marginTop:0}}>{t("Alliance Broadcast","Масово съобщение до алианса")}</h3>
+     <textarea aria-label={localLabel("Message to all alliance members")} maxLength={500} required value={broadcastBody} onChange={event=>setBroadcastBody(event.target.value)} style={{display:"block",width:"100%",boxSizing:"border-box",minHeight:70,marginBottom:8}} placeholder={localLabel("Write a message for every alliance member")}/>
+     <button type="submit" disabled={busy||!broadcastBody.trim()}>{t("Send to all members","Изпрати до всички членове")}</button>
+    </form>}
     <h3>{t("Alliance Members (","Членове на алианса (")}{(state.members||[]).length})</h3>
     <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",textAlign:"left"}}>
      <thead><tr><th>{t("Player","Играч")}</th><th>{t("Role","Роля")}</th><th>{t("Actions","Действия")}</th></tr></thead>

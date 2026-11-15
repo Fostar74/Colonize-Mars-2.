@@ -19,15 +19,15 @@ import AVATARS from "../shared/avatarCatalog";
 
 const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;
 const resolvedBattleReportIds = data => [
-  ...(data?.missions || []).filter(mission => mission.result).map(mission => `alien:${mission.id}`),
-  ...(data?.playerMissions || []).filter(mission => mission.result && !mission.incoming).map(mission => `player:${mission.id}`),
+  ...(data?.playerMissions || []).filter(mission => mission.result).map(mission => `player:${mission.id}`),
+  ...(data?.scoutMissions || []).filter(mission => mission.returned_at || mission.returnedAt).map(mission => `spy:${mission.id}`),
   ...(data?.gatheringReports || []).map(report => `gathering:${report.id}`)
 ];
 const unreadBattleReportCount = (data,userId) => {
   let seen=[];
   try{seen=JSON.parse(localStorage.getItem(reportReadStorageKey(userId))||`[]`);}catch{}
   const read=new Set(Array.isArray(seen)?seen:[]);
-  return resolvedBattleReportIds(data).filter(id=>!read.has(id)).length;
+  return resolvedBattleReportIds(data).filter(id=>!id.startsWith("gathering:")&&!read.has(id)).length;
 };
 const rememberBattleReports = (data,userId) => {
   let seen=[];
@@ -121,11 +121,11 @@ function HospitalPanel() {
       window.dispatchEvent(new Event("game-progress-updated"));
     }catch(error){setNotice(error.message);}finally{setBusy(false);}
   };
-  const waiting=entries.filter(entry=>entry.status==="waiting"&&entry.source==="player-defense");
+  const waiting=entries.filter(entry=>entry.status==="waiting"&&["player-defense","player-attack","alien-base"].includes(entry.source));
   const active=entries.find(entry=>entry.status==="healing");
   const total=entries.reduce((sum,entry)=>sum+Object.values(entry.wounded||{}).reduce((subtotal,count)=>subtotal+Number(count||0),0),0);
   const fmt=army=>Object.entries(army||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>Number(count).toLocaleString()+" "+label(unit)).join(" · ")||"0";
-  const sourceName=source=>source==="player-defense"?t("Base Defense","Защита на базата"):source==="mothership"?t("Mother Ship Hunt","Лов на Майчиния кораб"):t("Saturday Alien Invasion","Съботна извънземна инвазия");
+  const sourceName=source=>source==="player-defense"?t("Base Defense","Защита на базата"):source==="player-attack"?t("Player Attack","Атака срещу играч"):source==="alien-base"?t("Alien Base Mission","Мисия срещу извънземна база"):source==="mothership"?t("Mother Ship Hunt","Лов на Майчиния кораб"):t("Saturday Alien Invasion","Съботна извънземна инвазия");
   const frame={color:"#38251c",padding:14,borderRadius:12,border:"3px solid #ab7149",background:"linear-gradient(145deg,#f3e4c8 0%,#e7c79d 48%,#d99463 100%)",boxShadow:"inset 0 0 0 2px rgba(255,255,255,.4)"};
   const card={margin:"10px 0",padding:12,background:"rgba(255,248,230,.84)",border:"1px solid #bb8b61",borderRadius:8};
   return <div style={frame}>
@@ -146,18 +146,18 @@ function HospitalPanel() {
         <span>{entry.status==="event"?t("Auto-recovery after event","Автоматично възстановяване след събитието"):entry.status==="healing"?t("In treatment","В лечение"):t("Waiting for treatment","Чакат лечение")}</span>
       </div>
       <div style={{marginTop:8}}><strong>{t("Wounded units:","Ранени войници:")}</strong> {fmt(entry.wounded)}</div>
-      {entry.status==="waiting"&&entry.source==="player-defense"&&<div style={{marginTop:6}}>
-        <div>{t("Treatment cost:","Цена на лечението:")} {fmt(entry.healingCost)}</div>
-        <div>{t("Treatment time: one minute","Време за лечение: една минута")}</div>
+      {entry.status==="waiting"&&["player-defense","player-attack","alien-base"].includes(entry.source)&&<div style={{marginTop:6}}>
+        <div>{t("Treatment cost: Free","Цена на лечението: Безплатно")}</div>
+        <div>{t("Treatment time follows the unit training time.","Времето за лечение съответства на времето за обучение на войниците.")}</div>
       </div>}
       {entry.status==="healing"&&<div>{t("Time remaining:","Оставащо време:")} {Math.max(0,Math.ceil((Number(entry.heals_at)-tick)/1000))} {t("seconds","секунди")}</div>}
       {entry.status==="event"&&entry.recoveryAt&&<div>{t("Returns to the garrison after:","Войниците се връщат в гарнизона след:")} {new Date(entry.recoveryAt).toLocaleString()}</div>}
     </article>)}
     {!entries.length&&<div style={card}>{t("No wounded troops. Your garrison is ready.","Няма ранени войници. Гарнизонът е в готовност.")}</div>}
     {!!waiting.length&&<button type="button" disabled={busy||!!active} onClick={treat} style={{padding:"11px 18px",border:0,borderRadius:7,color:"white",fontWeight:"bold",background:"#26853a",cursor:"pointer"}}>
-      {busy?t("Starting treatment…","Лечението започва…"):t("Treat base-defense wounded","Лекувай ранените защитници")}
+      {busy?t("Starting treatment…","Лечението започва…"):t("Treat wounded troops","Лекувай ранените войници")}
     </button>}
-    <p style={{fontSize:12,marginBottom:0}}>{t("Only 10% of troops lost while defending a player base are sent here. Event casualties return automatically after the event; they use no healing resources.","В болницата отиват 10% от войниците, загубени при защита на базата от играч. Ранените от събития се връщат автоматично след края им и не изискват ресурси.")}</p>
+    <p style={{fontSize:12,marginBottom:0}}>{t("Only 30% of troops lost in alien base and player battles are sent here. Treatment is free and takes the same time as training those units. Event casualties return automatically after the event.","В болницата отиват 30% от загубените войници при битки с извънземни бази и играчи. Лечението е безплатно и отнема същото време като обучението на тези единици. Загубите от събития се възстановяват автоматично след края им.")}</p>
   </div>;
 }
 
@@ -307,6 +307,7 @@ function Game() {
   const [hospitalWoundedCount,setHospitalWoundedCount]=useState(0);
   const [incomingAlert,setIncomingAlert]=useState(false);
   const [eventNotification,setEventNotification]=useState(null);
+  const [messageNotifications,setMessageNotifications]=useState([]);
   const lastUnreadRef=useRef(0);
   const handleReportsRead=useCallback(async()=>{
     setIncomingAlert(false);
@@ -362,13 +363,18 @@ function Game() {
         const response=await fetch(api+"/notifications/"+encodeURIComponent(userId),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
         if(!response.ok)return;
         const data=await response.json();
-        if(active&&!eventNotification&&(data.notifications||[]).length)setEventNotification(data.notifications[0]);
+        if(!active)return;
+        const notices=data.notifications||[];
+        const event=notices.find(item=>item.kind==="saturday_invasion_started");
+        const messages=notices.filter(item=>item.kind==="player_message"||item.kind==="gathering_return");
+        if(event)setEventNotification(old=>old||event);
+        setMessageNotifications(messages);
       }catch{}
     };
     refreshEventNotifications();
     const timer=setInterval(refreshEventNotifications,10000);
     return()=>{active=false;clearInterval(timer);};
-  },[api,eventNotification]);
+  },[api]);
 
   useEffect(()=>{
     let active=true;
@@ -528,17 +534,28 @@ function Game() {
     window.location.href = "/";
   };
 
-  const closeEventNotification=async openEvent=>{
-    const notification=eventNotification;
-    if(openEvent)setShowEvents(true);
-    if(!notification){setEventNotification(null);return;}
+  const markNotificationRead=async notification=>{
+    if(!notification)return;
     try{
       const response=await fetch(api+"/notifications/"+encodeURIComponent(sessionStorage.getItem("userId"))+"/read",{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
         body:JSON.stringify({notificationId:notification.id})
       });
-      if(response.ok)setEventNotification(null);
+      if(response.ok){
+        setEventNotification(current=>current?.id===notification.id?null:current);
+        setMessageNotifications(current=>current.filter(item=>item.id!==notification.id));
+      }
     }catch{}
+  };
+  const closeEventNotification=async openEvent=>{
+    const notification=eventNotification;
+    if(openEvent)setShowEvents(true);
+    await markNotificationRead(notification);
+  };
+  const openBlueNotification=async notification=>{
+    if(notification?.kind==="gathering_return")navigate("/map");
+    else setMessageRecipient("");
+    await markNotificationRead(notification);
   };
 
   return (
@@ -576,7 +593,7 @@ function Game() {
         <button onClick={() => navigate("/map")}>{t("Map","Карта")}</button>
         <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
-        <button onClick={()=>setMessageRecipient("")}>{t("Messages","Съобщения")}</button>
+        <button className={messageNotifications.length?"messages-nav-button messages-unread":""} onClick={()=>setMessageRecipient("")}>{t("Messages","Съобщения")}{messageNotifications.length>0&&<span className="messages-badge">{messageNotifications.length}</span>}</button>
         <button className={unreadIncoming+unreadBattleReports>0?"reports-nav-button reports-unread":""} onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("Reports","Доклади")}{unreadIncoming+unreadBattleReports>0&&<span className="reports-badge">{unreadIncoming+unreadBattleReports}</span>}</button>
         <button onClick={() => setShowInventory(true)}>{t("Inventory","Инвентар")}</button>
         <button onClick={() => setOptionsVisible(!optionsVisible)}>{t("Options","Настройки")}</button>
@@ -688,6 +705,12 @@ function Game() {
         <span>{t("The Saturday Alien Invasion has started for your alliance:","Съботната извънземна инвазия започна за алианса:")} <strong>{eventNotification.allianceName}</strong> · {t("First attack arrives in 1 minute.","Първата атака пристига след 1 минута.")}</span>
         <button type="button" onClick={()=>closeEventNotification(true)}>{t("View event","Виж събитието")}</button>
         <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>closeEventNotification(false)}>×</button>
+      </div>}
+      {messageNotifications.length>0&&<div className="message-notification-alert" role="status">
+        <span aria-hidden="true">✉️</span>
+        <span>{messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
+        <button type="button" onClick={()=>openBlueNotification(messageNotifications[0])}>{messageNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):t("View messages","Виж съобщенията")}</button>
+        <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>markNotificationRead(messageNotifications[0])}>×</button>
       </div>}
       {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}
       {showQuests && (

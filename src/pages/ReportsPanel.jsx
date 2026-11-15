@@ -65,11 +65,24 @@ export default function ReportsPanel({onClose,onRead}) {
       {m.result.error&&<p>{m.result.error}</p>}
     </article>;
   };
-  const alienReport=m=><article key={"alien-"+m.id} style={card}>
+  const alienReport=m=>{
+    const equipment=m.result.equipmentReward||m.result.reward?.item;
+    const reward=m.result.reward;
+    const secondary=reward&&typeof reward==="object"&&!reward.item
+      ?reward.type==="crafting"?t("Forge points","Точки за изковаване")+": "+reward.amount
+      :reward.type==="resources"?t("Resources","Ресурси")+": "+Number(reward.amount||0).toLocaleString()
+      :reward.type==="army"?t("Troops","Войници")+": "+reward.amount+" "+reward.unit
+      :""
+      :"";
+    return <article key={"alien-"+m.id} style={card}>
     <h3>{t("Alien mission","Извънземна мисия")} #{m.id} · {t("Base level","Ниво на базата")} {m.level} · {m.result.victory?t("Victory","Победа"):t("Defeat","Поражение")}</h3>
-    <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"}{m.result.reward?" · "+t("Reward","Награда")+": "+m.result.reward:""}</p>
+    <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"}</p>
+    {equipment&&<p>🛡 {t("Cyber Knight equipment","Екипировка за Киберрицаря")}: <strong>{equipment.name}</strong> · {equipment.rarity} · {equipment.slot}</p>}
+    {secondary&&<p>{t("Additional reward","Допълнителна награда")}: {secondary}</p>}
+    {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {list(m.result.wounded)}</p>}
     {army(t("Starting army","Начална армия"),m.units)}{army(t("Losses","Загуби"),diff(m.units,m.result.survivors||{}))}{army(t("Survivors","Оцелели"),m.result.survivors||{})}
   </article>;
+  };
   const gatheringReport=report=>{
     const resource={gold:t("Gold","Злато"),iron:t("Iron","Желязо"),water:t("Water","Вода"),solar:t("Solar","Слънчева енергия")}[String(report.resource).toLowerCase()]||report.resource;
     const title=report.reason==="depleted"?t("Mine depleted · army returned","Мината се изчерпа · армията се прибра"):t("Army recalled from mine","Армията се прибра от мината");
