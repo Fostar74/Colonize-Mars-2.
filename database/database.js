@@ -972,7 +972,8 @@ class DatabaseManager {
     const alliances=db.prepare("SELECT a.id,a.name,a.description,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.xp),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
     const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
-    return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member}))};
+    const cyberKnights=db.prepare("SELECT u.id,u.username,COALESCE(ar.knight_level,1) AS knightLevel,COALESCE(ar.prestige,0) AS prestige FROM users u LEFT JOIN alien_rewards ar ON ar.user_id=u.id ORDER BY knightLevel DESC,prestige DESC,u.username COLLATE NOCASE").all();
+    return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member})),cyberKnights};
   }
   inviteToAlliance(userId, targetId){
     if(!Number.isSafeInteger(targetId)||targetId<1||targetId===userId)return {error:"Invalid player."};
@@ -2872,6 +2873,7 @@ class DatabaseManager {
         gearInventory,
         craftingPoints: JSON.parse(equipment.crafting_points),
         knightLevel:Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1),
+        prestige:Number(db.prepare("SELECT prestige FROM alien_rewards WHERE user_id=?").get(userId)?.prestige||0),
         lastUpdated: equipment.last_updated,
       };
     } catch (error) {

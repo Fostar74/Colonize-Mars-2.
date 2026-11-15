@@ -53,6 +53,7 @@ function CyberKnightPanel({ onClose }) {
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
   const [knightLevel, setKnightLevel] = useState(1);
+  const [prestige, setPrestige] = useState(0);
   const itemsForSlot = inventory.filter(item =>
     (item.slot || item.type || "").toUpperCase() === selectedSlot && String(item.rarity).toLowerCase() === rarityTab.toLowerCase()
   );
@@ -77,6 +78,7 @@ function CyberKnightPanel({ onClose }) {
         setInventory(equipmentData.gearInventory || []);
         setCraftingPoints(equipmentData.craftingPoints || {});
         setKnightLevel(Number(equipmentData.knightLevel)||1);
+        setPrestige(Number(equipmentData.prestige)||0);
       } else {
         const saved = sessionStorage.getItem("equippedItems");
         if (saved) {
@@ -139,14 +141,14 @@ function CyberKnightPanel({ onClose }) {
     <div className="cyber-panel-overlay">
       <div className="cyber-panel">
         <div className="cyber-panel-header">
-          <h2>{t("Cyber Knight CONTROL PANEL","УПРАВЛЕНИЕ НА КИБЕРРИЦАРЯ")}</h2>
+          <h2>{t("Cyber Knight CONTROL PANEL","УПРАВЛЕНИЕ НА CYBER KNIGHT")}</h2>
           <button className="close-button" onClick={onClose}>
             X
           </button>
         </div>
 
         <div className="cyber-panel-body">
-          <div className="equipment-status"><strong>{t("Cyber Knight level:","Ниво на Киберрицаря:")} {knightLevel}/50 <span>·</span> {t("Gear inventory:","Екипировка:")} {inventory.length} <span>·</span> {t("Equipped:","Облечени:")} {Object.values(equippedItems).filter(Boolean).length}/6</strong><div>{t("Unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40","Отключване: необикновена 10 · рядка 20 · епична 30 · легендарна 40")}</div>{equipmentNotice&&<div className="equipment-confirmation" role="status">✓ {equipmentNotice}</div>}</div>
+          <div className="equipment-status"><strong>{t("Cyber Knight level:","Ниво на Cyber Knight:")} {knightLevel}/50 <span>·</span> {t("Prestige:","Престиж:")} {knightLevel>=50?20:prestige%20}/20 {knightLevel<50&&<>{t("to level","до ниво")} {knightLevel+1}</>}</strong><div>{t("Gear inventory:","Екипировка:")} {inventory.length} <span>·</span> {t("Equipped:","Облечени:")} {Object.values(equippedItems).filter(Boolean).length}/6</div><div>{t("Unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40","Отключване: необикновена 10 · рядка 20 · епична 30 · легендарна 40")}</div>{equipmentNotice&&<div className="equipment-confirmation" role="status">✓ {equipmentNotice}</div>}</div>
           <div className="equipment-layout">
             {gearColumns.map(column=><section key={column.side} className={`equipment-column ${column.side}`}>
               <h3>{t(column.title,column.titleBg)}</h3>
