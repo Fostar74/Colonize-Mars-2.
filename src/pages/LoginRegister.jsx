@@ -8,6 +8,8 @@ import leavingEarthImage from "../images/cyber-knight-leaving-earth.jpg";
 
 const API_BASE = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
 
+const currentUtcTime = () => new Date().toISOString().replace("T", " ").slice(0, 19) + " UTC";
+
 const dailyResetCountdown = () => {
   const now = new Date();
   const nextReset = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0));
@@ -26,6 +28,7 @@ function LoginRegister() {
   const [password, setPassword] = useState("");
   const [message, setMessage] = useState("");
   const [activeSlide, setActiveSlide] = useState(0);
+  const [utcNow, setUtcNow] = useState(currentUtcTime);
   const [resetCountdown, setResetCountdown] = useState(dailyResetCountdown);
 
   const slides = [
@@ -36,10 +39,13 @@ function LoginRegister() {
 
   useEffect(() => {
     const slideTimer = window.setInterval(() => setActiveSlide(current => (current + 1) % 3), 7000);
-    const resetTimer = window.setInterval(() => setResetCountdown(dailyResetCountdown()), 1000);
+    const clockTimer = window.setInterval(() => {
+      setUtcNow(currentUtcTime());
+      setResetCountdown(dailyResetCountdown());
+    }, 1000);
     return () => {
       window.clearInterval(slideTimer);
-      window.clearInterval(resetTimer);
+      window.clearInterval(clockTimer);
     };
   }, []);
 
@@ -152,6 +158,8 @@ function LoginRegister() {
 
       <footer className="reset-footer">
         <span className="reset-dot" aria-hidden="true" />
+        <span>{t("Current UTC", "Текущо UTC")}: <strong className="utc-clock">{utcNow}</strong></span>
+        <span className="reset-separator">·</span>
         <span>{t("Daily reset", "Смяна на деня")}: <strong>00:00 UTC</strong></span>
         <span className="reset-separator">·</span>
         <span>{t("Next reset in", "До смяната")} <strong className="countdown">{resetCountdown}</strong></span>

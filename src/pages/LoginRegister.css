@@ -256,6 +256,10 @@
 .countdown {
   font-variant-numeric: tabular-nums;
 }
+.utc-clock {
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
 @keyframes poster-arrive {
   from { opacity: .45; transform: scale(1.015); }
   to { opacity: 1; transform: scale(1); }
