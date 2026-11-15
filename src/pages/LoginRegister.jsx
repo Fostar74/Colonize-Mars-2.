@@ -1,7 +1,6 @@
 import { useLanguage } from "../language";
 import React, { useEffect, useState } from "react";
 import "./LoginRegister.css";
-import background from "../images/mars-background.jpg";
 import riseImage from "../images/cyber-knight-rise.jpg";
 import continuesImage from "../images/cyber-knight-continues.jpg";
 import leavingEarthImage from "../images/cyber-knight-leaving-earth.jpg";
@@ -100,7 +99,7 @@ function LoginRegister() {
   };
 
   return (
-    <main className="login-page" style={{ backgroundImage: "linear-gradient(120deg, rgba(3, 8, 17, .92), rgba(5, 15, 29, .66)), url(" + background + ")" }}>
+    <main className="login-page" style={{ backgroundImage: "linear-gradient(120deg, rgba(3, 8, 17, .96), rgba(5, 15, 29, .9))" }}>
       <div className="landing-layout">
         <section className="landing-story" aria-label={t("Game introduction", "Представяне на играта")}>
           <div className="landing-brand">
