@@ -42,13 +42,29 @@ export default function InformationPanel(){
  const [selectedProtocol,setSelectedProtocol]=useState(null);
  const res=["Gold","Iron","Water","Solar"],atk=[t("Ground troops","Сухопътни войски"),t("Mobile troops","Мобилни войски"),t("Ranged troops","Стрелкови войски"),t("Walls","Стени"),t("Heavy systems","Тежки системи")];
  const attackLabels={infantry:t("Ground troops","Сухопътни войски"),mobile:t("Mobile troops","Мобилни войски"),ranged:t("Ranged troops","Стрелкови войски"),artillery:t("Heavy systems","Тежки системи")};
+ const protocolBySkill={
+  Defender:["Nano Armor Systems","Системи за наноброня"],
+  Warrior:["Combat Augmentation","Бойно усилване"],
+  Archer:["Precision Targeting","Прецизно прицелване"],
+  Cavalrist:["Assault Mobility","Щурмова мобилност"],
+  Siege:["Siege Engineering","Обсадно инженерство"]
+ };
+ const affectedProtocols=u=>{
+  const protocols=(u.skills||[]).map(skill=>protocolBySkill[skill]).filter(Boolean);
+  const en=protocols.map(([name])=>name);
+  const bg=protocols.map(([,name])=>name);
+  return t(
+   "The statistics of this unit are affected by the following Commander Protocols: "+en.join(" and ")+".",
+   "Статистиките ѝ биват повлияни от следните Протоколи на командира: "+bg.join(" и ")+"."
+  );
+ };
  const time=s=>[Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(n=>String(n).padStart(2,"0")).join(":");
  const cost=r=>res.map((k,i)=>label(k)+": "+r.cost[i].toLocaleString()).join(" · ");
  const unit=(u,bg,desc)=>{
   const attacks=Object.entries(u.attack).map(([k,v])=>(attackLabels[k]||k)+": "+v).join(" · ");
   return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
    <h2>{t(u.name,bg)}</h2><p>{t("Infantry · 1 population · Training Center level "+u.requirement.level,"Пехота · 1 население · Учебен център ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
-   <p>{t(desc[0],desc[1])}</p><p>{t("The statistics of this unit are affected by the following Commander Protocols: Nano Armor Systems and Combat Augmentation.","Статистиките ѝ биват повлияни от следните Протоколи на командира: Системи за наноброня и Бойно усилване.")}</p>
+   <p>{t(desc[0],desc[1])}</p><p>{affectedProtocols(u)}</p>
    <p>{t("Base attack:","Базова атака:")} {attacks}</p><p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),...atk,t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
@@ -62,7 +78,7 @@ export default function InformationPanel(){
    <h2>{t(u.name,bg)}</h2>
    <p>{t("Ranged · 1 population · "+factory+" level "+u.requirement.level,"Стрелкова единица · 1 население · "+factory+" ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
    <p>{t(desc[0],desc[1])}</p>
-   <p>{t("The statistics of this unit are affected by the following Commander Protocols: Nano Armor Systems and Precision Targeting.","Статистиките ѝ биват повлияни от следните Протоколи на командира: Системи за наноброня и Прецизно прицелване.")}</p>
+   <p>{affectedProtocols(u)}</p>
    <p>{t("Base attack (infantry / mobile / ranged / wall / siege):","Базова атака (пехота / мобилни / стрелци / стена / обсада):")} {attacks.join(" / ")}</p>
    <p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
