@@ -727,6 +727,7 @@ function Map() {
     .filter(attack => attack.resolved_at == null && attack.launched_at <= clock)
     .map(attack => ({
       id: "mothership-" + attack.id,
+      userId: attack.user_id,
       color: "#ff5f44",
       from: {x: attack.origin_x, y: attack.origin_y},
       to: mothership.coordinates,
@@ -734,6 +735,8 @@ function Map() {
       end: attack.arrives_at,
     })) : [];
   const routes=[...attackRoutes,...mothershipRoutes,...invasionRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>clock);
+  const myMothershipMarches = mothershipRoutes.filter(route =>
+    route.end > clock && String(route.userId) === sessionStorage.getItem("userId"));
   const screenPoint=point=>({x:(point.x-.5)*tileSize+offset.x,y:(point.y-.5)*tileSize+offset.y});
 
   return (
@@ -1118,8 +1121,14 @@ function Map() {
             <p>{t("The selected defense formation is used for future player battles. You can change it at any time.","Избраната формация за защита се използва в бъдещи битки с играчи. Можеш да я смениш по всяко време.")}</p>
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
           </section> : <>
-          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !myGatheringMines.length &&
+          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !myGatheringMines.length && !myMothershipMarches.length &&
             <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
+          {campaignTab==="active" && myMothershipMarches.length>0 && <section>
+            <h3>{t("Mother Ship attacks","Атаки срещу кораба майка")}</h3>
+            {myMothershipMarches.map(march => <div key={march.id}>
+              {march.from.x}:{march.from.y} → {march.to.x}:{march.to.y} · {t("Arrival","Пристигане")} · {formatDuration(march.end-clock)}
+            </div>)}
+          </section>}
           {campaignTab==="active"&&myGatheringMines.length>0&&<section>
             <h3>{t("Gathering","Събиране")}</h3>
             {myGatheringMines.map(mine=>{
