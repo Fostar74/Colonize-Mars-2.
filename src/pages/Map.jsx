@@ -986,9 +986,15 @@ function Map() {
 
               </label>)}
             </div>
-            {marchDraft.type==="Attack" && (marchDraft.target.type==="alien" || marchDraft.target.type==="castle") && <div style={{margin:"10px 0"}}>
+            {marchDraft.type==="Attack" && (marchDraft.target.type==="alien" || marchDraft.target.type==="castle" || marchDraft.target.type==="mothership") && <div style={{margin:"10px 0"}}>
               <strong>{t("Choose an attack formation","Избери формация за атака")}</strong>
               <div style={{display:"flex",gap:8,flexWrap:"wrap",marginTop:8}}>
+                {marchDraft.target.type==="mothership" && <button type="button"
+                  aria-pressed={marchFormationSlot==="default"}
+                  onClick={()=>{setMarchFormationSlot("default");setFormationRows(defaultFormation());}}
+                  style={{padding:"9px 14px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:marchFormationSlot==="default"?"#26765e":"#20384d"}}>
+                  {t("Standard attack","Стандартна атака")}
+                </button>}
                 {[1,2,3,4,5].map(slot=>{
                   const saved=attackPresets[slot];
                   return <button key={slot} type="button" disabled={!saved}
@@ -1034,7 +1040,7 @@ function Map() {
             })}</React.Fragment>)}
           </div></div>
           <div style={{margin:"12px 0",padding:10,textAlign:"center",fontWeight:"bold",background:"#897452",color:"white"}}>{t("Target wall","Стена на целта")}</div>
-          <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {t("Formation:","Формация:")} {attackNames[marchFormationSlot]||t("Standard attack","Стандартна атака")}</p>
+          <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {t("Formation:","Формация:")} {marchFormationSlot==="default"?t("Standard attack","Стандартна атака"):attackNames[marchFormationSlot]||t("Attack formation","Формация за атака")+" "+marchFormationSlot}</p>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
             <button type="button" onClick={()=>setPreviewOpen(false)}>{t("Back to army selection","Назад към избора на войници")}</button>
             <button type="button" disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.target.type==="mothership"?t("Attack Mother Ship (30 sec)","Атакувай кораба майка (30 сек.)"):t("Send attack","Изпрати похода")}</button>
