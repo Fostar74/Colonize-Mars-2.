@@ -66,7 +66,8 @@ function upgradePrice(level, discount = 0, unit, stat) {
 function armySpeed(army){
   const speeds=Object.entries(army||{})
     .filter(([,count])=>Number(count)>0)
-    .map(([unit])=>Number(profileFor(unit)?.speed)||1);
+    .map(([unit])=>Number(profileFor(unit)?.speed))
+    .filter(speed=>Number.isFinite(speed)&&speed>0);
   return speeds.length?Math.min(...speeds):1;
 }
 function armyTravelDuration(baseDuration,army,speedBonus=0){
