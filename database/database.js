@@ -4,7 +4,7 @@ const alienBases = require("../src/shared/alienBases");
 const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails} = require("../src/shared/unitEconomy");
+const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -1069,7 +1069,7 @@ class DatabaseManager {
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),userId);
       const now=Date.now();
       const eventParticipant=db.prepare("SELECT 1 FROM saturday_invasion_members m JOIN saturday_invasion_runs r ON r.id=m.run_id WHERE m.user_id=? AND m.eliminated=0 AND r.status='active' AND r.week_start=?").get(recipientId,this.saturdayInvasionWindow(now).startsAt);
-      const travelMs=eventParticipant?30000:Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100)));
+      const travelMs=armyTravelDuration(eventParticipant?30000:60000,units,this.protocolBonus(userId,"Rapid Deployment"));
       const result=db.prepare("INSERT INTO alliance_reinforcements(alliance_id,sender_id,recipient_id,units,launched_at,arrives_at) VALUES (?,?,?,?,?,?)").run(members[0].alliance_id,userId,recipientId,JSON.stringify(units),now,now+travelMs);
       return {missionId:Number(result.lastInsertRowid),arrivesAt:now+travelMs};
     })();
@@ -1079,7 +1079,7 @@ class DatabaseManager {
     return db.transaction(()=>{
       const mission=db.prepare("SELECT * FROM alliance_reinforcements WHERE id=? AND sender_id=? AND recall_at IS NULL AND returned_at IS NULL").get(missionId,userId);
       if(!mission)return {error:"Reinforcement unavailable for recall."};
-      const now=Date.now(),travelMs=Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100)));
+      const now=Date.now(),travelMs=armyTravelDuration(60000,JSON.parse(mission.units||"{}"),this.protocolBonus(userId,"Rapid Deployment"));
       db.prepare("UPDATE alliance_reinforcements SET recall_at=? WHERE id=?").run(now+travelMs,missionId);
       return {missionId,returnsAt:now+travelMs};
     })();
@@ -1502,8 +1502,7 @@ class DatabaseManager {
       for(const [unit,count] of Object.entries(selected)) current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       const now=Date.now();
-      const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
-      const travelMs=Math.max(1000,Math.ceil(60000/(1+speedBonus)));
+      const travelMs=armyTravelDuration(60000,selected,this.protocolBonus(userId,"Rapid Deployment"));
       const origin={username:this.findUserById(userId)?.username||current.castle.username,x:current.castle.x,y:current.castle.y};
       const destination={username:target.username,x:target.x,y:target.y};
       const armyData={units:selected,formation:battleFormation,origin,target:destination};
@@ -1535,7 +1534,7 @@ class DatabaseManager {
         const defender=this.syncGame(mission.defender_id);
         if(!attacker||!defender){
           const failed={victory:false,rounds:0,report:[],survivors:data.units||{},defenderSurvivors:{},defendersRemaining:0,error:"A player base is unavailable."};
-          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?").run(now,now+60000,JSON.stringify(failed),mission.id);
+          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?").run(now,now+Math.max(1000,mission.arrives_at-mission.launched_at),JSON.stringify(failed),mission.id);
           continue;
         }
         const shield=db.prepare("SELECT expires_at FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(mission.defender_id,now);
@@ -2161,7 +2160,7 @@ class DatabaseManager {
       if(Object.keys({...selected,...tally}).some(unit=>(selected[unit]||0)!==(tally[unit]||0)))return {error:"Formation does not match selected troops."};
       for(const [unit,count] of Object.entries(selected))current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
-      const travelMs=30000,origin={x:current.castle.x,y:current.castle.y},arrivesAt=now+travelMs;
+      const travelMs=armyTravelDuration(30000,selected),origin={x:current.castle.x,y:current.castle.y},arrivesAt=now+travelMs;
       const attack=db.prepare("INSERT INTO mothership_attacks(event_id,user_id,army,formation,origin_x,origin_y,knight_level,launched_at,arrives_at) VALUES (?,?,?,?,?,?,?,?,?)")
         .run(event.id,userId,JSON.stringify(selected),JSON.stringify(battleFormation),origin.x,origin.y,Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1),now,arrivesAt);
       return {attackId:Number(attack.lastInsertRowid),launchedAt:now,arrivesAt,origin,target:{x:50,y:50},attacksRemaining:9-used,army:selected,formation:battleFormation};
@@ -2450,7 +2449,7 @@ class DatabaseManager {
       if(!total||total>marchLimit)return {error:"Choose 1 to 50,000 troops."};
       for(const [unit,count] of Object.entries(selected))current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
-      const now=Date.now(),travelMs=Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100)));
+      const now=Date.now(),travelMs=armyTravelDuration(60000,selected,this.protocolBonus(userId,"Rapid Deployment"));
       db.prepare("INSERT INTO alliance_station_defenders(station_id,alliance_id,user_id,army,status,sent_at,arrives_at) VALUES (?,?,?,?,'travelling',?,?)")
         .run(stationId,member.alliance_id,userId,JSON.stringify(selected),now,now+travelMs);
       return {success:true,stationId,army:selected,sentAt:now,arrivesAt:now+travelMs,protectedUntil:Number(station.protection_until||0)};
@@ -2569,8 +2568,7 @@ class DatabaseManager {
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       const now=Date.now();
       // Hyperdrive increases march speed (not a flat reduction in travel duration).
-      const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
-      const travelMs=Math.max(1000,Math.ceil(60000/(1+speedBonus)));
+      const travelMs=armyTravelDuration(60000,selected,this.protocolBonus(userId,"Rapid Deployment"));
       const arrivesAt=now+travelMs;
       const activeBuffs = db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,now);
       const allianceCombat = {
@@ -2662,7 +2660,7 @@ class DatabaseManager {
         }
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
         db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=MIN(50,1+CAST((prestige+1)/20 AS INTEGER)) WHERE user_id=?").run(userId);
-        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),Date.now()+Math.max(1000,Math.ceil(60000/(1+this.protocolBonus(userId,"Rapid Deployment")/100))),JSON.stringify(result),mission.id);
+        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),Date.now()+Math.max(1000,mission.arrives_at-mission.launched_at),JSON.stringify(result),mission.id);
       }
       return due.length;
     })();
@@ -3026,8 +3024,8 @@ class DatabaseManager {
       if(total>marchLimit)return {error:"A march can contain at most 50,000 troops."};
       const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,count])=>count>0));
       const now=Date.now(),distance=Math.hypot(base.x-mine.x,base.y-mine.y);
-      const speedBonus=this.protocolBonus(userId,"Rapid Deployment")/100;
-      const arrivesAt=now+Math.max(10000,Math.ceil(distance*1000/(1+speedBonus)));
+      const travelMs=armyTravelDuration(distance*1000,selected,this.protocolBonus(userId,"Rapid Deployment"));
+      const arrivesAt=now+Math.max(10000,travelMs);
       const rate=1000*(1+this.protocolBonus(userId,"Mining Operations")/100);
       for(const [unit,count] of Object.entries(selected))current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
