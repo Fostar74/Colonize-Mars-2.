@@ -1724,13 +1724,15 @@ class DatabaseManager {
   tradeBetweenBases() { return {error:"Instant transfers are disabled. Use the marketplace offer and acceptance flow."}; }
 
   settleEndedEvents(now=Date.now()) {
-    const ended=db.prepare("SELECT id FROM mothership_events WHERE ends_at<=? AND rewards_distributed=0").all(now);
-    for(const event of ended){
+    const events=db.prepare(`SELECT id,ends_at FROM mothership_events
+      WHERE (ends_at<=? AND rewards_distributed=0)
+        OR id IN (SELECT event_id FROM mothership_attacks WHERE resolved_at IS NULL AND arrives_at<=?)`).all(now,now);
+    for(const event of events){
       this.resolveMothershipAttacks(event.id);
-      this.settleMothershipRewards(event.id);
+      if(event.ends_at<=now)this.settleMothershipRewards(event.id);
     }
     this.resolveSaturdayAllianceInvasions(now);
-    return ended.length;
+    return events.length;
   }
 
   motherWeekStart(now=Date.now()) {
@@ -1850,7 +1852,11 @@ class DatabaseManager {
         const upgradeBonus=Math.max(0,Number(upgrades.attack||1)-1)*10+Math.max(0,Number(upgrades.defense||1)-1)*3;
         const categoryBonus=protocols[type.category]||0;
         const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+protocols.leadership+Number(attack.knight_level||1)*2+(Number(gearEffects.unitEffects[group.unit]?.attack)||0);
-        damage+=Math.max(0,Number(group.count)||0)*Number(type.attack||0)*(1+attackBonus/100);
+        // The Mother Ship has no target category. Average the unit's matchup values.
+        const baseAttack=type.attackVs
+          ? ["infantry","mobile","ranged","artillery"].reduce((sum,category)=>sum+(Number(type.attackVs[category])||0),0)/4
+          : Number(type.attack)||0;
+        damage+=Math.max(0,Number(group.count)||0)*baseAttack*(1+attackBonus/100);
       }
       damage=Math.max(1,Math.floor(damage));
       const xp=Math.max(1,Math.floor(damage/1000*(1+gearXp/100)));
@@ -2123,6 +2129,8 @@ class DatabaseManager {
     return db.transaction(()=>{
       const now=Date.now(),weekStart=this.motherWeekStart(now),event=db.prepare("SELECT * FROM mothership_events WHERE week_start=?").get(weekStart);
       if(!event||now<event.starts_at||now>=event.ends_at)return {error:"The Mother Ship Hunt is not active."};
+      this.resolveMothershipAttacks(event.id);
+      this.resolveAlienMissions(userId);
       const used=db.prepare("SELECT COUNT(*) AS n FROM mothership_attacks WHERE event_id=? AND user_id=?").get(event.id,userId).n;
       if(used>=10)return {error:"All 10 attacks for this weekly event have been used."};
       if(db.prepare("SELECT 1 FROM mothership_attacks WHERE event_id=? AND user_id=? AND resolved_at IS NULL").get(event.id,userId))return {error:"Your Cyber Knight is still travelling to the Mother Ship."};
@@ -2258,6 +2266,7 @@ class DatabaseManager {
   }
 
   getAlienCampaign(userId) {
+    const mothershipEvent=this.getMothershipEvent(userId);
     const gatheringReports=this.getResourceGatheringReports(userId);
     this.resolvePlayerMissions(userId);
     this.resolveAlienMissions(userId);
@@ -2309,7 +2318,7 @@ class DatabaseManager {
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,gatheringReports,mothershipEvent:this.getMothershipEvent(userId)};
+    return {scoutMissions,playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,gatheringReports,mothershipEvent};
   }
 
   getAlienStationStatus(userId){
