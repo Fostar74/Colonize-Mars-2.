@@ -196,10 +196,10 @@ export default function InformationPanel(){
   {category?.id==="heavy"&&<>
    <h2>{t("Heavy Systems","Тежки системи")}</h2>
    <p>{t(categoryProtocols.heavy[0],categoryProtocols.heavy[1])}</p>
-   {heavyUnit("Demolition Bot","Бот за разрушения",55,120)}
-   {heavyUnit("Missile Carrier","Ракетен носител",75,170)}
-   {heavyUnit("Particle Blaster","Частично оръдие",95,220)}
-   {heavyUnit("Orbital Strike Beacon","Орбитален ударен маяк",115,270)}
+   {heavyUnit("Demolition Bot","Бот за разрушаване",55,120)}
+   {heavyUnit("Missile Carrier","Ракетоносец",75,170)}
+   {heavyUnit("Particle Blaster","Бластер с частици",95,220)}
+   {heavyUnit("Orbital Strike Beacon","Маркер за орбитален удар",115,270)}
   </>}
   {category&&page!=="ground"&&category.id!=="ranged"&&category.id!=="mobile"&&category.id!=="heavy"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Detailed unit statistics and upgrade tables for this category will be added later.","Подробните характеристики и таблиците за подобренията на тази категория ще бъдат добавени по-късно.")}</p>{categoryProtocols[category.id]&&<p>{t(categoryProtocols[category.id][0],categoryProtocols[category.id][1])}</p>}</>}
   {section?.id==="skills"&&(nanoArmorSystems?<>
