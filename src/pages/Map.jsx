@@ -295,14 +295,6 @@ function Map() {
   }, [reconShortcut]);
 
   useEffect(() => {
-    if (
-      !hqIcon ||
-      castles.length === 0 ||
-      Object.keys(mineIcons).length === 0 ||
-      !alienIcon
-    )
-      return;
-
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
 
@@ -385,7 +377,7 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
-        ctx.drawImage(alienIcon, px, py, tileSize, tileSize);
+        if(alienIcon)ctx.drawImage(alienIcon, px, py, tileSize, tileSize);
         ctx.fillStyle = "white";
         ctx.font = "bold 14px Arial";
         ctx.fillText(`Lv${base.level}`, px + 5, py + 15);
@@ -408,16 +400,6 @@ function Map() {
       ctx.restore();
     });
 
-    const event=campaign.mothershipEvent;
-    if(event?.active){
-      const sx=(event.coordinates.x-1)*tileSize+offset.x+tileSize/2;
-      const sy=(event.coordinates.y-1)*tileSize+offset.y+tileSize/2;
-      ctx.save();ctx.beginPath();ctx.arc(sx,sy,tileSize*.85,0,Math.PI*2);
-      ctx.fillStyle="rgba(220,66,44,.35)";ctx.fill();ctx.strokeStyle="#ff6347";ctx.lineWidth=3;ctx.stroke();
-      ctx.drawImage(alienIcon,sx-tileSize*.58,sy-tileSize*.58,tileSize*1.16,tileSize*1.16);
-      ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
-      ctx.fillText(t("MOTHER SHIP","МАЙЧИН КОРАБ"),sx,sy+tileSize*1.05);ctx.restore();
-    }
 
     castles.forEach((c) => {
       const px = (c.x-1) * tileSize + offset.x;
@@ -441,12 +423,22 @@ function Map() {
           ctx.ellipse(px+tileSize/2,py+tileSize/2,tileSize*0.76,tileSize*0.68,0,0,Math.PI*2);
           ctx.fill();ctx.stroke();ctx.restore();
         }
-        ctx.drawImage(hqIcon, px, py, tileSize, tileSize);
+        if(hqIcon)ctx.drawImage(hqIcon, px, py, tileSize, tileSize);
         ctx.fillStyle = "white";
         ctx.font = "12px Arial";
         ctx.fillText(`${c.username} (${c.x}:${c.y})`, px + 2, py + tileSize - 5);
       }
     });
+    const event=campaign.mothershipEvent;
+    if(event?.active){
+      const sx=(event.coordinates.x-1)*tileSize+offset.x+tileSize/2;
+      const sy=(event.coordinates.y-1)*tileSize+offset.y+tileSize/2;
+      ctx.save();ctx.beginPath();ctx.arc(sx,sy,tileSize*.85,0,Math.PI*2);
+      ctx.fillStyle="rgba(220,66,44,.35)";ctx.fill();ctx.strokeStyle="#ff6347";ctx.lineWidth=3;ctx.stroke();
+      if(alienIcon)ctx.drawImage(alienIcon,sx-tileSize*.58,sy-tileSize*.58,tileSize*1.16,tileSize*1.16);
+      ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
+      ctx.fillText(t("MOTHER SHIP","МАЙЧИН КОРАБ"),sx,sy+tileSize*1.05);ctx.restore();
+    }
   }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom, campaign, mineData, t]);
 
   // All markers and the grid share one fixed world coordinate system.
