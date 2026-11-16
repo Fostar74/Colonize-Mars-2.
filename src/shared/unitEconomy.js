@@ -12,7 +12,7 @@ const {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,explorerUpgrade,
 const cargoCapacity = {
   "Explorer Trooper":10, "Exo-Soldier":10, "Plasma Bladesman":10, "Nano Shieldman":10,
   "Railgunner":5, "Pulse Sniper":5, "Drone Operator":5,
-  "Rover Scout":80, "Hoverbike Rider":60, "Mech Walker":25, "Hover Drone Rider":40,
+  ...Object.fromEntries(categories.Mobile.map(unit=>[unit,profileFor(unit).cargo])),
   "Demolition Bot":20, "Missile Carrier":50, "Particle Blaster":10, "Orbital Strike Beacon":10,
   "AI General":50, "Gene Warrior":30
 };
@@ -24,11 +24,8 @@ const emphasis = [
   {Gold:60,Iron:70,Water:50,Solar:120}
 ];
 function unitPrice(unit) {
-  if(unit==="Explorer Trooper")return {...explorerTrooper.price};
-  if(unit==="Nano Shieldman")return {...nanoShieldman.price};
-  if(unit==="Exo-Soldier")return {...exoSoldier.price};
-  if(unit==="Plasma Bladesman")return {...plasmaBladesman.price};
-  if(["Railgunner","Pulse Sniper","Drone Operator"].includes(unit))return {...profileFor(unit).price};
+  const profile=profileFor(unit);
+  if(profile)return {...profile.price};
   const entry = Object.entries(categories).find(([,units])=>units.includes(unit));
   if (!entry) return null;
   const [category,units]=entry;

@@ -4,7 +4,7 @@ const healthRows=rows=>rows.map(([value,cost,t])=>({value,cost,seconds:seconds(t
 
 const roverScout={
  name:"Rover Scout",category:"mobile",attack:{infantry:20,mobile:20,ranged:150,artillery:150},wallAttack:0,health:200,range:2,speed:3,cargo:10,population:2,
- requirement:{building:"Battle Simulator",level:1},price:{Gold:50,Iron:120,Water:90,Solar:40},trainingSeconds:750,
+ requirement:{building:"Combat Simulator",level:1},price:{Gold:50,Iron:120,Water:90,Solar:40},trainingSeconds:750,
  attackUpgrades:attackRows([
  [[0.8,0.8,6,0,6],[127,110,55,99],"03:16:34"],[[1.8,1.8,13.5,0,13.5],[253,440,220,396],"05:12:02"],
  [[3,3,22.5,0,22.5],[1776,1540,772,1386],"06:33:10"],[[4.4,4.4,33,0,33],[3988,3468,1734,3121],"08:15:26"],
@@ -21,7 +21,7 @@ const roverScout={
 };
 const hoverbikeRider={
  name:"Hoverbike Rider",category:"mobile",attack:{infantry:240,mobile:80,ranged:320,artillery:160},wallAttack:0,health:320,range:1,speed:3,cargo:15,population:4,
- requirement:{building:"Battle Simulator",level:7},price:{Gold:150,Iron:150,Water:50,Solar:250},trainingSeconds:1200,
+ requirement:{building:"Combat Simulator",level:7},price:{Gold:150,Iron:150,Water:50,Solar:250},trainingSeconds:1200,
  attackUpgrades:attackRows([
  [[9.6,3.2,12.8,0,6.4],[276,115,138,184],"04:02:40"],[[21.6,7.2,28.8,0,14.4],[1104,460,552,736],"06:25:14"],
  [[36,12,48,0,24],[3864,1612,1934,2576],"08:05:26"],[[52.8,17.6,70.4,0,35.2],[8698,3624,4349,5798],"10:11:36"],
@@ -38,7 +38,7 @@ const hoverbikeRider={
 };
 const mechWalker={
  name:"Mech Walker",category:"mobile",attack:{infantry:50,mobile:150,ranged:250,artillery:350},wallAttack:50,health:220,range:4,speed:3,cargo:15,population:5,
- requirement:{building:"Battle Simulator",level:11},price:{Gold:200,Iron:300,Water:250,Solar:150},trainingSeconds:1500,
+ requirement:{building:"Combat Simulator",level:11},price:{Gold:200,Iron:300,Water:250,Solar:150},trainingSeconds:1500,
  attackUpgrades:attackRows([
  [[1.5,4.5,7.5,1.5,10.5],[120,240,100,160],"04:18:12"],[[3,9,15,3,21],[480,960,400,640],"06:49:54"],
  [[5,15,25,5,35],[1680,3360,1400,2240],"08:36:28"],[[7,21,35,7,49],[3780,7560,3150,5040],"10:50:48"],
@@ -55,7 +55,7 @@ const mechWalker={
 };
 const hoverDroneRider={
  name:"Hover Drone Rider",category:"mobile",attack:{infantry:200,mobile:300,ranged:250,artillery:350},wallAttack:0,health:500,range:1,speed:4,cargo:20,population:6,
- requirement:{building:"Battle Simulator",level:16},price:{Gold:300,Iron:250,Water:200,Solar:150},trainingSeconds:1800,
+ requirement:{building:"Combat Simulator",level:16},price:{Gold:300,Iron:250,Water:200,Solar:150},trainingSeconds:1800,
  attackUpgrades:attackRows([
  [[8,12,10,0,14],[140,245,210,175],"05:27:36"],[[18,27,22.5,0,31.5],[560,980,840,700],"08:40:06"],
  [[30,45,37.5,0,52.5],[1960,3433,2942,2450],"10:55:20"],[[44,66,55,0,77],[4411,7720,6617,5514],"13:45:42"],
