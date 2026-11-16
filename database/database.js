@@ -2111,6 +2111,14 @@ class DatabaseManager {
     return {name:"Saturday Alien Invasion",startsAt:window.startsAt,endsAt:window.endsAt,active:isOpen,settled:!!season?.settled,alliance:alliance?{...alliance,run:myRun||null,canStart:isOpen&&["Leader","Co-Leader"].includes(alliance.role)&&!myRun}:null,myResult:mine,myAttacks,alliances,players,rewards:[50000,30000,15000].map((amount,index)=>({rank:index+1,resources:amount})),nextStartsAt:window.startsAt};
   }
 
+  getMothershipReports(userId) {
+    return db.prepare(`SELECT id, resolved_at, damage, xp, knight_level, army, formation
+      FROM mothership_attacks WHERE user_id=? AND resolved_at IS NOT NULL
+      ORDER BY resolved_at DESC,id DESC LIMIT 50`).all(userId).map(report=>({
+        ...report,army:JSON.parse(report.army),formation:JSON.parse(report.formation)
+      }));
+  }
+
   getMothershipEvent(userId) {
     const now=Date.now(),weekStart=this.motherWeekStart(now),startsAt=weekStart,endsAt=weekStart+86400000;
     db.prepare("INSERT OR IGNORE INTO mothership_events(week_start,starts_at,ends_at,hp_remaining) VALUES (?,?,?,?)").run(weekStart,startsAt,endsAt,9000000000000000);
@@ -2121,7 +2129,7 @@ class DatabaseManager {
     const rankings=db.prepare("SELECT a.user_id,u.username,SUM(a.damage) AS damage,COUNT(*) AS attacks FROM mothership_attacks a JOIN users u ON u.id=a.user_id WHERE a.event_id=? GROUP BY a.user_id ORDER BY damage DESC,MIN(a.launched_at),a.user_id LIMIT 10").all(event.id);
     const mine=db.prepare("SELECT COUNT(*) AS count FROM mothership_attacks WHERE event_id=? AND user_id=?").get(event.id,userId).count;
     const prestige=db.prepare("SELECT prestige FROM alien_rewards WHERE user_id=?").get(userId)?.prestige||0;
-    return {id:event.id,name:"Mother Ship Hunt",startsAt:event.starts_at,endsAt:event.ends_at,active:now>=event.starts_at&&now<event.ends_at,settled:!!event.rewards_distributed,coordinates:{x:50,y:50},hp:event.hp_remaining,attacksRemaining:Math.max(0,10-mine),myAttacks:mine,prestige,attacks,rankings,nextStartsAt:event.ends_at<=now?weekStart+7*86400000:weekStart+7*86400000};
+    return {id:event.id,serverTime:now,name:"Mother Ship Hunt",startsAt:event.starts_at,endsAt:event.ends_at,active:now>=event.starts_at&&now<event.ends_at,settled:!!event.rewards_distributed,coordinates:{x:50,y:50},hp:event.hp_remaining,attacksRemaining:Math.max(0,10-mine),myAttacks:mine,prestige,attacks,rankings,nextStartsAt:event.ends_at<=now?weekStart+7*86400000:weekStart+7*86400000};
   }
 
   launchMothershipAttack(userId,selectedArmy,formation,includeCyberKnight) {

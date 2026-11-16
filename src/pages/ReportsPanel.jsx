@@ -25,7 +25,7 @@ export default function ReportsPanel({onClose,onRead}) {
         if(active){
           let seen=[];try{seen=JSON.parse(localStorage.getItem(reportReadStorageKey(userId))||"[]");}catch{}
           const read=new Set(Array.isArray(seen)?seen:[]);
-          const unreadIds=[...(body.missions||[]).filter(m=>m.result&&!read.has("alien:"+m.id)).map(m=>"alien:"+m.id),...(body.playerMissions||[]).filter(m=>m.result&&!m.incoming&&!read.has("player:"+m.id)).map(m=>"player:"+m.id),...(body.gatheringReports||[]).filter(report=>!read.has("gathering:"+report.id)).map(report=>"gathering:"+report.id)];
+          const unreadIds=[...(body.mothershipReports||[]).filter(report=>!read.has("mothership:"+report.id)).map(report=>"mothership:"+report.id),...(body.missions||[]).filter(m=>m.result&&!read.has("alien:"+m.id)).map(m=>"alien:"+m.id),...(body.playerMissions||[]).filter(m=>m.result&&!m.incoming&&!read.has("player:"+m.id)).map(m=>"player:"+m.id),...(body.gatheringReports||[]).filter(report=>!read.has("gathering:"+report.id)).map(report=>"gathering:"+report.id)];
           setNewReportIds(unreadIds);setData(body);
         }
         await fetch(api+"/reports/read",{method:"POST",headers:{"Content-Type":"application/json",...auth()},body:JSON.stringify({userId})});
@@ -41,6 +41,8 @@ export default function ReportsPanel({onClose,onRead}) {
   const previousPlayer=allPlayer.filter(m=>!newPlayer.includes(m));
   const alien=(data?.missions||[]).filter(m=>m.result);
   const newAlien=alien.filter(m=>unreadIds.has("alien:"+m.id));
+  const mothershipReports=data?.mothershipReports||[];
+  const newMothership=mothershipReports.filter(report=>unreadIds.has("mothership:"+report.id));
   const gathering=(data?.gatheringReports||[]);
   const newGathering=gathering.filter(report=>unreadIds.has("gathering:"+report.id));
   const previousGathering=gathering.filter(report=>!newGathering.includes(report));
@@ -104,6 +106,17 @@ export default function ReportsPanel({onClose,onRead}) {
     {army(t("Starting army","Начална армия"),m.units)}{army(t("Losses","Загуби"),diff(m.units,m.result.survivors||{}))}{army(t("Survivors","Оцелели"),m.result.survivors||{})}
   </article>;
   };
+  const mothershipReport=report=><article key={"mothership-"+report.id} style={card}>
+    <h3>{t("Attack on the Mother Ship","Атака срещу кораба майка")} · #{report.id}</h3>
+    <p><strong>{t("Damage dealt","Нанесени щети")}:</strong> {Number(report.damage).toLocaleString()} · {Number(report.xp).toLocaleString()} XP</p>
+    <p>{new Date(report.resolved_at).toLocaleString()} · {t("Cyber Knight level","Ниво на Киберрицаря")} {report.knight_level}</p>
+    {army(t("Deployed army","Изпратена армия"),report.army)}
+    <details><summary>{t("Formation","Формация")}</summary>
+      {[...new Set(report.formation.map(group=>group.row))].sort((a,b)=>a-b).map(row=><div key={row}>
+        {t("Row","Ред")} {row} · {report.formation.filter(group=>group.row===row).map(group=>localLabel(group.unit)+" × "+Number(group.count).toLocaleString()).join(", ")}
+      </div>)}
+    </details>
+  </article>;
   const gatheringReport=report=>{
     const resource={gold:t("Gold","Злато"),iron:t("Iron","Желязо"),water:t("Water","Вода"),solar:t("Solar","Слънчева енергия")}[String(report.resource).toLowerCase()]||report.resource;
     const title=report.reason==="depleted"?t("Mine depleted · army returned","Мината се изчерпа · армията се прибра"):t("Army recalled from mine","Армията се прибра от мината");
@@ -126,7 +139,8 @@ export default function ReportsPanel({onClose,onRead}) {
       {data&&<>{activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}
         {newPlayer.length>0&&<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}</>}
         {newGathering.length>0&&<><h2>{t("New resource gathering reports","Нови доклади от добив")}</h2>{newGathering.map(gatheringReport)}</>}
-        {newPlayer.length===0&&newAlien.length===0&&newGathering.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
+        {newPlayer.length===0&&newAlien.length===0&&newGathering.length===0&&newMothership.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
+        {mothershipReports.length>0&&<><h2>{t("Mother Ship battle reports","Доклади за кораба майка")}{newMothership.length?" · "+t("New","Нови")+": "+newMothership.length:""}</h2>{mothershipReports.map(mothershipReport)}</>}
         {alien.length>0&&<><h2>{t("Alien mission reports","Доклади от извънземни мисии")}{newAlien.length?" · "+t("New","Нови")+": "+newAlien.length:""}</h2>{alien.map(alienReport)}</>}
         {previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
         {previousGathering.length>0&&<details style={{marginTop:20}}><summary>{t("Previous resource gathering reports","Предишни доклади от добив")}</summary>{previousGathering.map(gatheringReport)}</details>}

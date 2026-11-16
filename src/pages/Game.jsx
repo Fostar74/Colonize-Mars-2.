@@ -22,6 +22,7 @@ const resolvedBattleReportIds = data => [
   ...(data?.missions || []).filter(mission => mission.result).map(mission => `alien:${mission.id}`),
   ...(data?.playerMissions || []).filter(mission => mission.result).map(mission => `player:${mission.id}`),
   ...(data?.scoutMissions || []).filter(mission => mission.returned_at || mission.returnedAt).map(mission => `spy:${mission.id}`),
+  ...(data?.mothershipReports || []).map(report => `mothership:${report.id}`),
   ...(data?.gatheringReports || []).map(report => `gathering:${report.id}`)
 ];
 const unreadBattleReportCount = (data,userId) => {
@@ -264,6 +265,7 @@ function EventsPanel() {
     {motherShip&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
       <h2>{t("Mother Ship Hunt","Лов на кораба майка")}</h2>
       <p>{motherShip.active?t("Event is active","Събитието е активно"):motherShip.settled?t("Results are final","Класирането е окончателно"):t("Scheduled weekly event","Седмично събитие")}: {date(motherShip.startsAt)} – {date(motherShip.endsAt)}</p>
+      <p>{t("The flight takes 30 seconds. After the battle, your full army and Cyber Knight return immediately, ready to attack again. Each attack has a damage total in Reports.","Полетът трае 30 секунди. След битката цялата армия и Киберрицарят се връщат веднага и са готови за нова атака. Нанесените щети от всяка атака се виждат в „Доклади“.")}</p>
       <p>{t("Attacks remaining","Оставащи атаки")}: {motherShip.attacksRemaining} · {t("Mother Ship health","Живот на кораба майка")}: {Number(motherShip.hp||0).toLocaleString()}</p>
       {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString()}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
       <button type="button" onClick={()=>navigate("/map?campaign=1")}>{t("Open campaigns","Отвори кампаниите")}</button>

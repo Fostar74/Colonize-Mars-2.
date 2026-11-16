@@ -140,6 +140,7 @@ function Map() {
   const [formationMessage,setFormationMessage]=useState("");
   const [formationBusy,setFormationBusy]=useState(false);
   const [clock,setClock]=useState(Date.now);
+  const mothershipClockOffset=useRef(0);
   const [campaign, setCampaign] = useState({highestDefeated:0,nextLevel:1});
   const { search } = useLocation();
   const reconShortcut = new URLSearchParams(search).has("recon");
@@ -185,9 +186,13 @@ function Map() {
         }
       } catch (error) { if (!cancelled) setMapError(error.message); }
     };
+    const applyCampaign=data=>{
+      if(data.mothershipEvent?.serverTime) mothershipClockOffset.current=data.mothershipEvent.serverTime-Date.now();
+      setCampaign(data);
+    };
     loadBases();
-    fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)setCampaign(d)}).catch(()=>{});
-    const timer = setInterval(()=>{loadBases();fetch((process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"")+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d&&!cancelled)setCampaign(d)}).catch(()=>{});},10000);
+    fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)applyCampaign(d)}).catch(()=>{});
+    const timer = setInterval(()=>{loadBases();fetch((process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"")+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d&&!cancelled)applyCampaign(d)}).catch(()=>{});},10000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
   const mapPlayerTarget = useRef(sessionStorage.getItem("mapPlayerTarget"));
@@ -578,6 +583,8 @@ function Map() {
         if(latest.ok)setCampaign(await latest.json());
         setMarchSuccess("Army is heading to defend the alliance station.");
       }else if(isMothershipAttack){
+        mothershipClockOffset.current=data.launchedAt-Date.now();
+        setClock(Date.now());
         setCampaign(old=>({...old,mothershipEvent:{...old.mothershipEvent,attacksRemaining:data.attacksRemaining,myAttacks:(old.mothershipEvent?.myAttacks||0)+1,attacks:[...(old.mothershipEvent?.attacks||[]),{id:data.attackId,user_id:sessionStorage.getItem("userId"),username:sessionStorage.getItem("username"),origin_x:data.origin.x,origin_y:data.origin.y,launched_at:data.launchedAt,arrives_at:data.arrivesAt,resolved_at:null,damage:0,xp:0}]}}));
         setMarchSuccess(t("Cyber Knight is heading to the Mother Ship. Your full army returns after the battle in 30 seconds and can be sent again.","Киберрицарят лети към Кораба майка. Цялата ти армия ще се върне след битката след 30 секунди и ще можеш да я изпратиш отново."));
       }else if(isAlienAttack){
@@ -723,8 +730,9 @@ function Map() {
     id:"gather-"+m.id,color:"#ffd166",from:{x:m.origin_x,y:m.origin_y},to:{x:m.x,y:m.y},start:m.launched_at,end:m.arrives_at
   }));
   const mothership = campaign.mothershipEvent;
-  const mothershipRoutes = mothership?.active ? (mothership.attacks || [])
-    .filter(attack => attack.resolved_at == null && attack.launched_at <= clock)
+  const mothershipClock=clock+mothershipClockOffset.current;
+  const mothershipRoutes = (mothership?.attacks || [])
+    .filter(attack => attack.resolved_at == null && attack.arrives_at > mothershipClock)
     .map(attack => ({
       id: "mothership-" + attack.id,
       userId: attack.user_id,
@@ -733,10 +741,11 @@ function Map() {
       to: mothership.coordinates,
       start: attack.launched_at,
       end: attack.arrives_at,
-    })) : [];
-  const routes=[...attackRoutes,...mothershipRoutes,...invasionRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>clock);
+      clock: mothershipClock,
+    }));
+  const routes=[...attackRoutes,...mothershipRoutes,...invasionRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>(route.clock??clock));
   const myMothershipMarches = mothershipRoutes.filter(route =>
-    route.end > clock && String(route.userId) === sessionStorage.getItem("userId"));
+    String(route.userId) === sessionStorage.getItem("userId"));
   const screenPoint=point=>({x:(point.x-.5)*tileSize+offset.x,y:(point.y-.5)*tileSize+offset.y});
 
   return (
@@ -771,7 +780,7 @@ function Map() {
         preserveAspectRatio="none" style={{position:"absolute",inset:0,pointerEvents:"none"}}>
         {routes.map(route=>{
           const from=screenPoint(route.from),to=screenPoint(route.to);
-          const progress=Math.max(0,Math.min(1,(clock-route.start)/Math.max(1,route.end-route.start)));
+          const progress=Math.max(0,Math.min(1,((route.clock??clock)-route.start)/Math.max(1,route.end-route.start)));
           const x=from.x+(to.x-from.x)*progress,y=from.y+(to.y-from.y)*progress;
           return <g key={route.id}>
             {route.id.startsWith("invasion-")&&<title>{t("Alien Base Lv","Извънземна база ниво")} {route.level} → {route.targetName}</title>}
@@ -1126,7 +1135,7 @@ function Map() {
           {campaignTab==="active" && myMothershipMarches.length>0 && <section>
             <h3>{t("Mother Ship attacks","Атаки срещу кораба майка")}</h3>
             {myMothershipMarches.map(march => <div key={march.id}>
-              {march.from.x}:{march.from.y} → {march.to.x}:{march.to.y} · {t("Arrival","Пристигане")} · {formatDuration(march.end-clock)}
+              {march.from.x}:{march.from.y} → {march.to.x}:{march.to.y} · {t("Arrival","Пристигане")} · {formatDuration(march.end-mothershipClock)}
             </div>)}
           </section>}
           {campaignTab==="active"&&myGatheringMines.length>0&&<section>

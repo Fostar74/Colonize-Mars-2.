@@ -333,7 +333,7 @@ router.get("/reports/:userId",requireSession,(req,res)=>{
   try{
     const campaign=db.getAlienCampaign(Number(req.params.userId));
     const playerMissions=campaign.playerMissions||[];
-    res.json({...campaign,unreadIncoming:playerMissions.filter(mission=>mission.incoming&&!mission.result&&!mission.returned_at&&Number(mission.arrives_at)>Date.now()).length});
+    res.json({...campaign,mothershipReports:db.getMothershipReports(Number(req.params.userId)),unreadIncoming:playerMissions.filter(mission=>mission.incoming&&!mission.result&&!mission.returned_at&&Number(mission.arrives_at)>Date.now()).length});
   }catch(error){console.error("Report inbox:",error);res.status(500).json({message:"Reports unavailable."});}
 });
 router.post("/reports/read",requireSession,(req,res)=>{
