@@ -1,6 +1,7 @@
 import React,{useState} from "react";
 import {useLanguage} from "../language";
 import {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,railgunner,pulseSniper,droneOperator} from "../shared/unitProfiles";
+import {roverScout,hoverbikeRider,mechWalker,hoverDroneRider} from "../shared/mobileUnitProfiles";
 
 const homeSections=[
  {id:"faq",en:"FAQ",bg:"FAQ",image:"faq.jpg"},
@@ -85,6 +86,19 @@ export default function InformationPanel(){
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].slice(0,10).map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
  };
+ const mobileUnit=(u,bg,desc)=>{
+  const attacks=[u.attack.infantry,u.attack.mobile,u.attack.ranged,u.wallAttack,u.attack.artillery];
+  const building=t("Battle Simulator","Боен симулатор");
+  return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
+   <h2>{t(u.name,bg)}</h2>
+   <p>{t("Mobile unit · "+u.population+" population · "+building+" level "+u.requirement.level,"Мобилна единица · "+u.population+" население · "+building+" ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
+   <p>{t(desc[0],desc[1])}</p><p>{affectedProtocols(u)}</p>
+   <p>{t("Base attack (infantry / mobile / ranged / wall / siege):","Базова атака (пехота / мобилни / стрелци / стена / обсада):")} {attacks.join(" / ")}</p>
+   <p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
+   <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
+   {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].slice(0,10).map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
+  </article>;
+ };
  const home=page==="home";
  const section=homeSections.find(s=>s.id===page);
  const category=infantryCategories.find(c=>c.id===page);
@@ -146,7 +160,13 @@ export default function InformationPanel(){
    {rangedUnit(pulseSniper,"Импулсен снайперист",["Ranged unit with the strongest attack against ranged units. Keep it behind the front line.","Стрелкова единица с най-силна атака срещу стрелци. Дръжте я зад предната линия."])}
    {rangedUnit(droneOperator,"Оператор на дрон",["Ranged unit with the strongest attack against mobile units. It is the fastest ranged unit and has the longest range in its category. Keep it behind the front line.","Стрелкова единица с най-силна атака срещу мобилни единици. Тя е най-бързата стрелкова единица и има най-голям обхват в категорията. Дръжте я зад предната линия."])}
   </>}
-  {category&&page!=="ground"&&category.id!=="ranged"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Detailed unit statistics and upgrade tables for this category will be added later.","Подробните характеристики и таблиците за подобренията на тази категория ще бъдат добавени по-късно.")}</p>{categoryProtocols[category.id]&&<p>{t(categoryProtocols[category.id][0],categoryProtocols[category.id][1])}</p>}</>}
+  {category?.id==="mobile"&&<><h2>{t("Mobile","Мобилни")}</h2>
+   {mobileUnit(roverScout,"Разузнавателен роувър",["Mobile unit with the strongest attack against ranged and siege units. Its range of 2 allows it to be placed in the first or second row.","Мобилна единица с най-силна атака срещу стрелкови единици и обсадни машини. Обхватът ѝ от 2 позволява да бъде поставена на първи или втори ред."])}
+   {mobileUnit(hoverbikeRider,"Пилот на ховърбайк",["Mobile unit with the strongest attack against ranged units. It also has strong health and attack against infantry, so it is best placed in the first row.","Мобилна единица с най-силна атака срещу стрелкови единици. Тя разполага и с достатъчно здраве и атака срещу пехотата, затова е най-добре да бъде поставена на първи ред."])}
+   {mobileUnit(mechWalker,"Боен мех",["Mobile unit with the strongest attack against siege units. Its range of 4 means it should not be placed in the front rows.","Мобилна единица с най-силна атака срещу обсадни машини. Обхватът ѝ от 4 означава, че не трябва да бъде поставяна на предни позиции."])}
+   {mobileUnit(hoverDroneRider,"Пилот на ховърдрон",["Mobile unit with the strongest attack against siege units. It has the highest health among mobile units and is the slowest of its group. Its attacks against all units and high health make it the backbone of an army in later stages. Best placed in the first row.","Мобилна единица с най-силна атака срещу обсадни машини. Тя има най-много здраве сред мобилните единици и е най-бавната в групата. Атаката ѝ срещу всички единици и високото ѝ здраве я правят гръбнак на армията в по-късните етапи. Най-добре е да бъде поставена на първи ред."])}
+  </>}
+  {category&&page!=="ground"&&category.id!=="ranged"&&category.id!=="mobile"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Detailed unit statistics and upgrade tables for this category will be added later.","Подробните характеристики и таблиците за подобренията на тази категория ще бъдат добавени по-късно.")}</p>{categoryProtocols[category.id]&&<p>{t(categoryProtocols[category.id][0],categoryProtocols[category.id][1])}</p>}</>}
   {section?.id==="skills"&&(nanoArmorSystems?<>
    <h2>{t("Nano Armor Systems","Системи за наноброня")}</h2>
    <p>{t("Longer-lasting units have a better chance to hold the battlefield and help secure victory. Nano Armor Systems strengthens the durability of your entire force.", "Колкото по-дълго единиците ви издържат на бойното поле, толкова по-голям е шансът да победите. Системите за наноброня повишават издръжливостта на цялата ви армия.")}</p>
