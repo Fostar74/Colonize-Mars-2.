@@ -87,14 +87,28 @@ export default function InformationPanel(){
   </article>;
  };
  const mobileUnit=(u,bg,desc)=>{
-  const attacks=[u.attack.infantry,u.attack.mobile,u.attack.ranged,u.wallAttack,u.attack.artillery];
+  const combatStats=[
+   [t("Attack against infantry","Атака срещу пехота"),u.attack.infantry],
+   [t("Attack against mobile units","Атака срещу мобилни единици"),u.attack.mobile],
+   [t("Attack against ranged units","Атака срещу стрелци"),u.attack.ranged],
+   [t("Attack against walls","Атака срещу стена"),u.wallAttack],
+   [t("Attack against siege units","Атака срещу обсадни машини"),u.attack.artillery],
+   [t("Health","Живот"),u.health],
+   [t("Range","Обхват"),u.range]
+  ];
+  const statCell={padding:"7px 10px",border:"1px solid #54758a"};
   const building=t("Battle Simulator","Боен симулатор");
   return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
    <h2>{t(u.name,bg)}</h2>
    <p>{t("Mobile unit · "+u.population+" population · "+building+" level "+u.requirement.level,"Мобилна единица · "+u.population+" население · "+building+" ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
    <p>{t(desc[0],desc[1])}</p><p>{affectedProtocols(u)}</p>
-   <p>{t("Base attack (infantry / mobile / ranged / wall / siege):","Базова атака (пехота / мобилни / стрелци / стена / обсада):")} {attacks.join(" / ")}</p>
-   <p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
+   <table style={{width:"100%",maxWidth:440,borderCollapse:"collapse",background:"#172432"}}>
+    <caption style={{textAlign:"left",fontWeight:700,paddingBottom:6}}>{t("Combat statistics","Бойни статистики")}</caption>
+    <tbody>{combatStats.map(([name,value])=><tr key={name}>
+     <th scope="row" style={{...statCell,textAlign:"left",fontWeight:"normal"}}>{name}</th>
+     <td style={{...statCell,textAlign:"right"}}>{value}</td>
+    </tr>)}</tbody>
+   </table>
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].slice(0,10).map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
