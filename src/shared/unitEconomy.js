@@ -63,6 +63,16 @@ function upgradePrice(level, discount = 0, unit, stat) {
   return {Gold:amount,Iron:amount};
 }
 
+function armySpeed(army){
+  const speeds=Object.entries(army||{})
+    .filter(([,count])=>Number(count)>0)
+    .map(([unit])=>Number(profileFor(unit)?.speed)||1);
+  return speeds.length?Math.min(...speeds):1;
+}
+function armyTravelDuration(baseDuration,army,speedBonus=0){
+  const bonus=Math.max(-99,Number(speedBonus)||0);
+  return Math.max(1000,Math.ceil(baseDuration/(armySpeed(army)*(1+bonus/100))));
+}
 function unitTrainingDuration(unit){return profileFor(unit)?.trainingSeconds??30;}
 function unitUpgradeDetails(unit,stat,level,discount=0,speed=0){return explorerUpgrade(unit,stat,level,discount,speed);}
 // Building resource specialization; nextLevel starts at 1.
@@ -86,4 +96,4 @@ function buildingPrice(name,nextLevel,discount = 0) {
   return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * nextLevel * (100 - discount) / 100)]));
 }
 
-module.exports={allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails};
+module.exports={allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};
