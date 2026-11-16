@@ -416,7 +416,7 @@ function Map() {
       ctx.fillStyle="rgba(220,66,44,.35)";ctx.fill();ctx.strokeStyle="#ff6347";ctx.lineWidth=3;ctx.stroke();
       ctx.drawImage(alienIcon,sx-tileSize*.58,sy-tileSize*.58,tileSize*1.16,tileSize*1.16);
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
-      ctx.fillText("МАЙЧИН КОРАБ",sx,sy+tileSize*1.05);ctx.restore();
+      ctx.fillText(t("MOTHER SHIP","МАЙЧИН КОРАБ"),sx,sy+tileSize*1.05);ctx.restore();
     }
 
     castles.forEach((c) => {
@@ -447,7 +447,7 @@ function Map() {
         ctx.fillText(`${c.username} (${c.x}:${c.y})`, px + 2, py + tileSize - 5);
       }
     });
-  }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom, campaign, mineData]);
+  }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom, campaign, mineData, t]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
