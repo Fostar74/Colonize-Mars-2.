@@ -39,10 +39,11 @@ export default function ReportsPanel({onClose,onRead}) {
   const unreadIds=new Set(newReportIds);
   const newPlayer=allPlayer.filter(m=>m.unread||unreadIds.has("player:"+m.id));
   const previousPlayer=allPlayer.filter(m=>!newPlayer.includes(m));
-  const alien=(data?.missions||[]).filter(m=>m.result);
-  const newAlien=alien.filter(m=>unreadIds.has("alien:"+m.id));
-  const mothershipReports=data?.mothershipReports||[];
-  const newMothership=mothershipReports.filter(report=>unreadIds.has("mothership:"+report.id));
+  const alienReports=[
+    ...(data?.missions||[]).filter(m=>m.result).map(report=>({type:"alien",report})),
+    ...(data?.mothershipReports||[]).map(report=>({type:"mothership",report})),
+  ].sort((a,b)=>b.report.resolved_at-a.report.resolved_at||b.report.id-a.report.id);
+  const newAlienCount=alienReports.filter(({type,report})=>unreadIds.has(type+":"+report.id)).length;
   const gathering=(data?.gatheringReports||[]);
   const newGathering=gathering.filter(report=>unreadIds.has("gathering:"+report.id));
   const previousGathering=gathering.filter(report=>!newGathering.includes(report));
@@ -139,9 +140,10 @@ export default function ReportsPanel({onClose,onRead}) {
       {data&&<>{activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}
         {newPlayer.length>0&&<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}</>}
         {newGathering.length>0&&<><h2>{t("New resource gathering reports","Нови доклади от добив")}</h2>{newGathering.map(gatheringReport)}</>}
-        {newPlayer.length===0&&newAlien.length===0&&newGathering.length===0&&newMothership.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
-        {mothershipReports.length>0&&<><h2>{t("Alien Command Ship battle reports","Доклади за командния кораб на извънземните")}{newMothership.length?" · "+t("New","Нови")+": "+newMothership.length:""}</h2>{mothershipReports.map(mothershipReport)}</>}
-        {alien.length>0&&<><h2>{t("Alien mission reports","Доклади от извънземни мисии")}{newAlien.length?" · "+t("New","Нови")+": "+newAlien.length:""}</h2>{alien.map(alienReport)}</>}
+        {newPlayer.length===0&&newAlienCount===0&&newGathering.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
+        {alienReports.length>0&&<><h2>{t("Alien battle reports","Доклади от битки с извънземните")}{newAlienCount?" · "+t("New","Нови")+": "+newAlienCount:""}</h2>
+          {alienReports.map(({type,report})=>type==="alien"?alienReport(report):mothershipReport(report))}
+        </>}
         {previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
         {previousGathering.length>0&&<details style={{marginTop:20}}><summary>{t("Previous resource gathering reports","Предишни доклади от добив")}</summary>{previousGathering.map(gatheringReport)}</details>}
       </>}
