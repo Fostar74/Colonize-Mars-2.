@@ -13,7 +13,7 @@ const cargoCapacity = {
   "Explorer Trooper":10, "Exo-Soldier":10, "Plasma Bladesman":10, "Nano Shieldman":10,
   "Railgunner":5, "Pulse Sniper":5, "Drone Operator":5,
   ...Object.fromEntries(categories.Mobile.map(unit=>[unit,profileFor(unit).cargo])),
-  "Demolition Bot":20, "Missile Carrier":50, "Particle Blaster":10, "Orbital Strike Beacon":10,
+  ...Object.fromEntries(categories["Heavy Systems"].map(unit=>[unit,profileFor(unit).cargo])),
   "AI General":50, "Gene Warrior":30
 };
 // Each unit has a dominant resource; rotate the emphasis within every class.
