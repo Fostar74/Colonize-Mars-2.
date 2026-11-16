@@ -437,7 +437,7 @@ function Map() {
       ctx.fillStyle="rgba(220,66,44,.35)";ctx.fill();ctx.strokeStyle="#ff6347";ctx.lineWidth=3;ctx.stroke();
       if(alienIcon)ctx.drawImage(alienIcon,sx-tileSize*.58,sy-tileSize*.58,tileSize*1.16,tileSize*1.16);
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
-      ctx.fillText(t("MOTHER SHIP","МАЙЧИН КОРАБ"),sx,sy+tileSize*1.05);ctx.restore();
+      ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
   }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom, campaign, mineData, t]);
 
@@ -578,7 +578,7 @@ function Map() {
         mothershipClockOffset.current=data.launchedAt-Date.now();
         setClock(Date.now());
         setCampaign(old=>({...old,mothershipEvent:{...old.mothershipEvent,attacksRemaining:data.attacksRemaining,myAttacks:(old.mothershipEvent?.myAttacks||0)+1,attacks:[...(old.mothershipEvent?.attacks||[]),{id:data.attackId,user_id:sessionStorage.getItem("userId"),username:sessionStorage.getItem("username"),origin_x:data.origin.x,origin_y:data.origin.y,launched_at:data.launchedAt,arrives_at:data.arrivesAt,resolved_at:null,damage:0,xp:0}]}}));
-        setMarchSuccess(t("Cyber Knight is heading to the Mother Ship. Your full army returns after the battle in 30 seconds and can be sent again.","Киберрицарят лети към Кораба майка. Цялата ти армия ще се върне след битката след 30 секунди и ще можеш да я изпратиш отново."));
+        setMarchSuccess(t("Cyber Knight is heading to the Alien Command Ship. Your full army returns after the battle in 30 seconds and can be sent again.","Киберрицарят лети към командния кораб на извънземните. Цялата ти армия ще се върне след битката след 30 секунди и ще можеш да я изпратиш отново."));
       }else if(isAlienAttack){
         setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
           id:data.missionId,level:data.level,arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,cyberKnightLevel:old.knightLevel||1
@@ -897,7 +897,7 @@ function Map() {
               </>;
             })()}
           </section>}          {selectedTarget?.type==="mothership"&&campaign.mothershipEvent&&<section style={{padding:12,margin:"10px 0",background:"#3b2632",border:"1px solid #cc684f",borderRadius:8}}>
-            <strong>{t("The global event lasts 24 hours. Every player gets 10 attacks with up to 50,000 troops led by Cyber Knight. The full army returns immediately after each battle and can be reused. Each march arrives in 30 seconds. Each 1,000 damage counts as one alien population killed and grants 1 XP. The Mother Ship cannot be destroyed.","Глобалното събитие трае 24 часа. Всеки играч има 10 атаки с до 50 000 войници, водени от Киберрицаря. Цялата армия се връща веднага след всяка битка и може да бъде използвана отново. Походът пристига за 30 секунди. На всеки 1 000 щети се отчита една убита извънземна популация и се дава 1 опит. Корабът майка не може да бъде унищожен.")}</strong>
+            <strong>{t("The global event lasts 24 hours. Every player gets 10 attacks with up to 50,000 troops led by Cyber Knight. The full army returns immediately after each battle and can be reused. Each march arrives in 30 seconds. Each 1,000 damage counts as one alien population killed and grants 1 XP. The Alien Command Ship cannot be destroyed.","Глобалното събитие трае 24 часа. Всеки играч има 10 атаки с до 50 000 войници, водени от Киберрицаря. Цялата армия се връща веднага след всяка битка и може да бъде използвана отново. Походът пристига за 30 секунди. На всеки 1 000 щети се отчита една убита извънземна популация и се дава 1 опит. Командният кораб на извънземните не може да бъде унищожен.")}</strong>
             <p>{t("Top 10: 20 extra Cyber Knight missions and equipment with 3 bonuses; rank 1 gets 3 items, rank 2 gets 2.","Първите 10: 20 допълнителни мисии на Киберрицаря и екипировка с 3 бонуса; първият получава 3 предмета, вторият 2.")}</p>
             <div style={{marginTop:8}}>{t("Your attacks left:","Оставащи твои атаки:")} {campaign.mothershipEvent.attacksRemaining} · {t("Cyber Knight prestige:","Престиж на Киберрицаря:")} {campaign.mothershipEvent.prestige} · {t("Ship integrity:","Здравина на кораба:")} {Number(campaign.mothershipEvent.hp).toLocaleString()}</div>
             <h3>{t("Global damage rankings","Глобално класиране по щети")}</h3>
@@ -906,7 +906,7 @@ function Map() {
               <div style={{maxHeight:180,overflowY:"auto"}}>{(campaign.mothershipEvent.attacks||[]).slice().reverse().map(attack=><div key={attack.id}>{attack.username} · {attack.origin_x}:{attack.origin_y} → 50:50 · {attack.resolved_at?Number(attack.damage).toLocaleString()+" "+t("damage","щети")+" · "+Number(attack.xp||0).toLocaleString()+" XP":t("en route","на път")}</div>)}</div>
             </details>
           </section>}
-          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Mother Ship Hunt · Global Event","Ловът на Майчиния кораб · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
+          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Attack the Alien Command Ship · Global Event","Атакувай Командния кораб на извънземните · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
           {selectedTarget?.type==="mine"&&<section style={{padding:12,margin:"10px 0",background:"#243449",border:"1px solid #6b8ca5",borderRadius:8}}>
             <strong>{t("Available resource","Наличен ресурс")}: {Number(selectedTarget.amount||0).toLocaleString()} · {t("Gathering slots used","Заети места за добив")}: {myMineCount}/{mineCapacity}</strong>
             {selectedTarget.claimed_by
@@ -1006,7 +1006,7 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
               {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
-              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Mother Ship (30 sec)","Атакувай кораба майка (30 сек.)"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
+              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
@@ -1035,7 +1035,7 @@ function Map() {
           <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {t("Formation:","Формация:")} {marchFormationSlot==="default"?t("Standard attack","Стандартна атака"):attackNames[marchFormationSlot]||t("Attack formation","Формация за атака")+" "+marchFormationSlot}</p>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
             <button type="button" onClick={()=>setPreviewOpen(false)}>{t("Back to army selection","Назад към избора на войници")}</button>
-            <button type="button" disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.target.type==="mothership"?t("Attack Mother Ship (30 sec)","Атакувай кораба майка (30 сек.)"):t("Send attack","Изпрати похода")}</button>
+            <button type="button" disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):t("Send attack","Изпрати похода")}</button>
           </div>
         </div>
       </div>}
@@ -1131,7 +1131,7 @@ function Map() {
           {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !myGatheringMines.length && !myMothershipMarches.length &&
             <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
           {campaignTab==="active" && myMothershipMarches.length>0 && <section>
-            <h3>{t("Mother Ship attacks","Атаки срещу кораба майка")}</h3>
+            <h3>{t("Alien Command Ship attacks","Атаки срещу командния кораб на извънземните")}</h3>
             {myMothershipMarches.map(march => <div key={march.id}>
               {march.from.x}:{march.from.y} → {march.to.x}:{march.to.y} · {t("Arrival","Пристигане")} · {formatDuration(march.end-mothershipClock)}
             </div>)}

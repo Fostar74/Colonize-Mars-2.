@@ -397,7 +397,7 @@ router.post("/mothership/attack",requireSession,(req,res)=>{
     const result=db.launchMothershipAttack(Number(req.body.userId),req.body.army,req.body.formation,req.body.includeCyberKnight);
     if(result.error)return res.status(400).json({message:result.error});
     res.json(result);
-  }catch(error){console.error("Mother Ship attack:",error);res.status(500).json({message:"Mother Ship attack could not be launched."});}
+  }catch(error){console.error("Alien Command Ship attack:",error);res.status(500).json({message:"Alien Command Ship attack could not be launched."});}
 });
 router.get("/hospital/:userId",requireSession,(req,res)=>{
   try{res.json(db.getHospital(Number(req.params.userId)));}
@@ -412,7 +412,7 @@ router.post("/hospital/treat",requireSession,(req,res)=>{
 });
 router.get("/mothership/hospital/:userId",requireSession,(req,res)=>{
   try{res.json(db.getMothershipHospital(Number(req.params.userId)));}
-  catch(error){console.error("Mother Ship hospital:",error);res.status(500).json({message:"Hospital unavailable."});}
+  catch(error){console.error("Alien Command Ship hospital:",error);res.status(500).json({message:"Hospital unavailable."});}
 });
 router.post("/mothership/hospital/heal",requireSession,(req,res)=>{
   try{

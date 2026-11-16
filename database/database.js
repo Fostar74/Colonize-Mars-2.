@@ -1910,7 +1910,7 @@ class DatabaseManager {
         const old=this.getUserEquipment(user_id),inventory=[...(old?.gearInventory||[])],slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"],availableSlots=[...slots];
         for(let n=0;n<3;n++){
           const slotIndex=Math.floor(Math.random()*availableSlots.length),slot=availableSlots.splice(slotIndex,1)[0];
-          inventory.push({id:"mothership-"+event.id+"-"+user_id+"-"+n,name:"Mother Ship Relic · "+slot,slot,rarity:rank===1?"Legendary":"Epic",level:0,stats:[],bonusSlots:3,obtainedFrom:"Mother Ship Hunt · Rank "+rank});
+          inventory.push({id:"mothership-"+event.id+"-"+user_id+"-"+n,name:"Alien Command Ship Relic · "+slot,slot,rarity:rank===1?"Legendary":"Epic",level:0,stats:[],bonusSlots:3,obtainedFrom:"Attack the Alien Command Ship · Rank "+rank});
         }
         this.saveUserEquipment(user_id,old?.equippedItems||{},inventory,old?.craftingPoints||{});
         db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,1,1) ON CONFLICT(user_id) DO UPDATE SET balance=balance+1,total_earned=total_earned+1").run(user_id);
@@ -1931,7 +1931,7 @@ class DatabaseManager {
       const rank=rankings.findIndex(row=>row.user_id===userId)+1;
       const personal=rank?`Your rank: ${rank}. / Твоето място: ${rank}.`:"You did not participate. / Не участва.",
         winnerReward=rank>0&&rank<=10?"Green crystal ×1, 3 random Cyber Knight equipment pieces with 3 bonus slots each, +20 Cyber Knight missions. Bonus values will be announced separately. / Зелен кристал ×1, 3 случайни екипировки за Киберрицаря с по 3 слота за бонуси и +20 мисии на Киберрицаря. Стойностите на бонусите ще бъдат обявени допълнително.":"",
-        body=`MOTHER SHIP HUNT · FINAL RESULTS / ЛОВ НА КОРАБА МАЙКА · ФИНАЛНИ РЕЗУЛТАТИ\n\nFINAL RANKING / КЛАСИРАНЕ:\n${leaderboard}\n\nREWARDS / НАГРАДИ:\nEach participant: 10,000 each of Gold, Iron, Water and Solar. / Всеки участник: по 10 000 злато, желязо, вода и слънчева енергия.\nTop 10: ${winnerReward||"Green crystal ×1, 3 random Cyber Knight equipment pieces with 3 bonus slots each, +20 Cyber Knight missions. Bonus values will be announced separately. / Зелен кристал ×1, 3 случайни екипировки за Киберрицаря с по 3 слота за бонуси и +20 мисии на Киберрицаря. Стойностите на бонусите ще бъдат обявени допълнително."}\n\n${personal}`;
+        body=`ATTACK THE ALIEN COMMAND SHIP · FINAL RESULTS / АТАКУВАЙ КОМАНДНИЯ КОРАБ НА ИЗВЪНЗЕМНИТЕ · ФИНАЛНИ РЕЗУЛТАТИ\n\nFINAL RANKING / КЛАСИРАНЕ:\n${leaderboard}\n\nREWARDS / НАГРАДИ:\nEach participant: 10,000 each of Gold, Iron, Water and Solar. / Всеки участник: по 10 000 злато, желязо, вода и слънчева енергия.\nTop 10: ${winnerReward||"Green crystal ×1, 3 random Cyber Knight equipment pieces with 3 bonus slots each, +20 Cyber Knight missions. Bonus values will be announced separately. / Зелен кристал ×1, 3 случайни екипировки за Киберрицаря с по 3 слота за бонуси и +20 мисии на Киберрицаря. Стойностите на бонусите ще бъдат обявени допълнително."}\n\n${personal}`;
       insertMessage.run(userId,userId,body,Date.now());
       notify.run(userId,Date.now());
     }
@@ -2129,19 +2129,19 @@ class DatabaseManager {
     const rankings=db.prepare("SELECT a.user_id,u.username,SUM(a.damage) AS damage,COUNT(*) AS attacks FROM mothership_attacks a JOIN users u ON u.id=a.user_id WHERE a.event_id=? GROUP BY a.user_id ORDER BY damage DESC,MIN(a.launched_at),a.user_id LIMIT 10").all(event.id);
     const mine=db.prepare("SELECT COUNT(*) AS count FROM mothership_attacks WHERE event_id=? AND user_id=?").get(event.id,userId).count;
     const prestige=db.prepare("SELECT prestige FROM alien_rewards WHERE user_id=?").get(userId)?.prestige||0;
-    return {id:event.id,serverTime:now,name:"Mother Ship Hunt",startsAt:event.starts_at,endsAt:event.ends_at,active:now>=event.starts_at&&now<event.ends_at,settled:!!event.rewards_distributed,coordinates:{x:50,y:50},hp:event.hp_remaining,attacksRemaining:Math.max(0,10-mine),myAttacks:mine,prestige,attacks,rankings,nextStartsAt:event.ends_at<=now?weekStart+7*86400000:weekStart+7*86400000};
+    return {id:event.id,serverTime:now,name:"Attack the Alien Command Ship",startsAt:event.starts_at,endsAt:event.ends_at,active:now>=event.starts_at&&now<event.ends_at,settled:!!event.rewards_distributed,coordinates:{x:50,y:50},hp:event.hp_remaining,attacksRemaining:Math.max(0,10-mine),myAttacks:mine,prestige,attacks,rankings,nextStartsAt:event.ends_at<=now?weekStart+7*86400000:weekStart+7*86400000};
   }
 
   launchMothershipAttack(userId,selectedArmy,formation,includeCyberKnight) {
-    if(includeCyberKnight!==true)return {error:"Cyber Knight must lead the Mother Ship attack."};
+    if(includeCyberKnight!==true)return {error:"Cyber Knight must lead the Alien Command Ship attack."};
     return db.transaction(()=>{
       const now=Date.now(),weekStart=this.motherWeekStart(now),event=db.prepare("SELECT * FROM mothership_events WHERE week_start=?").get(weekStart);
-      if(!event||now<event.starts_at||now>=event.ends_at)return {error:"The Mother Ship Hunt is not active."};
+      if(!event||now<event.starts_at||now>=event.ends_at)return {error:"The Alien Command Ship event is not active."};
       this.resolveMothershipAttacks(event.id);
       this.resolveAlienMissions(userId);
       const used=db.prepare("SELECT COUNT(*) AS n FROM mothership_attacks WHERE event_id=? AND user_id=?").get(event.id,userId).n;
       if(used>=10)return {error:"All 10 attacks for this weekly event have been used."};
-      if(db.prepare("SELECT 1 FROM mothership_attacks WHERE event_id=? AND user_id=? AND resolved_at IS NULL").get(event.id,userId))return {error:"Your Cyber Knight is still travelling to the Mother Ship."};
+      if(db.prepare("SELECT 1 FROM mothership_attacks WHERE event_id=? AND user_id=? AND resolved_at IS NULL").get(event.id,userId))return {error:"Your Cyber Knight is still travelling to the Alien Command Ship."};
       if(db.prepare("SELECT 1 FROM alien_missions WHERE user_id=? AND returned_at IS NULL").get(userId))return {error:"Your Cyber Knight is already on an Alien Base mission."};
       const current=this.syncGame(userId);if(!current)return {error:"Player not found."};
       const {playerTypes}=require("../shared/combatEngine");
@@ -2185,7 +2185,7 @@ class DatabaseManager {
   }
 
   startMothershipHealing() {
-    return {error:"Mother Ship event wounds are recovered automatically when the event ends."};
+    return {error:"Alien Command Ship event wounds are recovered automatically when the event ends."};
   }
 
   createLabyrinthMap(){

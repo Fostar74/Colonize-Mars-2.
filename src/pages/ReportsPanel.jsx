@@ -107,7 +107,7 @@ export default function ReportsPanel({onClose,onRead}) {
   </article>;
   };
   const mothershipReport=report=><article key={"mothership-"+report.id} style={card}>
-    <h3>{t("Attack on the Mother Ship","Атака срещу кораба майка")} · #{report.id}</h3>
+    <h3>{t("Attack on the Alien Command Ship","Атака срещу командния кораб на извънземните")} · #{report.id}</h3>
     <p><strong>{t("Damage dealt","Нанесени щети")}:</strong> {Number(report.damage).toLocaleString()} · {Number(report.xp).toLocaleString()} XP</p>
     <p>{new Date(report.resolved_at).toLocaleString()} · {t("Cyber Knight level","Ниво на Киберрицаря")} {report.knight_level}</p>
     {army(t("Deployed army","Изпратена армия"),report.army)}
@@ -140,7 +140,7 @@ export default function ReportsPanel({onClose,onRead}) {
         {newPlayer.length>0&&<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}</>}
         {newGathering.length>0&&<><h2>{t("New resource gathering reports","Нови доклади от добив")}</h2>{newGathering.map(gatheringReport)}</>}
         {newPlayer.length===0&&newAlien.length===0&&newGathering.length===0&&newMothership.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
-        {mothershipReports.length>0&&<><h2>{t("Mother Ship battle reports","Доклади за кораба майка")}{newMothership.length?" · "+t("New","Нови")+": "+newMothership.length:""}</h2>{mothershipReports.map(mothershipReport)}</>}
+        {mothershipReports.length>0&&<><h2>{t("Alien Command Ship battle reports","Доклади за командния кораб на извънземните")}{newMothership.length?" · "+t("New","Нови")+": "+newMothership.length:""}</h2>{mothershipReports.map(mothershipReport)}</>}
         {alien.length>0&&<><h2>{t("Alien mission reports","Доклади от извънземни мисии")}{newAlien.length?" · "+t("New","Нови")+": "+newAlien.length:""}</h2>{alien.map(alienReport)}</>}
         {previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
         {previousGathering.length>0&&<details style={{marginTop:20}}><summary>{t("Previous resource gathering reports","Предишни доклади от добив")}</summary>{previousGathering.map(gatheringReport)}</details>}

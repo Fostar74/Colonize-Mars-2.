@@ -141,7 +141,7 @@ function HospitalPanel() {
   const active=entries.find(entry=>entry.status==="healing");
   const total=entries.reduce((sum,entry)=>sum+Object.values(entry.wounded||{}).reduce((subtotal,count)=>subtotal+Number(count||0),0),0);
   const fmt=army=>Object.entries(army||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>Number(count).toLocaleString()+" "+label(unit)).join(" · ")||"0";
-  const sourceName=source=>source==="player-defense"?t("Base Defense","Защита на базата"):source==="player-attack"?t("Player Attack","Атака срещу играч"):source==="alien-base"?t("Alien Base Mission","Мисия срещу извънземна база"):source==="mothership"?t("Mother Ship Hunt","Лов на Майчиния кораб"):t("Saturday Alien Invasion","Съботна извънземна инвазия");
+  const sourceName=source=>source==="player-defense"?t("Base Defense","Защита на базата"):source==="player-attack"?t("Player Attack","Атака срещу играч"):source==="alien-base"?t("Alien Base Mission","Мисия срещу извънземна база"):source==="mothership"?t("Attack the Alien Command Ship","Атакувай Командния кораб на извънземните"):t("Saturday Alien Invasion","Съботна извънземна инвазия");
   const frame={color:"#38251c",padding:14,borderRadius:12,border:"3px solid #ab7149",background:"linear-gradient(145deg,#f3e4c8 0%,#e7c79d 48%,#d99463 100%)",boxShadow:"inset 0 0 0 2px rgba(255,255,255,.4)"};
   const card={margin:"10px 0",padding:12,background:"rgba(255,248,230,.84)",border:"1px solid #bb8b61",borderRadius:8};
   return <div style={frame}>
@@ -263,10 +263,10 @@ function EventsPanel() {
       {data.alliance&&!data.alliance.run&&!data.alliance.canStart&&<p>{t("Only an alliance leader or co-leader can start the event, and only during Saturday UTC.","Само лидерът или заместникът на алианса може да стартира събитието в събота по UTC.")}</p>}
     </div>}
     {motherShip&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
-      <h2>{t("Mother Ship Hunt","Лов на кораба майка")}</h2>
+      <h2>{t("Attack the Alien Command Ship","Атакувай Командния кораб на извънземните")}</h2>
       <p>{motherShip.active?t("Event is active","Събитието е активно"):motherShip.settled?t("Results are final","Класирането е окончателно"):t("Scheduled weekly event","Седмично събитие")}: {date(motherShip.startsAt)} – {date(motherShip.endsAt)}</p>
       <p>{t("The flight takes 30 seconds. After the battle, your full army and Cyber Knight return immediately, ready to attack again. Each attack has a damage total in Reports.","Полетът трае 30 секунди. След битката цялата армия и Киберрицарят се връщат веднага и са готови за нова атака. Нанесените щети от всяка атака се виждат в „Доклади“.")}</p>
-      <p>{t("Attacks remaining","Оставащи атаки")}: {motherShip.attacksRemaining} · {t("Mother Ship health","Живот на кораба майка")}: {Number(motherShip.hp||0).toLocaleString()}</p>
+      <p>{t("Attacks remaining","Оставащи атаки")}: {motherShip.attacksRemaining} · {t("Alien Command Ship health","Живот на командния кораб на извънземните")}: {Number(motherShip.hp||0).toLocaleString()}</p>
       {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString()}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
       <button type="button" onClick={()=>navigate("/map?campaign=1")}>{t("Open campaigns","Отвори кампаниите")}</button>
     </div>}
@@ -767,7 +767,7 @@ function Game() {
       </div>}
       {messageNotifications.length>0&&<div className="message-notification-alert" role="status">
         <span aria-hidden="true">✉️</span>
-        <span>{messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):messageNotifications[0].kind==="game_message"?t("Mother Ship Hunt results and rewards are ready.","Резултатите и наградите от Лова на кораба майка са готови."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
+        <span>{messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):messageNotifications[0].kind==="game_message"?t("Alien Command Ship results and rewards are ready.","Резултатите и наградите от атаката срещу командния кораб на извънземните са готови."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
         <button type="button" onClick={()=>openBlueNotification(messageNotifications[0])}>{messageNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):t("View messages","Виж съобщенията")}</button>
         <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>markNotificationRead(messageNotifications[0])}>×</button>
       </div>}
