@@ -101,6 +101,20 @@ export default function InformationPanel(){
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].slice(0,10).map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
  };
+ const heavyUnit=(u,bg,baseAttack,health)=>{
+  const artilleryMultiplier={infantry:0.9,mobile:1.1,ranged:1.3,artillery:1.5};
+  const attacks={
+   infantry:Math.round(baseAttack*artilleryMultiplier.infantry*10)/10,
+   mobile:Math.round(baseAttack*artilleryMultiplier.mobile*10)/10,
+   ranged:Math.round(baseAttack*artilleryMultiplier.ranged*10)/10,
+   artillery:Math.round(baseAttack*artilleryMultiplier.artillery*10)/10
+  };
+  const stats={attack:attacks,wallAttack:0,health,range:5};
+  return <article key={u} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
+   <h3>{t(u,bg)}</h3>
+   {combatStatsTable(stats)}
+  </article>;
+ };
  const mobileUnit=(u,bg,desc)=>{
   const building=t("Battle Simulator","Боен симулатор");
   return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
@@ -179,7 +193,15 @@ export default function InformationPanel(){
    {mobileUnit(mechWalker,"Боен мех",["Mobile unit with the strongest attack against siege units. Its range of 4 means it should not be placed in the front rows.","Мобилна единица с най-силна атака срещу обсадни машини. Обхватът ѝ от 4 означава, че не трябва да бъде поставяна на предни позиции."])}
    {mobileUnit(hoverDroneRider,"Пилот на ховърдрон",["Mobile unit with the strongest attack against siege units. It has the highest health among mobile units and is the slowest of its group. Its attacks against all units and high health make it the backbone of an army in later stages. Best placed in the first row.","Мобилна единица с най-силна атака срещу обсадни машини. Тя има най-много здраве сред мобилните единици и е най-бавната в групата. Атаката ѝ срещу всички единици и високото ѝ здраве я правят гръбнак на армията в по-късните етапи. Най-добре е да бъде поставена на първи ред."])}
   </>}
-  {category&&page!=="ground"&&category.id!=="ranged"&&category.id!=="mobile"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Detailed unit statistics and upgrade tables for this category will be added later.","Подробните характеристики и таблиците за подобренията на тази категория ще бъдат добавени по-късно.")}</p>{categoryProtocols[category.id]&&<p>{t(categoryProtocols[category.id][0],categoryProtocols[category.id][1])}</p>}</>}
+  {category?.id==="heavy"&&<>
+   <h2>{t("Heavy Systems","Тежки системи")}</h2>
+   <p>{t(categoryProtocols.heavy[0],categoryProtocols.heavy[1])}</p>
+   {heavyUnit("Demolition Bot","Бот за разрушения",55,120)}
+   {heavyUnit("Missile Carrier","Ракетен носител",75,170)}
+   {heavyUnit("Particle Blaster","Частично оръдие",95,220)}
+   {heavyUnit("Orbital Strike Beacon","Орбитален ударен маяк",115,270)}
+  </>}
+  {category&&page!=="ground"&&category.id!=="ranged"&&category.id!=="mobile"&&category.id!=="heavy"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Detailed unit statistics and upgrade tables for this category will be added later.","Подробните характеристики и таблиците за подобренията на тази категория ще бъдат добавени по-късно.")}</p>{categoryProtocols[category.id]&&<p>{t(categoryProtocols[category.id][0],categoryProtocols[category.id][1])}</p>}</>}
   {section?.id==="skills"&&(nanoArmorSystems?<>
    <h2>{t("Nano Armor Systems","Системи за наноброня")}</h2>
    <p>{t("Longer-lasting units have a better chance to hold the battlefield and help secure victory. Nano Armor Systems strengthens the durability of your entire force.", "Колкото по-дълго единиците ви издържат на бойното поле, толкова по-голям е шансът да победите. Системите за наноброня повишават издръжливостта на цялата ви армия.")}</p>
