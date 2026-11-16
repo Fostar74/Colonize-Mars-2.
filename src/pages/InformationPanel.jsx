@@ -42,7 +42,6 @@ export default function InformationPanel(){
  const [page,setPage]=useState("home");
  const [selectedProtocol,setSelectedProtocol]=useState(null);
  const res=["Gold","Iron","Water","Solar"],atk=[t("Ground troops","Сухопътни войски"),t("Mobile troops","Мобилни войски"),t("Ranged troops","Стрелкови войски"),t("Walls","Стени"),t("Heavy systems","Тежки системи")];
- const attackLabels={infantry:t("Ground troops","Сухопътни войски"),mobile:t("Mobile troops","Мобилни войски"),ranged:t("Ranged troops","Стрелкови войски"),artillery:t("Heavy systems","Тежки системи")};
  const protocolBySkill={
   Defender:["Nano Armor Systems","Системи за наноброня"],
   Warrior:["Combat Augmentation","Бойно усилване"],
@@ -61,18 +60,35 @@ export default function InformationPanel(){
  };
  const time=s=>[Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(n=>String(n).padStart(2,"0")).join(":");
  const cost=r=>res.map((k,i)=>label(k)+": "+r.cost[i].toLocaleString()).join(" · ");
+ const combatStatsTable=u=>{
+  const combatStats=[
+   [t("Attack against infantry","Атака срещу пехота"),u.attack.infantry],
+   [t("Attack against mobile units","Атака срещу мобилни единици"),u.attack.mobile],
+   [t("Attack against ranged units","Атака срещу стрелци"),u.attack.ranged],
+   [t("Attack against walls","Атака срещу стена"),u.wallAttack??0],
+   [t("Attack against siege units","Атака срещу обсадни машини"),u.attack.artillery],
+   [t("Health","Живот"),u.health],
+   [t("Range","Обхват"),u.range]
+  ];
+  const statCell={padding:"7px 10px",border:"1px solid #54758a"};
+  return <table style={{width:"100%",maxWidth:440,borderCollapse:"collapse",background:"#172432"}}>
+    <caption style={{textAlign:"left",fontWeight:700,paddingBottom:6}}>{t("Combat statistics","Бойни статистики")}</caption>
+    <tbody>{combatStats.map(([name,value])=><tr key={name}>
+     <th scope="row" style={{...statCell,textAlign:"left",fontWeight:"normal"}}>{name}</th>
+     <td style={{...statCell,textAlign:"right"}}>{value}</td>
+    </tr>)}</tbody>
+   </table>;
+ };
  const unit=(u,bg,desc)=>{
-  const attacks=Object.entries(u.attack).map(([k,v])=>(attackLabels[k]||k)+": "+v).join(" · ");
   return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
    <h2>{t(u.name,bg)}</h2><p>{t("Infantry · 1 population · Training Center level "+u.requirement.level,"Пехота · 1 население · Учебен център ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
    <p>{t(desc[0],desc[1])}</p><p>{affectedProtocols(u)}</p>
-   <p>{t("Base attack:","Базова атака:")} {attacks}</p><p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
+   {combatStatsTable(u)}
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),...atk,t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
  };
  const rangedUnit=(u,bg,desc)=>{
-  const attacks=[u.attack.infantry,u.attack.mobile,u.attack.ranged,u.wallAttack,u.attack.artillery];
   const cost=r=>res.map((k,i)=>label(k)+": "+r.cost[i].toLocaleString()).join(" · ");
   const factory=u.requirement.building==="Drone Factory"?t("Drone Factory","Фабрика за дронове"):u.requirement.building;
   return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
@@ -80,35 +96,18 @@ export default function InformationPanel(){
    <p>{t("Ranged · 1 population · "+factory+" level "+u.requirement.level,"Стрелкова единица · 1 население · "+factory+" ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
    <p>{t(desc[0],desc[1])}</p>
    <p>{affectedProtocols(u)}</p>
-   <p>{t("Base attack (infantry / mobile / ranged / wall / siege):","Базова атака (пехота / мобилни / стрелци / стена / обсада):")} {attacks.join(" / ")}</p>
-   <p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
+   {combatStatsTable(u)}
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].slice(0,10).map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
  };
  const mobileUnit=(u,bg,desc)=>{
-  const combatStats=[
-   [t("Attack against infantry","Атака срещу пехота"),u.attack.infantry],
-   [t("Attack against mobile units","Атака срещу мобилни единици"),u.attack.mobile],
-   [t("Attack against ranged units","Атака срещу стрелци"),u.attack.ranged],
-   [t("Attack against walls","Атака срещу стена"),u.wallAttack],
-   [t("Attack against siege units","Атака срещу обсадни машини"),u.attack.artillery],
-   [t("Health","Живот"),u.health],
-   [t("Range","Обхват"),u.range]
-  ];
-  const statCell={padding:"7px 10px",border:"1px solid #54758a"};
   const building=t("Battle Simulator","Боен симулатор");
   return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
    <h2>{t(u.name,bg)}</h2>
    <p>{t("Mobile unit · "+u.population+" population · "+building+" level "+u.requirement.level,"Мобилна единица · "+u.population+" население · "+building+" ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
    <p>{t(desc[0],desc[1])}</p><p>{affectedProtocols(u)}</p>
-   <table style={{width:"100%",maxWidth:440,borderCollapse:"collapse",background:"#172432"}}>
-    <caption style={{textAlign:"left",fontWeight:700,paddingBottom:6}}>{t("Combat statistics","Бойни статистики")}</caption>
-    <tbody>{combatStats.map(([name,value])=><tr key={name}>
-     <th scope="row" style={{...statCell,textAlign:"left",fontWeight:"normal"}}>{name}</th>
-     <td style={{...statCell,textAlign:"right"}}>{value}</td>
-    </tr>)}</tbody>
-   </table>
+   {combatStatsTable(u)}
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].slice(0,10).map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
