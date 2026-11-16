@@ -62,11 +62,11 @@ export default function InformationPanel(){
  const cost=r=>res.map((k,i)=>label(k)+": "+r.cost[i].toLocaleString()).join(" · ");
  const combatStatsTable=u=>{
   const combatStats=[
-   [t("Attack against infantry","Атака срещу пехота"),u.attack.infantry],
-   [t("Attack against mobile units","Атака срещу мобилни единици"),u.attack.mobile],
-   [t("Attack against ranged units","Атака срещу стрелци"),u.attack.ranged],
-   [t("Attack against walls","Атака срещу стена"),u.wallAttack??0],
-   [t("Attack against siege units","Атака срещу обсадни машини"),u.attack.artillery],
+   [t("Attack against infantry","Атака срещу сухопътни"),u.attack.infantry],
+   [t("Attack against mobile units","Атака срещу мобилни"),u.attack.mobile],
+   [t("Attack against ranged units","Атака срещу стрелкови"),u.attack.ranged],
+   [t("Attack against walls","Атака срещу Отбранителна мрежа"),u.wallAttack??0],
+   [t("Attack against siege units","Атака срещу тежки системи"),u.attack.artillery],
    [t("Health","Живот"),u.health],
    [t("Range","Обхват"),u.range]
   ];
