@@ -753,7 +753,7 @@ class DatabaseManager {
       if(jobs.some(j=>j&&j.unit===unit&&j.stat===stat))return {error:"This unit stat is already upgrading."};
       const level=Number(current.unitUpgrades[unit]?.[stat]||1);
       const specific=unitUpgradeDetails(unit,stat,level,current.allianceBonuses.discount,current.allianceBonuses.speed);
-      if(level>=(specific?.maxLevel||20))return {error:"Maximum upgrade level."};
+      if(level>=(specific?.maxLevel||10))return {error:"Maximum upgrade level."};
       const price=specific?.cost||upgradePrice(level,current.allianceBonuses.discount);
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
