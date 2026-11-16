@@ -40,14 +40,15 @@ export default function InformationPanel(){
  const {t,label}=useLanguage();
  const [page,setPage]=useState("home");
  const [selectedProtocol,setSelectedProtocol]=useState(null);
- const res=["Gold","Iron","Water","Solar"],atk=["Infantry","Cavalry","Ranged units","Walls","Siege machines"];
+ const res=["Gold","Iron","Water","Solar"],atk=[t("Ground troops","Сухопътни войски"),t("Mobile troops","Мобилни войски"),t("Ranged troops","Стрелкови войски"),t("Walls","Стени"),t("Heavy systems","Тежки системи")];
+ const attackLabels={infantry:t("Ground troops","Сухопътни войски"),mobile:t("Mobile troops","Мобилни войски"),ranged:t("Ranged troops","Стрелкови войски"),artillery:t("Heavy systems","Тежки системи")};
  const time=s=>[Math.floor(s/3600),Math.floor(s%3600/60),s%60].map(n=>String(n).padStart(2,"0")).join(":");
  const cost=r=>res.map((k,i)=>label(k)+": "+r.cost[i].toLocaleString()).join(" · ");
  const unit=(u,bg,desc)=>{
-  const attacks=Object.entries(u.attack).map(([k,v])=>k+": "+v).join(" · ");
+  const attacks=Object.entries(u.attack).map(([k,v])=>(attackLabels[k]||k)+": "+v).join(" · ");
   return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
    <h2>{t(u.name,bg)}</h2><p>{t("Infantry · 1 population · Training Center level "+u.requirement.level,"Пехота · 1 население · Учебен център ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
-   <p>{t(desc[0],desc[1])}</p><p>{t("Affected by skills: Defender, Warrior","Повлиява се от уменията: Защитник, Воин")}</p>
+   <p>{t(desc[0],desc[1])}</p><p>{t("Commander protocols: Combat Augmentation (attack and health), Nano Armor Systems (health), Hyperdrive Navigation (movement speed).","Протоколи на командира: Бойно усилване (атака и здраве), Системи за наноброня (здраве), Хипердвигателна навигация (скорост на придвижване).")}</p>
    <p>{t("Base attack:","Базова атака:")} {attacks}</p><p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),...atk,t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
@@ -61,7 +62,7 @@ export default function InformationPanel(){
    <h2>{t(u.name,bg)}</h2>
    <p>{t("Ranged · 1 population · "+factory+" level "+u.requirement.level,"Стрелкова единица · 1 население · "+factory+" ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
    <p>{t(desc[0],desc[1])}</p>
-   <p>{t("Affected by skills: Defender, Archer","Повлиява се от уменията: Защитник, Стрелец")}</p>
+   <p>{t("Commander protocols: Precision Targeting (attack), Nano Armor Systems (health), Hyperdrive Navigation (movement speed).","Протоколи на командира: Прецизно прицелване (атака), Системи за наноброня (здраве), Хипердвигателна навигация (скорост на придвижване).")}</p>
    <p>{t("Base attack (infantry / mobile / ranged / wall / siege):","Базова атака (пехота / мобилни / стрелци / стена / обсада):")} {attacks.join(" / ")}</p>
    <p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
@@ -94,7 +95,11 @@ export default function InformationPanel(){
  }
  const breadcrumb=(crumb,index)=><React.Fragment key={crumb.id}>{index>0&&<span aria-hidden="true" style={{opacity:.65,padding:"0 7px"}}>/</span>}<button onClick={()=>{if(crumb.id==="protocol-detail"){setPage("skills");}else{setSelectedProtocol(null);setPage(crumb.id);}}} style={{background:"none",border:0,color:"#bcd9e8",padding:"4px 0",cursor:"pointer",fontSize:14}}>{t(crumb.en,crumb.bg)}</button></React.Fragment>;
  const cardGrid={display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(150px,1fr))",gap:12};
- const card={display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:9,minHeight:140,padding:14,textAlign:"center",background:"#172432",border:"1px solid #54758a",borderRadius:10,color:"#f5f0e6",cursor:"pointer"};
+ const categoryProtocols={
+  mobile:["Mobile-unit attack is increased by Assault Mobility. Nano Armor Systems increases health, and Hyperdrive Navigation increases movement speed.","Атаката на мобилните единици се увеличава от протокола Щурмова мобилност. Системи за наноброня увеличава здравето, а Хипердвигателна навигация — скоростта на придвижване."],
+  heavy:["Heavy Systems attack is increased by Siege Engineering. Nano Armor Systems increases health, and Hyperdrive Navigation increases movement speed.","Атаката на тежките системи се увеличава от протокола Обсадно инженерство. Системи за наноброня увеличава здравето, а Хипердвигателна навигация — скоростта на придвижване."],
+  elite:["Nano Armor Systems increases health, and Hyperdrive Navigation increases movement speed. No Elite-specific attack protocol is currently listed.","Системи за наноброня увеличава здравето, а Хипердвигателна навигация — скоростта на придвижване. В момента няма отделен протокол за атака на елитните единици."]
+ };\n const card={display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:9,minHeight:140,padding:14,textAlign:"center",background:"#172432",border:"1px solid #54758a",borderRadius:10,color:"#f5f0e6",cursor:"pointer"};
  return <div style={{color:"#f5f0e6",padding:12}}>
   {crumbs.length>0&&<nav aria-label={t("Help navigation","Навигация в помощта")} style={{display:"flex",flexWrap:"wrap",alignItems:"center",marginBottom:14}}>{crumbs.map(breadcrumb)}</nav>}
   {home&&<>
@@ -125,7 +130,7 @@ export default function InformationPanel(){
    {rangedUnit(pulseSniper,"Импулсен снайперист",["Ranged unit with the strongest attack against ranged units. Keep it behind the front line.","Стрелкова единица с най-силна атака срещу стрелци. Дръжте я зад предната линия."])}
    {rangedUnit(droneOperator,"Оператор на дрон",["Ranged unit with the strongest attack against mobile units. It is the fastest ranged unit and has the longest range in its category. Keep it behind the front line.","Стрелкова единица с най-силна атака срещу мобилни единици. Тя е най-бързата стрелкова единица и има най-голям обхват в категорията. Дръжте я зад предната линия."])}
   </>}
-  {category&&page!=="ground"&&category.id!=="ranged"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Information for this troop category will be added later.","Информацията за тази категория войски ще бъде добавена по-късно.")}</p></>}
+  {category&&page!=="ground"&&category.id!=="ranged"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Detailed unit statistics and upgrade tables for this category will be added later.","Подробните характеристики и таблиците за подобренията на тази категория ще бъдат добавени по-късно.")}</p>{categoryProtocols[category.id]&&<p>{t(categoryProtocols[category.id][0],categoryProtocols[category.id][1])}</p>}</>}
   {section?.id==="skills"&&(nanoArmorSystems?<>
    <h2>{t("Nano Armor Systems","Системи за наноброня")}</h2>
    <p>{t("Longer-lasting units have a better chance to hold the battlefield and help secure victory. Nano Armor Systems strengthens the durability of your entire force.", "Колкото по-дълго единиците ви издържат на бойното поле, толкова по-голям е шансът да победите. Системите за наноброня повишават издръжливостта на цялата ви армия.")}</p>
