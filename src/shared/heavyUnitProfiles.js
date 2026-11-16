@@ -1,6 +1,4 @@
 const artilleryDamage={infantry:0.9,mobile:1.1,ranged:1.3,artillery:1.5};
-const resources=["Gold","Iron","Water","Solar"];
-
 function upgradesFor(attack,health){
  const attackUpgrades=[];
  const healthUpgrades=[];
