@@ -38,20 +38,36 @@ const plasmaBladesman={name:"Plasma Bladesman",category:"infantry",attack:{infan
 {value:27,cost:[10575,25380,21150,12690],seconds:38356},{value:34.8,cost:[17620,42288,35240,21144],seconds:48330},
 {value:43.8,cost:[27550,66090,55075,33060],seconds:60896},{value:60,cost:[41310,99144,82620,49572],seconds:76728}
 ],skills:["Defender","Warrior"]};
+const railgunner = {
+ name:"Railgunner",category:"ranged",attack:{infantry:90,mobile:10,ranged:10,artillery:50},wallAttack:10,health:50,range:3,speed:7,cargo:5,population:1,
+ requirement:{building:"Drone Factory",level:1},price:{Gold:35,Iron:55,Water:45,Solar:25},trainingSeconds:480,
+ attackUpgrades:[{"values":[2.7,0.3,0.3,0.3,1.5],"cost":[100,120,200,240],"seconds":12740},{"values":[5.4,0.6,0.6,0.6,3],"cost":[400,480,800,960],"seconds":20228},{"values":[9,1,1,1,5],"cost":[1408,1690,2800,3360],"seconds":25484},{"values":[12.6,1.4,1.4,1.4,7],"cost":[3168,3802,6312,7574],"seconds":32108},{"values":[17.1,1.9,1.9,1.9,9.5],"cost":[5248,6298,10496,12595],"seconds":40458},{"values":[21.6,2.4,2.4,2.4,12],"cost":[8200,9840,16400,19680],"seconds":50978},{"values":[27,3,3,3,15],"cost":[15420,18504,30780,36936],"seconds":64232},{"values":[32.4,3.6,3.6,3.6,18],"cost":[25680,30816,51280,61536],"seconds":80932},{"values":[38.7,4.3,4.3,4.3,21.5],"cost":[40100,48120,80100,96120],"seconds":101974},{"values":[45,5,5,5,25],"cost":[60120,72144,120120,144144],"seconds":128492},{"values":[54,6,6,6,30],"cost":[160000,160000,160000,160000],"seconds":179888}],healthUpgrades:[{"value":2,"cost":[128,154,252,302],"seconds":10010},{"value":4.5,"cost":[504,605,1000,1200],"seconds":15892},{"value":7.5,"cost":[1760,2112,3504,4205],"seconds":20024},{"value":11,"cost":[3936,4723,7872,9446],"seconds":25228},{"value":15,"cost":[6560,7872,13120,15744],"seconds":31788},{"value":20,"cost":[10280,12336,20520,24624],"seconds":40054},{"value":26,"cost":[19260,23112,38460,46152],"seconds":50468},{"value":33,"cost":[32080,38496,64080,76896],"seconds":63590},{"value":41,"cost":[50100,60120,100100,120120],"seconds":80124},{"value":50,"cost":[75120,90144,150240,180288],"seconds":100956},{"value":60,"cost":[160000,160000,160000,160000],"seconds":141338}],skills:["Defender","Archer"]
+};
+const droneOperator = {
+ name:"Drone Operator",category:"ranged",attack:{infantry:10,mobile:70,ranged:10,artillery:50},wallAttack:10,health:40,range:5,speed:6,cargo:5,population:1,
+ requirement:{building:"Drone Factory",level:16},price:{Gold:60,Iron:40,Water:70,Solar:30},trainingSeconds:600,
+ attackUpgrades:[{"values":[0.3,2.1,0.3,0.3,1.5],"cost":[260,130,312,156],"seconds":17836},{"values":[0.6,4.2,0.6,0.6,3],"cost":[1040,520,1248,624],"seconds":28316},{"values":[1,7,1,1,5],"cost":[3640,1824,4368,2189],"seconds":35676},{"values":[1.4,9.8,1.4,1.4,7],"cost":[8196,4104,9835,4925],"seconds":44954},{"values":[1.9,13.3,1.9,1.9,9.5],"cost":[13648,6832,16378,8198],"seconds":56642},{"values":[2.4,16.8,2.4,2.4,12],"cost":[21320,10660,25584,12792],"seconds":71370},{"values":[3,21,3,3,15],"cost":[39990,20010,47988,24012],"seconds":89926},{"values":[3.6,25.2,3.6,3.6,18],"cost":[66640,33320,79968,39984],"seconds":113306},{"values":[4.3,30.1,4.3,4.3,21.5],"cost":[104150,52100,124980,62520],"seconds":142768},{"values":[5,35,5,5,25],"cost":[156240,78120,187488,93744],"seconds":179886},{"values":[6,42,6,6,30],"cost":[200000,200000,200000,200000],"seconds":251840}],healthUpgrades:[{"value":1.6,"cost":[326,164,391,197],"seconds":14014},{"value":3.6,"cost":[1300,652,1560,782],"seconds":22248},{"value":6,"cost":[4552,2280,5462,2736],"seconds":28032},{"value":8.8,"cost":[10236,5124,12283,6149],"seconds":35322},{"value":12,"cost":[17056,8528,20467,10234],"seconds":44506},{"value":16,"cost":[26660,13340,31992,16008],"seconds":56078},{"value":20.8,"cost":[49980,24990,59976,29988],"seconds":70656},{"value":26.4,"cost":[83320,41680,99984,50016],"seconds":89028},{"value":32.8,"cost":[130200,65100,156240,78120],"seconds":112174},{"value":40,"cost":[195240,97620,234288,117144],"seconds":141338},{"value":48,"cost":[200000,200000,200000,200000],"seconds":197872}],skills:["Defender","Archer"]
+};
+const pulseSniper = {
+ name:"Pulse Sniper",category:"ranged",attack:{infantry:50,mobile:10,ranged:80,artillery:10},wallAttack:10,health:45,range:4,speed:7,cargo:5,population:1,
+ requirement:{building:"Drone Factory",level:8},price:{Gold:50,Iron:40,Water:30,Solar:60},trainingSeconds:540,
+ attackUpgrades:[{"values":[1.5,0.3,2.4,0.3,0.3],"cost":[302,252,126,151],"seconds":16308},{"values":[3,0.6,4.8,0.6,0.6],"cost":[1210,1008,504,605],"seconds":25888},{"values":[5,1,8,1,1],"cost":[4234,3528,1764,2117],"seconds":32618},{"values":[7,1.4,11.2,1.4,1.4],"cost":[9526,7938,3974,4769],"seconds":41102},{"values":[9.5,1.9,15.2,1.9,1.9],"cost":[15880,13234,6624,7949],"seconds":51790},{"values":[12,2.4,19.2,2.4,2.4],"cost":[24797,20664,10332,12398],"seconds":65250},{"values":[15,3,24,3,3],"cost":[46526,38772,19386,23263],"seconds":82220},{"values":[18,3.6,28.8,3.6,3.6],"cost":[77501,64584,32292,38750],"seconds":103594},{"values":[21.5,4.3,34.4,4.3,4.3],"cost":[121122,100935,50490,60588],"seconds":130530},{"values":[25,5,40,5,5],"cost":[201888,168240,84120,100944],"seconds":164470},{"values":[30,6,48,6,6],"cost":[200000,200000,200000,200000],"seconds":230258}],healthUpgrades:[{"value":1.8,"cost":[378,315,158,190],"seconds":12812},{"value":4.05,"cost":[1512,1260,630,756],"seconds":20340},{"value":6.75,"cost":[5296,4414,2210,2652],"seconds":25630},{"value":9.9,"cost":[11910,9925,4968,5962],"seconds":32294},{"value":13.5,"cost":[19837,16531,8266,9919],"seconds":40692},{"value":18,"cost":[31018,25848,12924,15509],"seconds":51270},{"value":23.4,"cost":[58126,48438,24219,29063],"seconds":64600},{"value":29.7,"cost":[96898,80748,40392,48470],"seconds":81394},{"value":36.9,"cost":[151416,126180,63090,75708],"seconds":102558},{"value":45,"cost":[227124,189270,94662,113594],"seconds":129224},{"value":54,"cost":[200000,200000,200000,200000],"seconds":180914}],skills:["Defender","Archer"]
+};
+const rangedProfiles=[railgunner,pulseSniper,droneOperator];
 const resources=["Gold","Iron","Water","Solar"];
-function profileFor(unit){return unit==="Explorer Trooper"?explorerTrooper:unit==="Nano Shieldman"?nanoShieldman:unit==="Exo-Soldier"?exoSoldier:unit==="Plasma Bladesman"?plasmaBladesman:null;}
+function profileFor(unit){return unit==="Explorer Trooper"?explorerTrooper:unit==="Nano Shieldman"?nanoShieldman:unit==="Exo-Soldier"?exoSoldier:unit==="Plasma Bladesman"?plasmaBladesman:rangedProfiles.find(profile=>profile.name===unit)||null;}
 function explorerUpgrade(unit,stat,currentLevel,discount=0,speed=0){
  const profile=profileFor(unit);if(!profile)return null;
  const rows=stat==="attack"?profile.attackUpgrades:profile.healthUpgrades,row=rows[currentLevel-1];if(!row)return null;
  return {cost:Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)])),durationMs:Math.ceil(row.seconds*1000*(100-speed)/100),maxLevel:rows.length+1};
 }
 function unitCombatStats(unit,levels={}){
- const profile=profileFor(unit)||explorerTrooper,attack={...profile.attack};let health=profile.health;
- for(let i=0;i<Math.max(0,Math.min(10,(Number(levels.attack)||1)-1));i++){
-  const v=profile.attackUpgrades[i].values;attack.infantry+=v[0];attack.mobile+=v[1];attack.ranged+=v[2];attack.artillery+=v[4];
+ const profile=profileFor(unit)||explorerTrooper,attack={...profile.attack};let health=profile.health,wallAttack=Number(profile.wallAttack)||0;
+ for(let i=0;i<Math.max(0,Math.min(profile.attackUpgrades.length,(Number(levels.attack)||1)-1));i++){
+  const v=profile.attackUpgrades[i].values;attack.infantry+=v[0];attack.mobile+=v[1];attack.ranged+=v[2];wallAttack+=v[3]||0;attack.artillery+=v[4];
  }
- for(let i=0;i<Math.max(0,Math.min(10,(Number(levels.defense)||1)-1));i++)health+=profile.healthUpgrades[i].value;
- return {...profile,attack,health};
+ for(let i=0;i<Math.max(0,Math.min(profile.healthUpgrades.length,(Number(levels.defense)||1)-1));i++)health+=profile.healthUpgrades[i].value;
+ return {...profile,attack,wallAttack,health};
 }
 function explorerCombatStats(levels={}){return unitCombatStats("Explorer Trooper",levels);}
-module.exports={explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,explorerUpgrade,explorerCombatStats,unitCombatStats,resources};
+module.exports={explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,railgunner,pulseSniper,droneOperator,rangedProfiles,profileFor,explorerUpgrade,explorerCombatStats,unitCombatStats,resources};

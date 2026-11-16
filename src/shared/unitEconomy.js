@@ -7,11 +7,11 @@ const categories = {
   Elite: ["AI General","Gene Warrior"]
 };
 const tiers = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3, Elite:5 };
-const {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,explorerUpgrade}=require("./unitProfiles");
+const {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,explorerUpgrade,profileFor}=require("./unitProfiles");
 // Maximum resources a single surviving unit can carry home after a player battle.
 const cargoCapacity = {
   "Explorer Trooper":10, "Exo-Soldier":10, "Plasma Bladesman":10, "Nano Shieldman":10,
-  "Railgunner":15, "Pulse Sniper":15, "Drone Operator":15,
+  "Railgunner":5, "Pulse Sniper":5, "Drone Operator":5,
   "Rover Scout":80, "Hoverbike Rider":60, "Mech Walker":25, "Hover Drone Rider":40,
   "Demolition Bot":20, "Missile Carrier":50, "Particle Blaster":10, "Orbital Strike Beacon":10,
   "AI General":50, "Gene Warrior":30
@@ -28,6 +28,7 @@ function unitPrice(unit) {
   if(unit==="Nano Shieldman")return {...nanoShieldman.price};
   if(unit==="Exo-Soldier")return {...exoSoldier.price};
   if(unit==="Plasma Bladesman")return {...plasmaBladesman.price};
+  if(["Railgunner","Pulse Sniper","Drone Operator"].includes(unit))return {...profileFor(unit).price};
   const entry = Object.entries(categories).find(([,units])=>units.includes(unit));
   if (!entry) return null;
   const [category,units]=entry;
@@ -35,17 +36,18 @@ function unitPrice(unit) {
   return Object.fromEntries(Object.entries(base).map(([resource,value])=>[resource,Math.ceil(value*tiers[category])]));
 }
 const unlockBuildings = {
-  Ground:"Training Center", Ranged:"Training Center",
+  Ground:"Training Center", Ranged:"Drone Factory",
   Mobile:"Vehicle Bay", "Heavy Systems":"Drone Factory", Elite:"Drone Factory"
 };
 const unlockLevels = {
-  Ground:[1,2,4,6], Ranged:[3,5,7], Mobile:[1,3,5,7],
+  Ground:[1,2,4,6], Ranged:[1,8,16], Mobile:[1,3,5,7],
   "Heavy Systems":[2,4,6,8], Elite:[12,15]
 };
 function unitRequirement(unit) {
   const entry=Object.entries(categories).find(([,units])=>units.includes(unit));
   if (!entry) return null;
   const [category,units]=entry;
+  const profile=profileFor(unit); if(profile)return {...profile.requirement};
   if(unit==="Explorer Trooper")return {...explorerTrooper.requirement};
   if(unit==="Nano Shieldman")return {...nanoShieldman.requirement};
   if(unit==="Exo-Soldier")return {...exoSoldier.requirement};
@@ -64,7 +66,7 @@ function upgradePrice(level, discount = 0, unit, stat) {
   return {Gold:amount,Iron:amount};
 }
 
-function unitTrainingDuration(unit){return unit==="Explorer Trooper"?explorerTrooper.trainingSeconds:unit==="Nano Shieldman"?nanoShieldman.trainingSeconds:unit==="Exo-Soldier"?exoSoldier.trainingSeconds:unit==="Plasma Bladesman"?plasmaBladesman.trainingSeconds:30;}
+function unitTrainingDuration(unit){return profileFor(unit)?.trainingSeconds??30;}
 function unitUpgradeDetails(unit,stat,level,discount=0,speed=0){return explorerUpgrade(unit,stat,level,discount,speed);}
 // Building resource specialization; nextLevel starts at 1.
 const buildingBaseCosts = {

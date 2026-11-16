@@ -1,6 +1,6 @@
 import React,{useState} from "react";
 import {useLanguage} from "../language";
-import {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman} from "../shared/unitProfiles";
+import {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,railgunner,pulseSniper,droneOperator} from "../shared/unitProfiles";
 
 const homeSections=[
  {id:"faq",en:"FAQ",bg:"FAQ",image:"faq.jpg"},
@@ -51,6 +51,21 @@ export default function InformationPanel(){
    <p>{t("Base attack:","Базова атака:")} {attacks}</p><p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
    <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),...atk,t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
+  </article>;
+ };
+ const rangedUnit=(u,bg,desc)=>{
+  const attacks=[u.attack.infantry,u.attack.mobile,u.attack.ranged,u.wallAttack,u.attack.artillery];
+  const cost=r=>res.map((k,i)=>label(k)+": "+r.cost[i].toLocaleString()).join(" · ");
+  const factory=u.requirement.building==="Drone Factory"?t("Drone Factory","Фабрика за дронове"):u.requirement.building;
+  return <article key={u.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
+   <h2>{t(u.name,bg)}</h2>
+   <p>{t("Ranged · 1 population · "+factory+" level "+u.requirement.level,"Стрелкова единица · 1 население · "+factory+" ниво "+u.requirement.level)} · {t("Speed","Скорост")}: {u.speed} · {t("Cargo","Товар")}: {u.cargo}</p>
+   <p>{t(desc[0],desc[1])}</p>
+   <p>{t("Affected by skills: Defender, Archer","Повлиява се от уменията: Защитник, Стрелец")}</p>
+   <p>{t("Base attack (infantry / mobile / ranged / wall / siege):","Базова атака (пехота / мобилни / стрелци / стена / обсада):")} {attacks.join(" / ")}</p>
+   <p>{t("Health:","Здраве:")} {u.health} · {t("Range:","Обхват:")} {u.range}</p>
+   <p>{t("Training cost:","Цена за обучение:")} {res.map(k=>label(k)+": "+u.price[k]).join(" · ")} · {t("Time:","Време:")} {time(u.trainingSeconds)}</p>
+   {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
  };
  const home=page==="home";
@@ -105,7 +120,12 @@ export default function InformationPanel(){
    {unit(exoSoldier,"Екзовойник",["Infantry unit with equal attack against all unit groups and the highest health among infantry. Best placed in the first row.","Пехотна единица с еднаква атака срещу всички групи и най-много живот сред пехотата. Най-добре се поставя на първи ред."])}
    {unit(plasmaBladesman,"Плазмен мечоносец",["Infantry unit with the strongest attack against heavy systems. Best placed in the first row.","Пехотна единица с най-силна атака срещу тежки системи. Най-добре се поставя на първи ред."])}
   </>}
-  {category&&page!=="ground"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Information for this troop category will be added later.","Информацията за тази категория войски ще бъде добавена по-късно.")}</p></>}
+  {category?.id==="ranged"&&<><h2>{t("Ranged","Стрелкови")}</h2>
+   {rangedUnit(railgunner,"Релсов стрелец",["Ranged unit with the strongest attack against infantry and the highest health in its category. Keep it behind the front line.","Стрелкова единица с най-силна атака срещу пехота и най-много здраве в категорията. Дръжте я зад предната линия."])}
+   {rangedUnit(pulseSniper,"Импулсен снайперист",["Ranged unit with the strongest attack against ranged units. Keep it behind the front line.","Стрелкова единица с най-силна атака срещу стрелци. Дръжте я зад предната линия."])}
+   {rangedUnit(droneOperator,"Оператор на дрон",["Ranged unit with the strongest attack against mobile units. It is the fastest ranged unit and has the longest range in its category. Keep it behind the front line.","Стрелкова единица с най-силна атака срещу мобилни единици. Тя е най-бързата стрелкова единица и има най-голям обхват в категорията. Дръжте я зад предната линия."])}
+  </>}
+  {category&&page!=="ground"&&category.id!=="ranged"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Information for this troop category will be added later.","Информацията за тази категория войски ще бъде добавена по-късно.")}</p></>}
   {section?.id==="skills"&&(nanoArmorSystems?<>
    <h2>{t("Nano Armor Systems","Системи за наноброня")}</h2>
    <p>{t("Longer-lasting units have a better chance to hold the battlefield and help secure victory. Nano Armor Systems strengthens the durability of your entire force.", "Колкото по-дълго единиците ви издържат на бойното поле, толкова по-голям е шансът да победите. Системите за наноброня повишават издръжливостта на цялата ви армия.")}</p>
