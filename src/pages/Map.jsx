@@ -407,13 +407,7 @@ function Map() {
     if(event?.active){
       const sx=(event.coordinates.x-1)*tileSize+offset.x+tileSize/2;
       const sy=(event.coordinates.y-1)*tileSize+offset.y+tileSize/2;
-      ctx.save();ctx.strokeStyle="#ff5f44";ctx.lineWidth=Math.max(2,tileSize*.08);ctx.globalAlpha=.75;
-      for(const attack of event.attacks||[]){
-        const ax=(attack.origin_x-1)*tileSize+offset.x+tileSize/2;
-        const ay=(attack.origin_y-1)*tileSize+offset.y+tileSize/2;
-        ctx.beginPath();ctx.moveTo(ax,ay);ctx.lineTo(sx,sy);ctx.stroke();
-      }
-      ctx.globalAlpha=1;ctx.beginPath();ctx.arc(sx,sy,tileSize*.85,0,Math.PI*2);
+      ctx.save();ctx.beginPath();ctx.arc(sx,sy,tileSize*.85,0,Math.PI*2);
       ctx.fillStyle="rgba(220,66,44,.35)";ctx.fill();ctx.strokeStyle="#ff6347";ctx.lineWidth=3;ctx.stroke();
       ctx.drawImage(alienIcon,sx-tileSize*.58,sy-tileSize*.58,tileSize*1.16,tileSize*1.16);
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
@@ -728,7 +722,18 @@ function Map() {
   const gatheringRoutes=mapMines.filter(m=>m.claimed_by&&Number(m.arrives_at)>clock).map(m=>({
     id:"gather-"+m.id,color:"#ffd166",from:{x:m.origin_x,y:m.origin_y},to:{x:m.x,y:m.y},start:m.launched_at,end:m.arrives_at
   }));
-  const routes=[...attackRoutes,...invasionRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>clock);
+  const mothership = campaign.mothershipEvent;
+  const mothershipRoutes = mothership?.active ? (mothership.attacks || [])
+    .filter(attack => attack.resolved_at == null && attack.launched_at <= clock)
+    .map(attack => ({
+      id: "mothership-" + attack.id,
+      color: "#ff5f44",
+      from: {x: attack.origin_x, y: attack.origin_y},
+      to: mothership.coordinates,
+      start: attack.launched_at,
+      end: attack.arrives_at,
+    })) : [];
+  const routes=[...attackRoutes,...mothershipRoutes,...invasionRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>clock);
   const screenPoint=point=>({x:(point.x-.5)*tileSize+offset.x,y:(point.y-.5)*tileSize+offset.y});
 
   return (
