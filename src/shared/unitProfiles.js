@@ -1,4 +1,5 @@
 const {mobileUnitProfiles}=require("./mobileUnitProfiles");
+const {heavyUnitProfiles}=require("./heavyUnitProfiles");
 const nanoShieldman = {
   name: "Nano Shieldman", category: "infantry",
   attack: { infantry: 10, ranged: 10, mobile: 70, artillery: 70 }, health: 60, range: 2, speed: 5, cargo: 10, population: 1,
@@ -56,7 +57,7 @@ const pulseSniper = {
 };
 const rangedProfiles=[railgunner,pulseSniper,droneOperator];
 const resources=["Gold","Iron","Water","Solar"];
-function profileFor(unit){return unit==="Explorer Trooper"?explorerTrooper:unit==="Nano Shieldman"?nanoShieldman:unit==="Exo-Soldier"?exoSoldier:unit==="Plasma Bladesman"?plasmaBladesman:rangedProfiles.find(profile=>profile.name===unit)||mobileUnitProfiles.find(profile=>profile.name===unit)||null;}
+function profileFor(unit){return unit==="Explorer Trooper"?explorerTrooper:unit==="Nano Shieldman"?nanoShieldman:unit==="Exo-Soldier"?exoSoldier:unit==="Plasma Bladesman"?plasmaBladesman:rangedProfiles.find(profile=>profile.name===unit)||mobileUnitProfiles.find(profile=>profile.name===unit)||heavyUnitProfiles.find(profile=>profile.name===unit)||null;}
 function explorerUpgrade(unit,stat,currentLevel,discount=0,speed=0){
  const profile=profileFor(unit);if(!profile)return null;
  const rows=stat==="attack"?profile.attackUpgrades:profile.healthUpgrades,row=rows[currentLevel-1];if(!row)return null;
