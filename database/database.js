@@ -5,7 +5,7 @@ const alienBases = require("../src/shared/alienBases");
 const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {specialUnitCombatBonuses,allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
+const {specialUnitCombatBonuses,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -671,9 +671,14 @@ class DatabaseManager {
       const level = Number(current.structures[name] || 0) + (current.buildingJob?.name === name ? 1 : 0) + queuedLevels;
       if (level >= maxLevel) return { error: "Maximum building level reached." };
       const cost = buildingPrice(name, level + 1, current.allianceBonuses.discount);
+      if (!cost) return { error: "Construction data for this level is not available yet." };
+      const requirements = buildingRequirements(name, level + 1);
+      if (Object.entries(requirements).some(([building, minimum]) => Number(current.structures[building] || 0) < minimum)) {
+        return { error: "Building requirements are not met." };
+      }
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
-      const duration = allianceUpgradeDuration(15000 * (level + 1), current.allianceBonuses.speed);
+      const duration = buildingDuration(name, level + 1, current.allianceBonuses.speed);
       const startedAt=Date.now();
       const job = { name, level: level + 1, duration, startedAt, endsAt: startedAt + duration };
       if (current.buildingJob) {

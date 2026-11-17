@@ -1,5 +1,6 @@
 import React,{useState} from "react";
 import {useLanguage} from "../language";
+import {buildingMaxLevel,defenseGridLevels} from "../shared/unitEconomy";
 import {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,railgunner,pulseSniper,droneOperator} from "../shared/unitProfiles";
 import {roverScout,hoverbikeRider,mechWalker,hoverDroneRider} from "../shared/mobileUnitProfiles";
 import {demolitionBot,missileCarrier,particleBlaster,orbitalStrikeBeacon} from "../shared/heavyUnitProfiles";
@@ -41,6 +42,8 @@ const commanderProtocols=[
 export default function InformationPanel(){
  const {t,label}=useLanguage();
  const [page,setPage]=useState("home");
+ const [wallLevel,setWallLevel]=useState(1);
+ const wallStats=defenseGridLevels[wallLevel];
  const [selectedProtocol,setSelectedProtocol]=useState(null);
  const res=["Gold","Iron","Water","Solar"],atk=[t("Ground troops","Сухопътни войски"),t("Mobile troops","Мобилни войски"),t("Ranged troops","Стрелкови войски"),t("Walls","Стени"),t("Heavy systems","Тежки системи")];
  const protocolBySkill={
@@ -197,6 +200,36 @@ export default function InformationPanel(){
     <span>{t(item.en,item.bg)}</span>
    </button>)}</div>
   </>}
+  {section?.id==="buildings"&&<>
+   <h2>{t("Buildings","Сгради")}</h2>
+   <article style={{padding:14,border:"1px solid #54758a",borderRadius:10,background:"#172432"}}>
+    <h3>{label("Defense Grid")}</h3>
+    <h4>{t("Information","Информация")}</h4>
+    <p>{t(
+     "The wall is essential to the safety of your base. Upgrading it increases its Health and Attack, which helps especially when your opponent lacks enough Heavy Systems to breach it quickly. The table below shows the building's main statistics.",
+     "Стената е задължителна за безопасността на базата ви. Подобряването ѝ увеличава Живота и Атаката ѝ, което е особено полезно, когато противникът няма достатъчно тежки системи, за да я преодолее бързо. В таблицата по-долу са показани важните показатели на сградата."
+    )}</p>
+    <label>{t("Choose level","Избери ниво")}{" "}
+     <select value={wallLevel} onChange={event=>setWallLevel(Number(event.target.value))}>
+      {Array.from({length:buildingMaxLevel("Defense Grid")},(_,index)=>index+1).map(level=><option key={level} value={level}>{level}</option>)}
+     </select>
+    </label>
+    {wallStats ? <table style={{width:"100%",maxWidth:480,marginTop:12,textAlign:"left"}}>
+     <tbody>
+      <tr>
+       <th scope="row">{t("Requirements","Изисквания")}</th>
+       <td>{Object.entries(wallStats.requirements).map(([building,level])=><div key={building}>{label(building)} · {t("Level","Ниво")} {level}</div>)}</td>
+      </tr>
+      {Object.entries(wallStats.cost).map(([resource,amount])=><tr key={resource}>
+       <th scope="row">{label(resource)}</th><td>{amount.toLocaleString()}</td>
+      </tr>)}
+      <tr><th scope="row">{t("Construction time","Време за строеж")}</th><td>{time(wallStats.durationMs / 1000)}</td></tr>
+      <tr><th scope="row">{t("Attack","Атака")}</th><td>{wallStats.attack.toLocaleString()}</td></tr>
+      <tr><th scope="row">{t("Health","Живот")}</th><td>{wallStats.health.toLocaleString()}</td></tr>
+     </tbody>
+    </table> : <p role="status">{t("The table for this level has not been added yet.","Таблицата за това ниво още не е добавена.")}</p>}
+   </article>
+  </>}
   {section?.id==="units"&&<>
    <h2>{t("Units and Upgrades","Единици и Подобрения")}</h2>
    <div style={cardGrid}>
@@ -311,6 +344,6 @@ export default function InformationPanel(){
    <p>{t("Example: Player A has 30% Neural Command and Player B has 10%. The difference is 20%. Between 20% and 30% of that difference gives 4–6% of Player B's population fleeing.","Пример: Играч А има 30% Невронно командване, а Играч Б — 10%. Разликата е 20%. Между 20% и 30% от нея означава, че ще избягат 4–6% от населението на Играч Б.")}</p>
    <p>{t("If Player B has a population of 10,000, then 400–600 population will not take part in the battle. The unit types that flee are chosen at random.","Ако населението на Играч Б е 10 000, между 400 и 600 население няма да участва в битката. Видовете единици, които ще избягат, се избират на случаен принцип.")}</p>
    <h3>{t("Protocol bonuses","Бонуси на протокола")}</h3><ul><li>{t("Initiate: 10%","Начална: 10%")}</li><li>{t("Advanced: 20%","Напреднала: 20%")}</li><li>{t("Elite: 30%","Елитна: 30%")}</li></ul>
-  </>:<><h2>{t(section.en,section.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Allocate Protocol Points (PP) to improve commander protocols. Each protocol has three tiers: Initiate, Advanced and Elite. Their bonuses are listed below in tier order.","Разпределяй точки за протоколи (ТП), за да подобряваш протоколите на командира. Всеки протокол има три степени: начална, напреднала и елитна. Бонусите по-долу са подредени по степени.")}<br/>{t("Upgrade costs: Initiate 1 PP · Advanced 2 PP · Elite 3 PP.","Цена за подобрение: Начална 1 ТП · Напреднала 2 ТП · Елитна 3 ТП.")}</p><div style={cardGrid}>{commanderProtocols.map(item=><article key={item.en} style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{["Neural Command","Combat Augmentation","Precision Targeting","Assault Mobility","Nano Armor Systems","Hyperdrive Navigation","Quantum Logistics","Nano Regeneration","Siege Engineering","Probability Matrix","Neural Learning Matrix","Accelerated Training","Deep Core Extraction"].includes(item.en)?<button onClick={()=>setSelectedProtocol(item.en)} style={{display:"block",width:"100%",padding:0,textAlign:"left",color:"inherit",background:"none",border:0,cursor:"pointer"}}><h3 style={{marginTop:0,textDecoration:"underline"}}>{t(item.en,item.bg)}</h3></button>:<h3 style={{marginTop:0}}>{t(item.en,item.bg)}</h3>}<p>{t(item.effectEn,item.effectBg)} · {t("bonus","бонус")}</p><p><strong>{t("Tier bonuses","Бонуси по степени")}:</strong> {item.values.map(v=>v+"%").join(" / ")}</p><p style={{opacity:.8,fontSize:13}}>{t("Initiate / Advanced / Elite","Начална / Напреднала / Елитна")}</p></article>)}</div></>)}{section&&section.id!=="units"&&section.id!=="skills"&&<><h2>{t(section.en,section.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{section.id==="knight"?t("Cyber Knight information will be added later.","Информацията за Кибер Рицаря ще бъде добавена по-късно."):section.id==="campaigns"?t("Campaign types and details will be added here later.","Тук по-късно ще добавим видовете кампании и подробности за тях."):t("Information for this section will be added later.","Информацията за този раздел ще бъде добавена по-късно.")}</p></>}
+  </>:<><h2>{t(section.en,section.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Allocate Protocol Points (PP) to improve commander protocols. Each protocol has three tiers: Initiate, Advanced and Elite. Their bonuses are listed below in tier order.","Разпределяй точки за протоколи (ТП), за да подобряваш протоколите на командира. Всеки протокол има три степени: начална, напреднала и елитна. Бонусите по-долу са подредени по степени.")}<br/>{t("Upgrade costs: Initiate 1 PP · Advanced 2 PP · Elite 3 PP.","Цена за подобрение: Начална 1 ТП · Напреднала 2 ТП · Елитна 3 ТП.")}</p><div style={cardGrid}>{commanderProtocols.map(item=><article key={item.en} style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{["Neural Command","Combat Augmentation","Precision Targeting","Assault Mobility","Nano Armor Systems","Hyperdrive Navigation","Quantum Logistics","Nano Regeneration","Siege Engineering","Probability Matrix","Neural Learning Matrix","Accelerated Training","Deep Core Extraction"].includes(item.en)?<button onClick={()=>setSelectedProtocol(item.en)} style={{display:"block",width:"100%",padding:0,textAlign:"left",color:"inherit",background:"none",border:0,cursor:"pointer"}}><h3 style={{marginTop:0,textDecoration:"underline"}}>{t(item.en,item.bg)}</h3></button>:<h3 style={{marginTop:0}}>{t(item.en,item.bg)}</h3>}<p>{t(item.effectEn,item.effectBg)} · {t("bonus","бонус")}</p><p><strong>{t("Tier bonuses","Бонуси по степени")}:</strong> {item.values.map(v=>v+"%").join(" / ")}</p><p style={{opacity:.8,fontSize:13}}>{t("Initiate / Advanced / Elite","Начална / Напреднала / Елитна")}</p></article>)}</div></>)}{section&&section.id!=="units"&&section.id!=="skills"&&section.id!=="buildings"&&<><h2>{t(section.en,section.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{section.id==="knight"?t("Cyber Knight information will be added later.","Информацията за Кибер Рицаря ще бъде добавена по-късно."):section.id==="campaigns"?t("Campaign types and details will be added here later.","Тук по-късно ще добавим видовете кампании и подробности за тях."):t("Information for this section will be added later.","Информацията за този раздел ще бъде добавена по-късно.")}</p></>}
  </div>;
 }

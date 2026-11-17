@@ -99,9 +99,29 @@ const buildingBaseCosts = {
   "Drone Factory": {Gold:170,Iron:210,Water:100,Solar:170}
 };
 const orderLevelCosts = [30000, 50000, 100000];
+const defenseGridMaxLevel = 30;
+const defenseGridLevels = {
+  1: {
+    requirements: {"Gold Synthesizer":1,"Iron Driller":1,"Solar Array":1,"Water Extractor":1},
+    cost: {Gold:35,Iron:50,Water:100,Solar:20},
+    durationMs: 5 * 60 * 1000,
+    attack: 2000,
+    health: 1000
+  }
+};
+
+function buildingRequirements(name, level) {
+  return name === "Defense Grid" ? defenseGridLevels[level]?.requirements ?? {} : {};
+}
+
+function buildingDuration(name, level, speed = 0) {
+  const duration = name === "Defense Grid" ? defenseGridLevels[level]?.durationMs : undefined;
+  return allianceUpgradeDuration(duration ?? 15000 * level, speed);
+}
 
 function buildingMaxLevel(name) {
   if (name === "Order") return orderLevelCosts.length;
+  if (name === "Defense Grid") return defenseGridMaxLevel;
   return Object.prototype.hasOwnProperty.call(buildingBaseCosts, name) ? 20 : 0;
 }
 
@@ -111,7 +131,12 @@ function buildingPrice(name,nextLevel,discount = 0) {
     const cost = Math.ceil(orderLevelCosts[nextLevel - 1] * (100 - discount) / 100);
     return {Gold:cost,Iron:cost,Water:cost,Solar:cost};
   }
-  return Object.fromEntries(Object.entries(buildingBaseCosts[name]).map(([resource,amount])=>[resource,Math.ceil(amount * nextLevel * (100 - discount) / 100)]));
+  const defenseGridCost = name === "Defense Grid" ? defenseGridLevels[nextLevel]?.cost : undefined;
+  // Already available Defense Grid levels keep their construction costs until their new data is supplied.
+  if (name === "Defense Grid" && nextLevel > 20 && !defenseGridCost) return null;
+  const base = defenseGridCost ?? buildingBaseCosts[name];
+  const levelMultiplier = defenseGridCost ? 1 : nextLevel;
+  return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * levelMultiplier * (100 - discount) / 100)]));
 }
 
-module.exports={specialUnitCombatBonuses,allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};
+module.exports={specialUnitCombatBonuses,allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,defenseGridLevels,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};

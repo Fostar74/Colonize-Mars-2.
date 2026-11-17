@@ -9,7 +9,7 @@ import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
-const {unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails} = unitEconomy;
+const {unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,defenseGridLevels,unitTrainingDuration,unitUpgradeDetails} = unitEconomy;
 
 const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
@@ -239,10 +239,20 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
               const next = level + (game.buildingJob?.name === name ? 1 : 0) + queuedLevels + 1;
               const cost = buildingPrice(name, next, game.allianceBonuses?.discount);
               const affordable = !!cost && Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
+              const requirements = Object.entries(buildingRequirements(name, next));
+              const meetsRequirements = requirements.every(([building, minimum]) => Number(structures[building] || 0) >= minimum);
+              const wallStats = name === "Defense Grid" ? defenseGridLevels[level] : null;
               return <div key={name} ref={questTarget?.building === name ? questDestination : null} className="building" style={{padding:14}}>
                 {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}
                 <h4 style={{margin:"6px 0"}}>{localLabel(name)}</h4>
                 <div>{t("Level","Ниво")} {level} / {maxLevel}</div>
+                {wallStats && <p>{t("Attack","Атака")}: {wallStats.attack} · {t("Health","Живот")}: {wallStats.health}</p>}
+                {requirements.length > 0 && <p>
+                  {t("Requirements","Изисквания")}: {requirements.map(([building, minimum]) => localLabel(building) + " " + minimum).join(" · ")}
+                </p>}
+                {name === "Defense Grid" && cost && <p>
+                  {t("Construction time","Време за строеж")}: {formatTime(Math.ceil(buildingDuration(name, next, game.allianceBonuses?.speed) / 1000))}
+                </p>}
                 {name === "Cargo Depot" && <div style={{marginTop:6,padding:8,borderRadius:6,background:level>=3?"#173e32":"#263746",border:"1px solid #57846f"}}>
                   <strong>{t("Trading Module","Търговски модул")} · {t("Level","Ниво")} {Math.min(3,level)} / 3</strong>
                   <div style={{fontSize:12,marginTop:3}}>{level>=3?t("Inter-base trading unlocked · capacity 15,000 per trade","Междубазовата търговия е отключена · капацитет 15 000 на сделка"):t("Upgrade the Cargo Depot to develop this module and unlock inter-base trade at level 3.","Надграждай Товарното депо, за да развиеш модула и отключиш търговията между бази на ниво 3.")}</div>
@@ -254,8 +264,8 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                 {game.buildingJob?.name === name && <div>{t("Construction:","Строеж:")} {formatTime(remaining(game.buildingJob))}</div>}
                 {game.queuedBuildingJob?.name === name && <div>{t("Queued: Level","На опашката: ниво")} {game.queuedBuildingJob.level}</div>}
                 {cost && <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>{t("Next:","Следващо:")} {cost.Gold} {t("Gold ·","злато ·")} {cost.Iron} {t("Iron ·","желязо ·")} {cost.Water} {t("Water ·","вода ·")} {cost.Solar} {t("Solar","слънчева енергия")}</p>}
-                <button className="upgrade-btn" disabled={!!busy || queueFull || !affordable} onClick={() => upgrade(name)}>
-                  {busy === name ? "Starting..." : queueFull ? localLabel("Queue full") : next > maxLevel ? localLabel("Max level") : game.buildingJob ? queuedBuildings.length ? t("Queue as third","Добави трети строеж") : localLabel("Queue as second") : !affordable ? localLabel("Not enough resources") : level === 0 ? localLabel("Build") : localLabel("Upgrade")}
+                <button className="upgrade-btn" disabled={!!busy || queueFull || !affordable || !meetsRequirements} onClick={() => upgrade(name)}>
+                  {busy === name ? "Starting..." : queueFull ? localLabel("Queue full") : next > maxLevel ? localLabel("Max level") : !cost ? t("Level unavailable","Нивото още не е достъпно") : !meetsRequirements ? t("Building requirements are not met","Изискванията за строеж не са изпълнени") : game.buildingJob ? queuedBuildings.length ? t("Queue as third","Добави трети строеж") : localLabel("Queue as second") : !affordable ? localLabel("Not enough resources") : level === 0 ? localLabel("Build") : localLabel("Upgrade")}
                 </button>
               </div>;
             })}
