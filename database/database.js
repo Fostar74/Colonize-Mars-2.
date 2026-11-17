@@ -638,6 +638,23 @@ class DatabaseManager {
         }
         trainingQueues[category]=queue;
       }
+      // One-time 10x speed migration for upgrades already in progress.
+      // Keep elapsed progress and rewards; do not charge resources again.
+      for (const job of upgradeJobs) {
+        if (!job || job.upgradeSpeedVersion === 10) continue;
+        const previousDuration = Number(job.durationMs);
+        if (Number.isFinite(previousDuration) && previousDuration > 0) {
+          job.durationMs = Math.max(1000, Math.ceil(previousDuration / 10));
+        }
+        if (job.endsAt != null) {
+          const remaining = Math.max(0, Number(job.endsAt) - now);
+          if (Number.isFinite(remaining)) {
+            job.endsAt = now + (remaining === 0 ? 0 : Math.max(1000, Math.ceil(remaining / 10)));
+          }
+        }
+        job.upgradeSpeedVersion = 10;
+        changed = true;
+      }
       let [activeUpgrade, queuedUpgrade] = upgradeJobs;
       // Previously both slots could run independently. Honor their existing deadlines.
       if (queuedUpgrade?.endsAt != null && queuedUpgrade.endsAt <= now &&
