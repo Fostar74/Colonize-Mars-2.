@@ -104,7 +104,6 @@ const particleBlaster = {
   price: { Gold: 900, Iron: 700, Water: 600, Solar: 200 },
   trainingSeconds: 2400,
   upgradeBonusesAreCumulative: true,
-  buildingDamageChance: 0.0003,
   skills: ["Defender", "Siege"],
   attackUpgrades: [
     [[10,2.8,10,4.8,2.8],[264,220,132,88],"03:50:32"],
@@ -148,7 +147,6 @@ const orbitalStrikeBeacon = {
   price: { Gold: 400, Iron: 900, Water: 1100, Solar: 600 },
   trainingSeconds: 2700,
   upgradeBonusesAreCumulative: true,
-  buildingDamageChance: 0.0005,
   skills: ["Defender", "Siege"],
   attackUpgrades: [
     [[3.2,12.8,3.2,6,12.8],[242,145,290,97],"04:22:04"],
