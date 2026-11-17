@@ -15,6 +15,7 @@ import InformationPanel from "./InformationPanel";
 
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
+const colonyBackground="/mars-colony-home.jpg";
 import AVATARS from "../shared/avatarCatalog";
 
 const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;
@@ -614,7 +615,7 @@ function Game() {
     <div
       className="game-container"
       style={{
-        backgroundImage: `url(${marsBackground})`,
+        backgroundImage: `url("${colonyBackground}"), url(${marsBackground})`,
         backgroundSize: "cover",
         backgroundRepeat: "no-repeat",
         backgroundPosition: "center top",
