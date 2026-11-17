@@ -302,7 +302,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
         {(game.trainingQueues?.[unitTab]||[]).map((job,index)=><div key={index}>
           {index+1}. {job.quantity} × {localLabel(job.unit)} — {index===0?localLabel("Training"):localLabel("Queued")} · {index===0?formatTime(remaining(job)):"Starts "+new Date(job.startsAt).toLocaleTimeString()}
           <button type="button" disabled={!!busy} style={{marginLeft:8}} onClick={()=>{
-            if(window.confirm(t("Cancel this training group? 90% of resources will be returned and 10% donated to your alliance.","Отказ от обучението? 90% от ресурсите се връщат, а 10% се даряват на алианса.")))
+            if(window.confirm(t("Cancel this training group? 90% will be refunded. The remaining 10% goes to your alliance if you have one, otherwise it is lost.","Отказ от обучението? 90% се връщат. Останалите 10% отиват в алианса, ако имате такъв, иначе се губят.")))
               act("/cancel-training-group",{category:unitTab,index},`cancel-training-${unitTab}-${index}`);
           }}>{t("Cancel (90% refund)","Отказ (90% обратно)")}</button>
         </div>)}
@@ -388,7 +388,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
               {t("Slot","Слот")} {slot+1} · {status}
             </button>
             {job && <button type="button" disabled={!!busy} onClick={()=>{
-              if(window.confirm(t("Cancel this upgrade? 90% of resources will be returned and 10% donated to your alliance.","Отказ от подобрението? 90% от ресурсите се връщат, а 10% се даряват на алианса.")))
+              if(window.confirm(t("Cancel this upgrade? 90% will be refunded. The remaining 10% goes to your alliance if you have one, otherwise it is lost.","Отказ от подобрението? 90% се връщат. Останалите 10% отиват в алианса, ако имате такъв, иначе се губят.")))
                 act("/cancel-unit-upgrade",{slot},`cancel-upgrade-${slot}`);
             }}>{t("Cancel — 90% refund","Отказ — 90% обратно")}</button>}
           </div>;
