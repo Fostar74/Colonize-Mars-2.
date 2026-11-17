@@ -1,0 +1,23 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice">
+<defs>
+<linearGradient id="sand" x2=".7" y2="1"><stop stop-color="#d97443"/><stop offset=".38" stop-color="#ae4d30"/><stop offset="1" stop-color="#522a2a"/></linearGradient>
+<linearGradient id="mesa" x2=".2" y2="1"><stop stop-color="#f3a05b"/><stop offset=".28" stop-color="#b85e38"/><stop offset="1" stop-color="#4b2529"/></linearGradient>
+<radialGradient id="glow"><stop stop-color="#e9944e" stop-opacity=".8"/><stop offset="1" stop-color="#e9944e" stop-opacity="0"/></radialGradient>
+<filter id="grain"><feTurbulence type="fractalNoise" baseFrequency=".012 .023" numOctaves="4" seed="8" stitchTiles="stitch"/><feColorMatrix type="saturate" values=".35"/><feComponentTransfer><feFuncA type="linear" slope=".18"/></feComponentTransfer></filter>
+</defs>
+<rect width="1600" height="900" fill="url(#sand)"/>
+<ellipse cx="1130" cy="100" rx="650" ry="370" fill="url(#glow)"/>
+<path d="M0 235 L95 186 170 199 245 115 350 152 442 88 540 161 690 96 800 157 960 70 1080 136 1190 76 1320 134 1460 87 1600 154 V0 H0Z" fill="#6e3430" opacity=".72"/>
+<path d="M0 280 L130 225 210 248 315 158 395 205 455 168 575 240 680 192 800 253 930 175 1090 233 1210 156 1340 223 1480 183 1600 235 V420 L0 440Z" fill="#89402e" opacity=".65"/>
+<path d="M0 360 L180 295 270 318 350 270 440 311 560 270 675 337 805 290 910 334 1020 290 1120 343 1270 270 1390 335 1510 295 1600 328 V560 L0 575Z" fill="#cf6c3d" opacity=".58"/>
+<path d="M0 500 L145 448 200 465 270 410 380 452 500 414 610 460 730 424 840 480 960 430 1070 475 1200 421 1330 480 1480 420 1600 460 V900 H0Z" fill="#9c4832" opacity=".8"/>
+<path d="M0 760 L180 690 260 710 370 628 445 655 525 602 650 660 770 620 880 670 1020 615 1130 660 1250 615 1360 680 1480 630 1600 670 V900 H0Z" fill="url(#mesa)" opacity=".86"/>
+<path d="M-20 785 L135 620 210 658 270 545 330 635 410 615 520 780 475 900 H0Z" fill="#66302d"/>
+<path d="M80 675 L135 620 210 658 270 545 330 635 410 615 340 661 270 588 205 698 140 660Z" fill="#d57b48"/>
+<path d="M880 860 L1020 720 1100 753 1170 660 1270 725 1370 660 1490 745 1600 680 V900H880Z" fill="#5e2b2d"/>
+<path d="M1020 720 L1100 753 1170 660 1270 725 1370 660 1490 745 1600 680 1490 781 1365 715 1270 778 1170 705 1090 790Z" fill="#cc7044"/>
+<g fill="none" stroke="#6a322c" opacity=".72"><ellipse cx="1080" cy="330" rx="142" ry="53" stroke-width="17"/><ellipse cx="1080" cy="330" rx="112" ry="37" stroke-width="6"/><ellipse cx="710" cy="510" rx="64" ry="26" stroke-width="9"/><ellipse cx="380" cy="370" rx="75" ry="29" stroke-width="11"/><ellipse cx="1320" cy="550" rx="55" ry="21" stroke-width="8"/></g>
+<g fill="#432a2b" opacity=".65"><ellipse cx="1080" cy="331" rx="99" ry="29"/><ellipse cx="710" cy="510" rx="45" ry="18"/><ellipse cx="380" cy="370" rx="51" ry="18"/><ellipse cx="1320" cy="550" rx="37" ry="13"/></g>
+<path d="M1250 825 Q1320 780 1370 812 T1500 800 Q1550 850 1600 822 V900H1230Z" fill="#397f84" opacity=".76"/>
+<g filter="url(#grain)"><rect width="1600" height="900" fill="#b86b48"/></g>
+</svg>
