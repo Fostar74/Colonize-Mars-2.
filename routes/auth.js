@@ -268,6 +268,13 @@ for(const [path,method,key] of [["donate","donateAlliance","resource"],["market/
     catch(e){console.error(e);res.status(500).json({message:"Alliance economy action failed."});}
   });
 }
+router.post("/alliance/market/exchange",requireSession,(req,res)=>{
+  try{
+    const result=db.exchangeAllianceResource(Number(req.body.userId),req.body.from,req.body.to,Number(req.body.amount));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(e){console.error(e);res.status(500).json({message:"Resource exchange failed."});}
+});
 router.post("/alliance/request-help",requireSession,(req,res)=>{
   try{const result=db.requestAllianceHelp(Number(req.body.userId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
 });
