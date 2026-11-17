@@ -99,7 +99,7 @@ function explorerUpgrade(unit,stat,currentLevel,discount=0,speed=0){
  const rows=stat==="attack"?profile.attackUpgrades:profile.healthUpgrades,row=rows[currentLevel-1];if(!row)return null;
  const details={maxLevel:unitUpgradeMaxLevel(unit,stat)};
  if(row.cost)details.cost=Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)]));
- if(row.seconds!=null)details.durationMs=Math.ceil(row.seconds*1000*(100-speed)/100);
+ if(row.seconds!=null)details.durationMs=Math.max(1000,Math.ceil(row.seconds*1000*(100-speed)/100/10));
  if(profile.upgradeBonusesAreCumulative)details.bonus=stat==="attack"?row.values:row.value;
  return details;
 }
