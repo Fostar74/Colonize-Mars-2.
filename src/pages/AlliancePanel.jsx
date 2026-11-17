@@ -15,6 +15,7 @@ export default function AlliancePanel({supportTarget,playerAction}){
  const playerName=player=>playerAction ? playerAction(player) : player.username;
  const [reinforceRecipient,setReinforceRecipient]=useState(supportTarget?.id || ""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
  const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[description,setDescription]=useState(""),[tab,setTab]=useState(supportTarget ? "reinforcements" : "members");
+ const [exchangeFrom,setExchangeFrom]=useState("Gold"),[exchangeTo,setExchangeTo]=useState("Iron"),[exchangeAmount,setExchangeAmount]=useState("100");
  const [crystalKind,setCrystalKind]=useState("green"),[crystalAmount,setCrystalAmount]=useState(""),[broadcastBody,setBroadcastBody]=useState("");
  const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
@@ -114,6 +115,16 @@ export default function AlliancePanel({supportTarget,playerAction}){
     {["Gold","Iron","Water","Solar"].map(resource=><button key={resource} disabled={busy||!state.economy?.donationsRemaining} style={{margin:4}} onClick={()=>action("donate",{resource})}>{t("Donate 100","Дари 100")} {localLabel(resource)}</button>)}
     <h4>{t("Alliance Treasury","Хазна на алианса")}</h4>
     <p>{Object.entries(state.economy?.treasury||{}).map(([k,n])=>k+": "+n).join(" · ")}</p>
+    <h4>{t("Resource Smelting & Exchange","Претопяване и обмен на ресурси")}</h4>
+    <p>{t("80% becomes your selected resource; 20% is donated to the alliance treasury in the original resource.","80% се превръщат в избрания ресурс; 20% от изходния ресурс се даряват в хазната на алианса.")}</p>
+    <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+      <select aria-label={t("Resource to smelt","Ресурс за претопяване")} value={exchangeFrom} onChange={e=>setExchangeFrom(e.target.value)}>{["Gold","Iron","Water","Solar"].map(k=><option key={k} value={k}>{localLabel(k)}</option>)}</select>
+      <span>→</span>
+      <select aria-label={t("Desired resource","Желан ресурс")} value={exchangeTo} onChange={e=>setExchangeTo(e.target.value)}>{["Gold","Iron","Water","Solar"].map(k=><option key={k} value={k}>{localLabel(k)}</option>)}</select>
+      <input aria-label={t("Amount to exchange","Количество за обмен")} type="number" min="5" step="5" value={exchangeAmount} onChange={e=>setExchangeAmount(e.target.value)} style={{width:110}}/>
+      <button type="button" disabled={busy||exchangeFrom===exchangeTo||!Number.isSafeInteger(Number(exchangeAmount))||Number(exchangeAmount)<5||Number(exchangeAmount)%5!==0} onClick={()=>action("market/exchange",{from:exchangeFrom,to:exchangeTo,amount:Number(exchangeAmount)})}>{t("Smelt & Exchange","Претопи и обмени")}</button>
+    </div>
+    {Number.isSafeInteger(Number(exchangeAmount))&&Number(exchangeAmount)>0&&Number(exchangeAmount)%5===0&&<p>{t("You receive","Получаваш")}: {Number(exchangeAmount)*0.8} {localLabel(exchangeTo)} · {t("Alliance donation","Дарение за алианса")}: {Number(exchangeAmount)*0.2} {localLabel(exchangeFrom)}</p>}
     <h4>{t("Alliance Market","Пазар на алианса")}</h4>
     {Object.entries({gold:["500 Gold",30],iron:["500 Iron",30],water:["500 Water",30],solar:["500 Solar",30],landing:["1 Mars Landing Token",100],attack:["+10% Army Attack (1h)",80],health:["+10% Army Health (1h)",80],protection:["Plasma Shield (24h)",150]}).map(([item,[label,cost]])=><div key={item} style={{marginBottom:8}}>
       <img src={{gold:goldIcon,iron:ironIcon,water:waterIcon,solar:solarIcon}[item] || baseIcon} alt="" width="28" height="28" style={{verticalAlign:"middle",marginRight:8}} />
