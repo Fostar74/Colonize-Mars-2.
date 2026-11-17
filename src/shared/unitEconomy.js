@@ -100,9 +100,9 @@ const buildingBaseCosts = {
 };
 const orderLevelCosts = [30000, 50000, 100000];
 const defenseGridMaxLevel = 30;
+const defenseGridRequirements = {"Gold Synthesizer":1,"Iron Driller":1,"Solar Array":1,"Water Extractor":1};
 const defenseGridLevels = {
   1: {
-    requirements: {"Gold Synthesizer":1,"Iron Driller":1,"Solar Array":1,"Water Extractor":1},
     cost: {Gold:35,Iron:50,Water:100,Solar:20},
     durationMs: 5 * 60 * 1000,
     attack: 2000,
@@ -110,8 +110,8 @@ const defenseGridLevels = {
   }
 };
 
-function buildingRequirements(name, level) {
-  return name === "Defense Grid" ? defenseGridLevels[level]?.requirements ?? {} : {};
+function buildingRequirements(name) {
+  return name === "Defense Grid" ? defenseGridRequirements : {};
 }
 
 function buildingDuration(name, level, speed = 0) {
