@@ -14,7 +14,7 @@ const cargoCapacity = {
   "Railgunner":5, "Pulse Sniper":5, "Drone Operator":5,
   ...Object.fromEntries(categories.Mobile.map(unit=>[unit,profileFor(unit).cargo])),
   ...Object.fromEntries(categories["Heavy Systems"].map(unit=>[unit,profileFor(unit).cargo])),
-  "AI General":50, "Gene Warrior":30
+  ...Object.fromEntries(categories.Elite.map(unit=>[unit,profileFor(unit).cargo]))
 };
 // Resource emphasis for units without a fixed price.
 const emphasis = [
@@ -29,7 +29,6 @@ function unitPrice(unit) {
   const entry = Object.entries(categories).find(([,units])=>units.includes(unit));
   if (!entry) return null;
   const [category,units]=entry;
-  if (category === "Elite") return {Gold:5000,Iron:5000,Water:5000,Solar:5000};
   const base=emphasis[units.indexOf(unit) % emphasis.length];
   return Object.fromEntries(Object.entries(base).map(([resource,value])=>[resource,Math.ceil(value*tiers[category])]));
 }
@@ -66,7 +65,7 @@ function upgradeDuration(level, speed = 0) {
   return allianceUpgradeDuration(Math.min(24*3600000,Math.ceil(60000*Math.pow(level+1,1.7))), speed);
 }
 function upgradePrice(level, discount = 0, unit, stat) {
-  const specific=explorerUpgrade(unit,stat,level,discount,0);if(specific)return specific.cost;
+  const specific=explorerUpgrade(unit,stat,level,discount,0);if(specific?.cost)return specific.cost;
   const amount=Math.ceil(2 * Math.pow(level+1,2) * (100 - discount));
   return {Gold:amount,Iron:amount};
 }

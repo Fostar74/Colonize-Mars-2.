@@ -3,7 +3,7 @@ import { useLanguage } from "../language";
 import React, { useState, useEffect, useRef } from "react";
 import "./StructurePanel.css";
 import unitEconomy from "../shared/unitEconomy";
-import {unitUpgradeMaxLevel} from "../shared/unitProfiles";
+import {unitCombatStats, unitUpgradeMaxLevel} from "../shared/unitProfiles";
 import {heavyUnitProfiles} from "../shared/heavyUnitProfiles";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
@@ -20,7 +20,7 @@ const structureTypes = {
 
 // These profiles start at the base stat, before the first purchased upgrade.
 function displayedUpgradeLevel(unit, level) {
-  const countsFromBase = heavyUnitProfiles.some(profile => profile.name === unit);
+  const countsFromBase = unitCategories.Elite.includes(unit) || heavyUnitProfiles.some(profile => profile.name === unit);
   return countsFromBase ? Math.min(10, level - 1) : level;
 }
 
@@ -300,11 +300,16 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
           const requirement = unitRequirement(unit);
           const unlocked = Number(structures[requirement.building] || 0) >= requirement.level;
           const timeDisplay = formatTime(totalTime);
+          const eliteStats = unitTab === "Elite" ? unitCombatStats(unit, game.unitUpgrades?.[unit]) : null;
 
           return (
             <div key={unit} className="unit-card" style={{filter:unlocked?"none":"grayscale(1)",opacity:unlocked?1:0.62,border:unlocked?"1px solid #40a7b9":"1px solid #777",transition:"filter .25s, opacity .25s, border-color .25s"}}>
               <div aria-hidden="true" style={{fontSize:36,filter:unlocked?"none":"grayscale(1)",marginBottom:4}}>{unitTab==="Ground"?"🪖":unitTab==="Ranged"?"🎯":unitTab==="Mobile"?"🚙":unitTab==="Heavy Systems"?"🤖":"⚔️"}</div>
               <h4>{localLabel(unit)}</h4>
+              {eliteStats && <>
+                <p>{t("Attack against all targets","Атака срещу всички цели")}: {eliteStats.attack.infantry} · {t("Health","Живот")}: {eliteStats.health}</p>
+                <p>{t("Recommended formation position: row 4, out of wall range. You can choose any row.","Препоръчителна позиция във формацията: 4-ти ред, извън обсега на стената. Можеш да избереш всеки ред.")}</p>
+              </>}
               {unlocked && <p style={{color:"#79dfad",fontWeight:"bold"}}>{t("Unlocked · Ready to train","Отключена · готова за обучение")}</p>}
               {!unlocked && <p style={{color:"#ffbb77"}}>{t("Locked: Requires","Заключена: изисква")} {localLabel(requirement.building)} {t("level","ниво")} {requirement.level}</p>}
               <div className="train-slider">
@@ -371,6 +376,25 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
         <div className="subtab-buttons">
           {Object.keys(unitCategories).map(cat=><button key={cat} onClick={()=>setUpgradeCategory(cat)}>{localLabel(cat)}</button>)}
         </div>
+        {upgradeCategory === "Elite" && <table>
+          <caption>{t("AI General and Gene Warrior upgrades","Подобрения на Генерал с ИИ и Генетичен воин")}</caption>
+          <thead><tr>
+            <th scope="col">{t("Level","Ниво")}</th>
+            <th scope="col">{t("Attack against all targets","Атака срещу всички цели")}</th>
+            <th scope="col">{t("Health","Живот")}</th>
+          </tr></thead>
+          <tbody>
+            {Array.from({length:unitUpgradeMaxLevel("AI General","attack")}, (_, index) => {
+              const level = index + 1;
+              const stats = unitCombatStats("AI General", {attack:level,defense:level});
+              return <tr key={level}>
+                <th scope="row">{index === 0 ? t("Base","Базови") : index}</th>
+                <td>{stats.attack.infantry}</td>
+                <td>{stats.health}</td>
+              </tr>;
+            })}
+          </tbody>
+        </table>}
         <div className="unit-grid">
           {unitCategories[upgradeCategory].map(unit=>(
             <div key={unit} className="unit-card">
@@ -381,10 +405,15 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                 const special=unitUpgradeDetails(unit,stat,level,game.allianceBonuses?.discount,game.allianceBonuses?.speed);
                 const cost=special?.cost||upgradePrice(level, game.allianceBonuses?.discount);
                 const duration=special?.durationMs||upgradeDuration(level, game.allianceBonuses?.speed);
-                const bonus=describeUpgradeBonus(special?.bonus);
+                const eliteStats = upgradeCategory === "Elite" ? unitCombatStats(unit, game.unitUpgrades?.[unit]) : null;
+                const bonus = eliteStats && stat === "attack" && special?.bonus
+                  ? t("All targets","Всички цели") + ": +" + special.bonus[0]
+                  : describeUpgradeBonus(special?.bonus);
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
-                  <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {displayedUpgradeLevel(unit, level)}</p>
+                  <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {displayedUpgradeLevel(unit, level)}
+                    {eliteStats && <> · {stat === "attack" ? eliteStats.attack.infantry : eliteStats.health}</>}
+                  </p>
                   {level<maxLevel&&<p>{t("Next level","Следващо ниво")} {displayedUpgradeLevel(unit, level+1)}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>}
                   {level<maxLevel&&bonus&&<p>{t("Bonus over base stats", "Бонус спрямо базовите показатели")}: {bonus}</p>}
                   <button disabled={!!busy || level>=maxLevel || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}

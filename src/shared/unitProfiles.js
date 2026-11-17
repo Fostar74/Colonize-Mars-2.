@@ -56,8 +56,36 @@ const pulseSniper = {
  attackUpgrades:[{"values":[1.5,0.3,2.4,0.3,0.3],"cost":[302,252,126,151],"seconds":16308},{"values":[3,0.6,4.8,0.6,0.6],"cost":[1210,1008,504,605],"seconds":25888},{"values":[5,1,8,1,1],"cost":[4234,3528,1764,2117],"seconds":32618},{"values":[7,1.4,11.2,1.4,1.4],"cost":[9526,7938,3974,4769],"seconds":41102},{"values":[9.5,1.9,15.2,1.9,1.9],"cost":[15880,13234,6624,7949],"seconds":51790},{"values":[12,2.4,19.2,2.4,2.4],"cost":[24797,20664,10332,12398],"seconds":65250},{"values":[15,3,24,3,3],"cost":[46526,38772,19386,23263],"seconds":82220},{"values":[18,3.6,28.8,3.6,3.6],"cost":[77501,64584,32292,38750],"seconds":103594},{"values":[21.5,4.3,34.4,4.3,4.3],"cost":[121122,100935,50490,60588],"seconds":130530},{"values":[25,5,40,5,5],"cost":[201888,168240,84120,100944],"seconds":164470},{"values":[30,6,48,6,6],"cost":[200000,200000,200000,200000],"seconds":230258}],healthUpgrades:[{"value":1.8,"cost":[378,315,158,190],"seconds":12812},{"value":4.05,"cost":[1512,1260,630,756],"seconds":20340},{"value":6.75,"cost":[5296,4414,2210,2652],"seconds":25630},{"value":9.9,"cost":[11910,9925,4968,5962],"seconds":32294},{"value":13.5,"cost":[19837,16531,8266,9919],"seconds":40692},{"value":18,"cost":[31018,25848,12924,15509],"seconds":51270},{"value":23.4,"cost":[58126,48438,24219,29063],"seconds":64600},{"value":29.7,"cost":[96898,80748,40392,48470],"seconds":81394},{"value":36.9,"cost":[151416,126180,63090,75708],"seconds":102558},{"value":45,"cost":[227124,189270,94662,113594],"seconds":129224},{"value":54,"cost":[200000,200000,200000,200000],"seconds":180914}],skills:["Defender","Archer"]
 };
 const rangedProfiles=[railgunner,pulseSniper,droneOperator];
+
+const eliteBaseAttack = 100;
+const eliteBaseHealth = 500;
+const eliteAttackStep = eliteBaseAttack / 10;
+const eliteHealthStep = eliteBaseHealth / 10;
+const eliteAttackUpgrades = Array.from({length:10}, (_, index) => ({
+  values: Array(5).fill(eliteAttackStep * (index + 1))
+}));
+const eliteHealthUpgrades = Array.from({length:10}, (_, index) => ({
+  value: eliteHealthStep * (index + 1)
+}));
+const eliteUnitProfiles = [
+  {name:"AI General",cargo:50},
+  {name:"Gene Warrior",cargo:30}
+].map(unit => ({
+  ...unit,
+  category:"infantry",
+  attack:{infantry:eliteBaseAttack,mobile:eliteBaseAttack,ranged:eliteBaseAttack,artillery:eliteBaseAttack},
+  wallAttack:eliteBaseAttack,
+  health:eliteBaseHealth,
+  range:2,
+  population:1,
+  requirement:{building:"Order",level:1},
+  price:{Gold:5000,Iron:5000,Water:5000,Solar:5000},
+  upgradeBonusesAreCumulative:true,
+  attackUpgrades:eliteAttackUpgrades,
+  healthUpgrades:eliteHealthUpgrades
+}));
 const resources=["Gold","Iron","Water","Solar"];
-function profileFor(unit){return unit==="Explorer Trooper"?explorerTrooper:unit==="Nano Shieldman"?nanoShieldman:unit==="Exo-Soldier"?exoSoldier:unit==="Plasma Bladesman"?plasmaBladesman:rangedProfiles.find(profile=>profile.name===unit)||mobileUnitProfiles.find(profile=>profile.name===unit)||heavyUnitProfiles.find(profile=>profile.name===unit)||null;}
+function profileFor(unit){return unit==="Explorer Trooper"?explorerTrooper:unit==="Nano Shieldman"?nanoShieldman:unit==="Exo-Soldier"?exoSoldier:unit==="Plasma Bladesman"?plasmaBladesman:rangedProfiles.find(profile=>profile.name===unit)||mobileUnitProfiles.find(profile=>profile.name===unit)||heavyUnitProfiles.find(profile=>profile.name===unit)||eliteUnitProfiles.find(profile=>profile.name===unit)||null;}
 function unitUpgradeMaxLevel(unit, stat) {
  const profile=profileFor(unit);
  if(!profile?.upgradeBonusesAreCumulative)return 10;
@@ -69,11 +97,9 @@ function armyPopulation(army) {
 function explorerUpgrade(unit,stat,currentLevel,discount=0,speed=0){
  const profile=profileFor(unit);if(!profile)return null;
  const rows=stat==="attack"?profile.attackUpgrades:profile.healthUpgrades,row=rows[currentLevel-1];if(!row)return null;
- const details={
-  cost:Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)])),
-  durationMs:Math.ceil(row.seconds*1000*(100-speed)/100),
-  maxLevel:unitUpgradeMaxLevel(unit,stat)
- };
+ const details={maxLevel:unitUpgradeMaxLevel(unit,stat)};
+ if(row.cost)details.cost=Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)]));
+ if(row.seconds!=null)details.durationMs=Math.ceil(row.seconds*1000*(100-speed)/100);
  if(profile.upgradeBonusesAreCumulative)details.bonus=stat==="attack"?row.values:row.value;
  return details;
 }
