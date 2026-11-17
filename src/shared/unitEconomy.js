@@ -41,6 +41,13 @@ const unlockLevels = {
   Ground:[1,2,4,6], Ranged:[1,8,16], Mobile:[1,3,5,7],
   "Heavy Systems":[2,4,6,8], Elite:[1,1]
 };
+function specialUnitCombatBonuses(army) {
+  return {
+    attack: Math.min(50, Math.max(0, Number(army?.["AI General"]) || 0)) / 10,
+    health: Math.min(50, Math.max(0, Number(army?.["Gene Warrior"]) || 0)) / 10
+  };
+}
+
 function unitRequirement(unit) {
   const entry=Object.entries(categories).find(([,units])=>units.includes(unit));
   if (!entry) return null;
@@ -108,4 +115,4 @@ function buildingPrice(name,nextLevel,discount = 0) {
   return Object.fromEntries(Object.entries(buildingBaseCosts[name]).map(([resource,amount])=>[resource,Math.ceil(amount * nextLevel * (100 - discount) / 100)]));
 }
 
-module.exports={allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};
+module.exports={specialUnitCombatBonuses,allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};

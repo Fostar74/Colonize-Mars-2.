@@ -215,7 +215,16 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                 "The Order is one of the most important buildings in the game. Level 1 unlocks training for both special units.",
                 "Орденът е една от най-важните сгради в играта. На ниво 1 се отключва обучението на двете специални единици."
               )}</p>
-              <ul>{unitCategories.Elite.map(unit => <li key={unit}>{localLabel(unit)}</li>)}</ul>
+              <ul>
+                <li><strong>{localLabel("AI General")}</strong> · {t(
+                  "+0.1% army attack per deployed unit, up to +5% with 50 units.",
+                  "+0,1% атака за цялата армия за всяка участваща единица, до +5% при 50 единици."
+                )}</li>
+                <li><strong>{localLabel("Gene Warrior")}</strong> · {t(
+                  "+0.1% army health per deployed unit, up to +5% with 50 units.",
+                  "+0,1% живот за цялата армия за всяка участваща единица, до +5% при 50 единици."
+                )}</li>
+              </ul>
               {Number(structures.Order || 0) >= 1 && <button className="upgrade-btn" onClick={() => {
                 setUnitTab("Elite");
                 setActiveTab("units");

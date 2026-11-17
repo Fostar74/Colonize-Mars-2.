@@ -1,6 +1,6 @@
 // Profiled units use their own combat values.
 // Every volley targets one randomly selected eligible group, independent of group size.
-const {categories}=require("../src/shared/unitEconomy");
+const {categories,specialUnitCombatBonuses}=require("../src/shared/unitEconomy");
 const {profileFor,unitCombatStats}=require("../src/shared/unitProfiles");
 const playerTypes=Object.fromEntries(Object.entries(categories).flatMap(([category,names])=>names.map((name,index)=>[name,{category:category==="Ground"||category==="Elite"?"infantry":category==="Ranged"?"ranged":category==="Mobile"?"mobile":"artillery",hp:category==="Ground"?90+index*30:category==="Ranged"?65+index*10:category==="Mobile"?180+index*80:category==="Elite"?350+index*100:120+index*50,attack:category==="Ground"?20+index*7:category==="Ranged"?35+index*12:category==="Mobile"?50+index*18:category==="Elite"?90+index*25:55+index*20,range:category==="Ground"?1:category==="Elite"?2:category==="Mobile"?1:category==="Ranged"?4:5}])));
 for(const name of Object.keys(playerTypes)){
@@ -48,6 +48,11 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     createGroups(defenderArmy,defenderIsPlayer?playerTypes:alienTypes,defenderIsPlayer?options.defenderFormation:null)
   ];
   const playerBonusesForSide=side=>side===playerSide?bonuses:(defenderIsPlayer&&side===1?options.defenderBonuses||null:null);
+  // Each side's deployed special units provide their bonuses for the entire battle.
+  const specialBonuses = [
+    specialUnitCombatBonuses(attackerIsAlien ? null : attackerArmy),
+    specialUnitCombatBonuses(defenderIsPlayer ? defenderArmy : null)
+  ];
   // Apply unit-specific upgrades and equipment to player units, and enemy debuffs to the opposing side.
   for(let side=0;side<2;side++)for(const group of sides[side]){
     const isPlayerSide=!!playerBonusesForSide(side);
@@ -58,10 +63,10 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     const categoryBonus=group.category==="ranged"?ownerBonuses.rangedAttack:group.category==="infantry"?ownerBonuses.infantryAttack:group.category==="mobile"?ownerBonuses.mobileAttack:group.category==="artillery"?ownerBonuses.artilleryAttack:0;
     const research=ownerBonuses.unitResearch?.[group.unit]||options.defenderUnitResearch?.[group.unit];
     const unitEffect=ownerBonuses.unitEffects?.[group.unit]||{},enemyDebuff=enemyBonuses.enemyDebuffs?.[group.unit]||{};
-    const attackMultiplier=Math.max(0,1+((Number(categoryBonus)||0)+(Number(ownerBonuses.leadership)||0)+(Number(ownerBonuses.allAttack)||0)+(research?.attack||0)+(Number(unitEffect.attack)||0)-(Number(enemyDebuff.attack)||0))/100);
+    const attackMultiplier=Math.max(0,1+((Number(categoryBonus)||0)+(Number(ownerBonuses.leadership)||0)+(Number(ownerBonuses.allAttack)||0)+specialBonuses[side].attack+(research?.attack||0)+(Number(unitEffect.attack)||0)-(Number(enemyDebuff.attack)||0))/100);
     group.attack*=attackMultiplier;
     if(group.attackVs)for(const key of Object.keys(group.attackVs))group.attackVs[key]*=attackMultiplier;
-    const healthMultiplier=Math.max(.01,1+((Number(ownerBonuses.allHealth)||0)+(research?.health||0)+(group.category==="infantry"?(Number(ownerBonuses.infantryHealth)||0):0)+(Number(unitEffect.health)||0)-(Number(enemyDebuff.health)||0))/100);
+    const healthMultiplier=Math.max(.01,1+((Number(ownerBonuses.allHealth)||0)+specialBonuses[side].health+(research?.health||0)+(group.category==="infantry"?(Number(ownerBonuses.infantryHealth)||0):0)+(Number(unitEffect.health)||0)-(Number(enemyDebuff.health)||0))/100);
     group.hp*=healthMultiplier;
   }
   const report=[];let rounds=0;

@@ -5,7 +5,7 @@ const alienBases = require("../src/shared/alienBases");
 const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
+const {specialUnitCombatBonuses,allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -1845,6 +1845,7 @@ class DatabaseManager {
         artillery:this.protocolBonusWithEquipment(attack.user_id,"Heavy Artillery",gearEffects),
         leadership:this.protocolBonusWithEquipment(attack.user_id,"Battle Command",gearEffects)
       };
+      const specialAttackBonus = specialUnitCombatBonuses(army).attack;
       let damage=0;
       for(const group of formation){
         const type=playerTypes[group.unit];if(!type)continue;
@@ -1853,7 +1854,7 @@ class DatabaseManager {
         const upgradeBonus=usesProfileUpgrades?0:Math.max(0,Number(upgrades.attack||1)-1)*10+Math.max(0,Number(upgrades.defense||1)-1)*3;
         const attackVs=usesProfileUpgrades?unitCombatStats(group.unit,upgrades).attack:type.attackVs;
         const categoryBonus=protocols[type.category]||0;
-        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+protocols.leadership+Number(attack.knight_level||1)*2+(Number(gearEffects.unitEffects[group.unit]?.attack)||0);
+        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+protocols.leadership+specialAttackBonus+Number(attack.knight_level||1)*2+(Number(gearEffects.unitEffects[group.unit]?.attack)||0);
         // The Mother Ship has no target category. Average the unit's matchup values.
         const baseAttack=attackVs
           ? ["infantry","mobile","ranged","artillery"].reduce((sum,category)=>sum+(Number(attackVs[category])||0),0)/4
