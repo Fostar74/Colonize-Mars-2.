@@ -104,6 +104,8 @@ function Map() {
   const dragRef = useRef(null);
   const suppressClickRef = useRef(false);
   const [zoom, setZoom] = useState(1);
+  const [terrainImage,setTerrainImage]=useState(null);
+  useEffect(()=>{const image=new Image();image.onload=()=>setTerrainImage(image);image.src="/mars-terrain.svg";},[]);
   const tileSize = 60 * zoom;
   const mapSize = 100;
 
@@ -300,6 +302,21 @@ function Map() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
+    // Terrain is a separate visual layer; all bases, mines and missions remain live objects.
+    // The image is tiled across the 100x100 world without changing any coordinates.
+    if(terrainImage){
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
+      ctx.clip();
+      const chunk=20*tileSize;
+      for(let x=0;x<5;x++)for(let y=0;y<5;y++){
+        const dx=offset.x+x*chunk,dy=offset.y+y*chunk;
+        if(dx>canvas.width||dy>canvas.height||dx+chunk<0||dy+chunk<0)continue;
+        ctx.drawImage(terrainImage,dx,dy,chunk,chunk);
+      }
+      ctx.restore();
+    } else {
     // Mars surface: layered rust regolith, ridges, impact craters and dust deposits.
     ctx.save();
     ctx.beginPath();
@@ -340,6 +357,7 @@ function Map() {
       ctx.strokeStyle="#d79a6e";ctx.lineWidth=Math.max(.7,radius*.21);ctx.globalAlpha=.72;ctx.stroke();
     }
     ctx.globalAlpha=1;
+    }
     // Subtle coordinate lattice, visible mainly when zoomed in.
     if(tileSize>=16){
       ctx.strokeStyle="rgba(238,177,126,.14)";ctx.lineWidth=.7;
@@ -439,7 +457,7 @@ function Map() {
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
       ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
-  }, [offset, castles, hqIcon, mineIcons, alienIcon, zoom, campaign, mineData, t]);
+  }, [offset, castles, hqIcon, mineIcons, alienIcon, terrainImage, zoom, campaign, mineData, t]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
