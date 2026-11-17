@@ -608,6 +608,28 @@ class DatabaseManager {
       }
       for(const category of Object.keys(trainingCategories)){
         const queue=trainingQueues[category]||[];
+        // One-time migration of existing training queues to the normal x10 speed.
+        // Preserve completed jobs and elapsed progress; never re-charge resources.
+        let previousEnd = now;
+        for (const job of queue) {
+          if (job.trainingSpeedVersion !== 10) {
+            const oldStart = Number(job.startsAt) || now;
+            const oldEnd = Number(job.endsAt) || oldStart;
+            const oldDuration = Math.max(0, oldEnd - oldStart);
+            if (oldEnd > now) {
+              if (oldStart <= now) {
+                const remaining = Math.max(0, oldEnd - now);
+                job.startsAt = now;
+                job.endsAt = now + Math.max(1000, Math.ceil(remaining / 10));
+              } else {
+                job.startsAt = previousEnd;
+                job.endsAt = previousEnd + Math.max(1000, Math.ceil(oldDuration / 10));
+              }
+            }
+            job.trainingSpeedVersion = 10;
+          }
+          previousEnd = Number(job.endsAt) || previousEnd;
+        }
         // Process every completed job, including when the player was offline.
         while(queue.length&&queue[0].endsAt<=now){
           const done=queue.shift();
@@ -718,7 +740,7 @@ class DatabaseManager {
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
       const duration=Math.max(1000,Math.ceil(quantity*unitTrainingDuration(unit)*1000*(1-trainingBonus)));
       const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
-      const job={unit,quantity,startsAt,endsAt:startsAt+duration};
+      const job={unit,quantity,startsAt,endsAt:startsAt+duration,trainingSpeedVersion:10};
       const trainingQueues={...current.trainingQueues,[category]:[...queue,job]};
       db.prepare("UPDATE game_runtime SET training_queues=? WHERE user_id=?").run(JSON.stringify(trainingQueues),userId);
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
