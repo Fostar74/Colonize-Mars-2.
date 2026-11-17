@@ -15,10 +15,10 @@ import InformationPanel from "./InformationPanel";
 
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
+import AVATARS from "../shared/avatarCatalog";
 // User-supplied artwork: 16:9 desktop and 9:16 mobile. Files belong in public/.
 const desktopColonyBackground = "/mars-colony-desktop.jpg";
 const mobileColonyBackground = "/mars-colony-mobile.jpg";
-import AVATARS from "../shared/avatarCatalog";
 
 const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;
 const resolvedBattleReportIds = data => [
