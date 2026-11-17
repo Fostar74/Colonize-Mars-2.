@@ -2980,12 +2980,16 @@ class DatabaseManager {
       let settled=0;
       for(const mine of active){
         if(!mine.gathering_started_at || !mine.gathering_rate) continue;
-        const finishAt=mine.gathering_started_at+Math.ceil(mine.amount/mine.gathering_rate*3600000);
+        const units=JSON.parse(mine.gathering_units||"{}");
+        const cargo=Math.floor(calculateCargoCapacity(units));
+        const collectedLimit=Math.min(Number(mine.amount)||0,cargo);
+        const finishAt=mine.gathering_started_at+Math.ceil(collectedLimit/mine.gathering_rate*3600000);
         if(now<finishAt) continue;
+        const depleted=collectedLimit>=Number(mine.amount);
         const current=this.syncGame(mine.claimed_by);
         if(current){
           const key={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
-          current.resources[key]=(Number(current.resources[key])||0)+Number(mine.amount);
+          current.resources[key]=(Number(current.resources[key])||0)+collectedLimit;
           for(const [unit,count] of Object.entries(JSON.parse(mine.gathering_units||"{}"))){
             current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
           }
@@ -2993,9 +2997,15 @@ class DatabaseManager {
             .run(JSON.stringify(current.resources),mine.claimed_by);
           db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mine.claimed_by);
           db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
-            .run(mine.claimed_by,mine.id,mine.resource,Math.floor(Number(mine.amount)||0),mine.gathering_units||"{}",now,"depleted",mine.x,mine.y);
+            .run(mine.claimed_by,mine.id,mine.resource,collectedLimit,mine.gathering_units||"{}",now,depleted?"depleted":"cargo_full",mine.x,mine.y);
           db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'gathering_return', ?, ?)")
-            .run(mine.claimed_by,key+" · "+Number(mine.amount).toLocaleString(),now);
+            .run(mine.claimed_by,key+" · "+collectedLimit.toLocaleString(),now);
+        }
+        if(!depleted){
+          db.prepare("UPDATE resource_mines SET amount=?,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=?")
+            .run(Math.max(0,Number(mine.amount)-collectedLimit),mine.id);
+          settled++;
+          continue;
         }
         const blocked=new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row=>row.x+":"+row.y));
         for(const base of alienBases)blocked.add(base.x+":"+base.y);
@@ -3027,7 +3037,8 @@ class DatabaseManager {
       m.origin_x,m.origin_y,m.gathering_started_at,m.gathering_rate,u.username AS owner
       FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by ORDER BY m.id`).all().map(mine=>{
         const elapsed=Math.max(0,now-Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now));
-        const gathered=mine.claimed_by&&mine.gathering_rate?Math.min(mine.amount,elapsed*mine.gathering_rate/3600000):0;
+        const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
+        const gathered=mine.claimed_by&&mine.gathering_rate?Math.min(mine.amount,cargo,elapsed*mine.gathering_rate/3600000):0;
         return {...mine,amount:Math.max(0,Math.floor(mine.amount-gathered))};
       });
     const activeMineCount=mines.filter(mine=>Number(mine.claimed_by)===Number(userId)).length;
@@ -3082,7 +3093,8 @@ class DatabaseManager {
       const current=this.syncGame(userId);
       if(!current)return {error:"Player not found."};
       const now=Date.now(),startAt=Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now);
-      const gathered=mine.gathering_rate?Math.min(Number(mine.amount)||0,Math.floor(Math.max(0,now-startAt)*Number(mine.gathering_rate)/3600000)):0;
+      const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
+      const gathered=mine.gathering_rate?Math.min(Number(mine.amount)||0,cargo,Math.floor(Math.max(0,now-startAt)*Number(mine.gathering_rate)/3600000)):0;
       const resourceKey={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
       if(resourceKey)current.resources[resourceKey]=(Number(current.resources[resourceKey])||0)+gathered;
       const returnedUnits=JSON.parse(mine.gathering_units||"{}");
