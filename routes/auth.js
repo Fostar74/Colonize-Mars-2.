@@ -166,6 +166,17 @@ router.post("/upgrade-unit", requireSession, (req, res) => {
   } catch (error) { console.error("Upgrade unit:", error); res.status(500).json({ message: "Upgrade failed." }); }
 });
 
+router.post("/cancel-training-group", requireSession, (req,res) => {
+  try {
+    const result = db.cancelTrainingGroup(Number(req.body.userId),req.body.category,Number(req.body.index));
+    if (result.error) return res.status(400).json({message:result.error});
+    res.json(result);
+  } catch (error) {
+    console.error("Cancel training group:",error);
+    res.status(500).json({message:"Could not cancel training."});
+  }
+});
+
 router.post("/cancel-unit-upgrade", requireSession, (req, res) => {
   try {
     const result = db.cancelUnitUpgrade(Number(req.body.userId), Number(req.body.slot));
