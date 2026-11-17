@@ -129,6 +129,13 @@ export default function InformationPanel(){
  );
  const wallUpgradeColumn={index:3,label:t("Attack against the Defense Grid","Атака срещу Отбранителната мрежа")};
  const demolitionBotDetails=heavyUnitDetails(demolitionBot,["Available to all factions. Attacks only the Defense Grid. It is the fastest Heavy System and has the most health. Recommended position: first row.","Достъпен за всички нации. Атакува само Отбранителната мрежа. Това е най-бързата тежка система и има най-много живот. Препоръчителна позиция: първи ред."],[wallUpgradeColumn]);
+ const allAttackUpgradeColumns=[
+  {index:0,label:t("Ground","Сухопътни")},
+  {index:1,label:t("Mobile","Мобилни")},
+  {index:2,label:t("Ranged","Стрелкови")},
+  wallUpgradeColumn,
+  {index:4,label:t("Heavy Systems","Тежки системи")}
+ ];
  const missileCarrierDetails=heavyUnitDetails(missileCarrier,[
   "Available to all factions. Deals equal damage to ground, mobile, ranged, and heavy units. Place it behind the front row.",
   "Достъпен за всички нации. Нанася еднакви щети срещу сухопътни, мобилни, стрелкови и тежки единици. Поставяйте го зад предния ред."
@@ -226,14 +233,11 @@ export default function InformationPanel(){
    {heavyUnit(particleBlaster,label(particleBlaster.name),heavyUnitDetails(particleBlaster,[
     "Available to all factions. It is strongest against ground and ranged units. Place it behind the front row.",
     "Достъпно за всички нации. Най-силно е срещу сухопътни и стрелкови единици. Поставяйте го зад предния ред."
-   ],[
-    {index:0,label:t("Ground","Сухопътни")},
-    {index:1,label:t("Mobile","Мобилни")},
-    {index:2,label:t("Ranged","Стрелкови")},
-    wallUpgradeColumn,
-    {index:4,label:t("Heavy Systems","Тежки системи")}
-   ]))}
-   {heavyUnit(orbitalStrikeBeacon,"Маркер за орбитален удар")}
+   ],allAttackUpgradeColumns))}
+   {heavyUnit(orbitalStrikeBeacon,label(orbitalStrikeBeacon.name),heavyUnitDetails(orbitalStrikeBeacon,[
+    "Available to all factions. It is strongest against mobile units and heavy systems. Place it behind the front row.",
+    "Достъпен за всички нации. Най-силен е срещу мобилни единици и тежки системи. Поставяйте го зад предния ред."
+   ],allAttackUpgradeColumns))}
   </>}
   {category&&page!=="ground"&&category.id!=="ranged"&&category.id!=="mobile"&&category.id!=="heavy"&&<><h2>{t(category.en,category.bg)}</h2><p style={{padding:14,background:"#172432",border:"1px solid #54758a",borderRadius:10}}>{t("Detailed unit statistics and upgrade tables for this category will be added later.","Подробните характеристики и таблиците за подобренията на тази категория ще бъдат добавени по-късно.")}</p>{categoryProtocols[category.id]&&<p>{t(categoryProtocols[category.id][0],categoryProtocols[category.id][1])}</p>}</>}
   {section?.id==="skills"&&(nanoArmorSystems?<>
