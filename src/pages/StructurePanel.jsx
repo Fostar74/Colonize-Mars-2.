@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import "./StructurePanel.css";
 import unitEconomy from "../shared/unitEconomy";
 import {unitUpgradeMaxLevel} from "../shared/unitProfiles";
-import {demolitionBot,missileCarrier} from "../shared/heavyUnitProfiles";
+import {demolitionBot,missileCarrier,particleBlaster} from "../shared/heavyUnitProfiles";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
@@ -19,7 +19,7 @@ const structureTypes = {
 
 // These profiles start at the base stat, before the first purchased upgrade.
 function displayedUpgradeLevel(unit, level) {
-  const countsFromBase = unit === demolitionBot.name || unit === missileCarrier.name;
+  const countsFromBase = [demolitionBot, missileCarrier, particleBlaster].some(profile => profile.name === unit);
   return countsFromBase ? Math.min(10, level - 1) : level;
 }
 
