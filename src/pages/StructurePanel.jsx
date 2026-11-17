@@ -14,7 +14,8 @@ const {unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice,unit
 const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
   Economy: ["Cargo Depot", "Defense Grid", "Upgrade Lab", "Bio-Lab"],
-  Military: ["Training Center", "Combat Simulator", "Vehicle Bay", "Drone Factory"]
+  Military: ["Training Center", "Combat Simulator", "Vehicle Bay", "Drone Factory"],
+  Order: []
 };
 
 // These profiles start at the base stat, before the first purchased upgrade.
@@ -208,6 +209,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
             {expandedSections[section] ? "▾" : "▸"} {localLabel(section)} {section === "Resources" ? t("— start here","— започни тук") : ""}
           </button>
           {expandedSections[section] && <div className="building-grid">
+            {buildings.length === 0 && <p>{t("No buildings yet.", "Все още няма сгради.")}</p>}
             {buildings.map(name => {
               const level = Number(structures[name] || 0);
               const queuedBuildings = game.buildingQueue || (game.queuedBuildingJob ? [game.queuedBuildingJob] : []);

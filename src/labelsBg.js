@@ -1,6 +1,7 @@
 export default {
   "Economy": "Икономика",
   "Military": "Военни сгради",
+  "Order": "Орден",
   "Invalid Alien Base coordinates.": "Невалидни координати на извънземната база.",
   "Choose a valid number of scouts.": "Избери валиден брой разузнавачи.",
   "Not enough available Rover Scouts.": "Няма достатъчно свободни разузнавателни роувъри.",
