@@ -310,3 +310,18 @@
 .message-notification-alert { position:fixed; top:84px; right:12px; z-index:11000; display:flex; align-items:center; gap:10px; max-width:min(620px,calc(100vw - 24px)); padding:12px 14px; border:1px solid #75c8f5; border-radius:10px; background:linear-gradient(110deg,#0e3852,#176d96); color:#fff; box-shadow:0 8px 28px #0009; }
 .message-notification-alert button { background:#d9f2ff; color:#11364c; }
 @media(max-width:600px) { .message-notification-alert { top:60px; left:12px; flex-wrap:wrap; justify-content:center; text-align:center; } }
+
+/* Responsive home artwork: supplied 16:9 and 9:16 images. */
+.game-container.game-colony-background {
+  background-image: var(--mars-desktop-background), var(--mars-fallback-background);
+  background-size: cover;
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-color: #120e1b;
+}
+@media (max-width: 767px) and (orientation: portrait) {
+  .game-container.game-colony-background {
+    background-image: var(--mars-mobile-background), var(--mars-fallback-background);
+    background-position: center center;
+  }
+}
