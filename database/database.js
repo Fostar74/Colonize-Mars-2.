@@ -817,23 +817,39 @@ class DatabaseManager {
   }
 
   refundCancelledMilitaryJob(userId, current, paidCost) {
-    const member = db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
-    if (!member) return {error:"An alliance is required to donate the 10% cancellation fee."};
-    const treasuryRow = db.prepare("SELECT resources FROM alliance_treasury WHERE alliance_id=?").get(member.alliance_id);
-    const treasury = treasuryRow ? JSON.parse(treasuryRow.resources) : {Gold:0,Iron:0,Water:0,Solar:0};
+    // Cancellation settlement follows the market's donation rules:
+    // 90% returned, 10% to alliance treasury (or lost without an alliance).
+    const resources = ["Gold","Iron","Water","Solar"];
+    const refund = {};
+    const donation = {};
     for (const [resource, raw] of Object.entries(paidCost)) {
       const paid = Number(raw);
-      if (!Number.isSafeInteger(paid) || paid < 0 || !["Gold","Iron","Water","Solar"].includes(resource))
+      if (!resources.includes(resource) || !Number.isSafeInteger(paid) || paid < 0)
         return {error:"Invalid original resource cost."};
-      const donated = Math.ceil(paid / 10);
-      current.resources[resource] = (Number(current.resources[resource]) || 0) + paid - donated;
-      treasury[resource] = (Number(treasury[resource]) || 0) + donated;
+      donation[resource] = Math.ceil(paid / 10);
+      refund[resource] = paid - donation[resource];
     }
-    db.prepare("INSERT OR IGNORE INTO alliance_treasury(alliance_id,resources,bonuses) VALUES (?,?,?)")
-      .run(member.alliance_id,JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),"{}");
-    db.prepare("UPDATE alliance_treasury SET resources=? WHERE alliance_id=?")
-      .run(JSON.stringify(treasury),member.alliance_id);
-    return {donatedToAlliance:true};
+    const member = db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+    let pointsEarned = 0;
+    if (member) {
+      const treasuryRow = db.prepare("SELECT resources FROM alliance_treasury WHERE alliance_id=?").get(member.alliance_id);
+      const treasury = treasuryRow ? JSON.parse(treasuryRow.resources) : {Gold:0,Iron:0,Water:0,Solar:0};
+      for (const [resource, amount] of Object.entries(donation))
+        treasury[resource] = (Number(treasury[resource]) || 0) + amount;
+      db.prepare("INSERT OR IGNORE INTO alliance_treasury(alliance_id,resources,bonuses) VALUES (?,?,?)")
+        .run(member.alliance_id,JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),"{}");
+      db.prepare("UPDATE alliance_treasury SET resources=? WHERE alliance_id=?")
+        .run(JSON.stringify(treasury),member.alliance_id);
+      const donatedTotal = Object.values(donation).reduce((sum,n)=>sum+n,0);
+      pointsEarned = Math.floor(donatedTotal / 100) * 10;
+      if (pointsEarned) {
+        db.prepare("INSERT OR IGNORE INTO alliance_wallets(user_id) VALUES (?)").run(userId);
+        db.prepare("UPDATE alliance_wallets SET points=points+? WHERE user_id=?").run(pointsEarned,userId);
+      }
+    }
+    for (const [resource, amount] of Object.entries(refund))
+      current.resources[resource] = (Number(current.resources[resource]) || 0) + amount;
+    return {refund,donation,pointsEarned,donatedToAlliance:!!member};
   }
 
   cancelTrainingGroup(userId, category, index) {
