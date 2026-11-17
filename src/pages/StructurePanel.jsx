@@ -301,6 +301,10 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
         <strong>{unitTab} {t("training groups:","групи за обучение:")} {(game.trainingQueues?.[unitTab]||[]).length}/5</strong>
         {(game.trainingQueues?.[unitTab]||[]).map((job,index)=><div key={index}>
           {index+1}. {job.quantity} × {localLabel(job.unit)} — {index===0?localLabel("Training"):localLabel("Queued")} · {index===0?formatTime(remaining(job)):"Starts "+new Date(job.startsAt).toLocaleTimeString()}
+          <button type="button" disabled={!!busy} style={{marginLeft:8}} onClick={()=>{
+            if(window.confirm(t("Cancel this training group? 90% of resources will be returned and 10% donated to your alliance.","Отказ от обучението? 90% от ресурсите се връщат, а 10% се даряват на алианса.")))
+              act("/cancel-training-group",{category:unitTab,index},`cancel-training-${unitTab}-${index}`);
+          }}>{t("Cancel (90% refund)","Отказ (90% обратно)")}</button>
         </div>)}
         {!(game.trainingQueues?.[unitTab]||[]).length&&<p>{t("No training groups in this category.","Няма групи в тази категория.")}</p>}
         <p>{t("Each category runs independently. Up to five groups are trained sequentially per category.","Категориите се обучават независимо. Във всяка се редят до пет групи.")}</p>
@@ -384,9 +388,9 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
               {t("Slot","Слот")} {slot+1} · {status}
             </button>
             {job && <button type="button" disabled={!!busy} onClick={()=>{
-              if(window.confirm(t("Cancel this upgrade and refund 100% of its resources?","Отказ от подобрението и връщане на 100% от ресурсите?")))
+              if(window.confirm(t("Cancel this upgrade? 90% of resources will be returned and 10% donated to your alliance.","Отказ от подобрението? 90% от ресурсите се връщат, а 10% се даряват на алианса.")))
                 act("/cancel-unit-upgrade",{slot},`cancel-upgrade-${slot}`);
-            }}>{t("Cancel — 100% refund","Отказ — 100% ресурси обратно")}</button>}
+            }}>{t("Cancel — 90% refund","Отказ — 90% обратно")}</button>}
           </div>;
         })}
       </div>
