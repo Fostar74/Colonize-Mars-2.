@@ -14,6 +14,7 @@ import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
 import alienBases from "../shared/alienBases";
 import spaceStations from "../shared/spaceStations";
+import { createMarsTerrain } from "../shared/marsTerrainPrototype";
 const {units, marchLimit, cellsPerRow, defaultFormation, normalizeFormation}=formations;
 
 const formationTypes = {
@@ -105,7 +106,7 @@ function Map() {
   const suppressClickRef = useRef(false);
   const [zoom, setZoom] = useState(1);
   const [terrainImage,setTerrainImage]=useState(null);
-  useEffect(()=>{const image=new Image();image.onload=()=>setTerrainImage(image);image.onerror=()=>setTerrainImage(null);image.src="/mars-terrain-realistic.jpg";},[]);
+  useEffect(()=>{setTerrainImage(createMarsTerrain(1024));},[]);
   const tileSize = 60 * zoom;
   const mapSize = 100;
 
@@ -302,62 +303,21 @@ function Map() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Terrain is a separate visual layer; all bases, mines and missions remain live objects.
-    // The image is tiled across the 100x100 world without changing any coordinates.
-    if(terrainImage){
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
-      ctx.clip();
-      const chunk=20*tileSize;
-      for(let x=0;x<5;x++)for(let y=0;y<5;y++){
-        const dx=offset.x+x*chunk,dy=offset.y+y*chunk;
-        if(dx>canvas.width||dy>canvas.height||dx+chunk<0||dy+chunk<0)continue;
-        ctx.drawImage(terrainImage,dx,dy,chunk,chunk);
-      }
-      ctx.restore();
-    } else {
-    // Mars surface: layered rust regolith, ridges, impact craters and dust deposits.
+    // Prototype branch: a single continuous terrain image anchored to world coordinates.
+    // Only the visible portion is rasterized; gameplay markers remain in separate passes.
     ctx.save();
     ctx.beginPath();
-    ctx.rect(Math.max(0,offset.x),Math.max(0,offset.y),mapSize*tileSize,mapSize*tileSize);
+    ctx.rect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
     ctx.clip();
-    ctx.fillStyle="#6d3429";
-    ctx.fillRect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
-    const terrain=(x,y)=>({x:offset.x+x*tileSize,y:offset.y+y*tileSize});
-    // Stable terrain features anchored to world coordinates.
-    for(let i=0;i<450;i++){
-      const x=(i*37.731+13.3)%100,y=(i*61.317+7.1)%100;
-      const p=terrain(x,y);
-      const radius=(.3+(i%11)*.27)*tileSize;
-      ctx.beginPath();ctx.ellipse(p.x,p.y,radius*2.4,radius*.85,i*.71,0,Math.PI*2);
-      ctx.fillStyle=["#874638","#a15b3e","#4d2929","#bb7951","#784a3b"][i%5];ctx.globalAlpha=.23+(i%4)*.08;ctx.fill();
+    if(terrainImage){
+      ctx.imageSmoothingEnabled=true;
+      ctx.imageSmoothingQuality="high";
+      ctx.drawImage(terrainImage,offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
+    }else{
+      ctx.fillStyle="#a65a3d";
+      ctx.fillRect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
     }
-    ctx.globalAlpha=1;
-    // Canyon and fault lines, no Earth-like rivers or grass.
-    for(let ridge=0;ridge<7;ridge++){
-      ctx.beginPath();
-      for(let step=0;step<=100;step++){
-        const x=step,y=(ridge*17+13+6*Math.sin(step*.095+ridge*2)+2*Math.sin(step*.27+ridge))%100;
-        const p=terrain(x,y);if(step===0)ctx.moveTo(p.x,p.y);else ctx.lineTo(p.x,p.y);
-      }
-      ctx.lineWidth=Math.max(1,tileSize*(.2+ridge%3*.11));ctx.strokeStyle="#39252b";ctx.globalAlpha=.4;ctx.stroke();
-      ctx.lineWidth=Math.max(1,tileSize*.09);ctx.strokeStyle="#cf8558";ctx.globalAlpha=.45;ctx.stroke();
-    }
-    ctx.globalAlpha=1;
-    for(let i=0;i<210;i++){
-      const x=(i*41.83+9.7)%100,y=(i*73.19+5.4)%100,p=terrain(x,y);
-      const radius=(.19+i%7*.14)*tileSize;
-      if(radius<1)continue;
-      ctx.beginPath();ctx.ellipse(p.x,p.y,radius*1.4,radius,0,0,Math.PI*2);
-      ctx.fillStyle="#3b2729";ctx.globalAlpha=.4;ctx.fill();
-      ctx.beginPath();ctx.ellipse(p.x-radius*.15,p.y-radius*.15,radius*.85,radius*.68,0,0,Math.PI*2);
-      ctx.fillStyle="#472c2b";ctx.globalAlpha=.65;ctx.fill();
-      ctx.beginPath();ctx.arc(p.x,p.y,radius,Math.PI*1.06,Math.PI*1.85);
-      ctx.strokeStyle="#d79a6e";ctx.lineWidth=Math.max(.7,radius*.21);ctx.globalAlpha=.72;ctx.stroke();
-    }
-    ctx.globalAlpha=1;
-    }
+    ctx.restore();
     // Subtle coordinate lattice, visible mainly when zoomed in.
     if(tileSize>=16){
       ctx.strokeStyle="rgba(238,177,126,.14)";ctx.lineWidth=.7;
