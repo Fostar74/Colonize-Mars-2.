@@ -311,6 +311,22 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
     </>
   );
 
+  const describeUpgradeBonus = bonus => {
+    if (typeof bonus === "number") return t("Health", "Живот") + ": +" + bonus;
+    if (!Array.isArray(bonus)) return null;
+    const targets = [
+      t("Ground units", "Сухопътни"),
+      t("Mobile units", "Мобилни"),
+      t("Ranged units", "Стрелкови"),
+      t("Defense Grid", "Отбранителна мрежа"),
+      t("Heavy Systems", "Тежки системи")
+    ];
+    return bonus
+      .map((value, index) => value ? targets[index] + ": +" + value : null)
+      .filter(Boolean)
+      .join(" · ");
+  };
+
   const renderUpgrades = () => (
     <>
       {error && <p role="alert" style={{color:"#ff7777"}}>{localLabel(error)}</p>}
@@ -340,12 +356,14 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                 const level=Number(game.unitUpgrades?.[unit]?.[stat] ?? 1);
                 const maxLevel=unitUpgradeMaxLevel(unit,stat);
                 const special=unitUpgradeDetails(unit,stat,level,game.allianceBonuses?.discount,game.allianceBonuses?.speed);
-                  const cost=special?.cost||upgradePrice(level, game.allianceBonuses?.discount);
-                  const duration=special?.durationMs||upgradeDuration(level, game.allianceBonuses?.speed);
+                const cost=special?.cost||upgradePrice(level, game.allianceBonuses?.discount);
+                const duration=special?.durationMs||upgradeDuration(level, game.allianceBonuses?.speed);
+                const bonus=describeUpgradeBonus(special?.bonus);
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
                   <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {displayedUpgradeLevel(unit, level)}</p>
                   {level<maxLevel&&<p>{t("Next level","Следващо ниво")} {displayedUpgradeLevel(unit, level+1)}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>}
+                  {level<maxLevel&&bonus&&<p>{t("Bonus over base stats", "Бонус спрямо базовите показатели")}: {bonus}</p>}
                   <button disabled={!!busy || level>=maxLevel || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
                     onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>
                     {level>=maxLevel?localLabel("MAX LEVEL"):stat==="attack"?localLabel("Upgrade Attack"):localLabel("Upgrade Health / Defense")}

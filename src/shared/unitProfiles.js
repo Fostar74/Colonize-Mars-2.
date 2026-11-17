@@ -69,7 +69,13 @@ function armyPopulation(army) {
 function explorerUpgrade(unit,stat,currentLevel,discount=0,speed=0){
  const profile=profileFor(unit);if(!profile)return null;
  const rows=stat==="attack"?profile.attackUpgrades:profile.healthUpgrades,row=rows[currentLevel-1];if(!row)return null;
- return {cost:Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)])),durationMs:Math.ceil(row.seconds*1000*(100-speed)/100),maxLevel:unitUpgradeMaxLevel(unit,stat)};
+ const details={
+  cost:Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)])),
+  durationMs:Math.ceil(row.seconds*1000*(100-speed)/100),
+  maxLevel:unitUpgradeMaxLevel(unit,stat)
+ };
+ if(profile.upgradeBonusesAreCumulative)details.bonus=stat==="attack"?row.values:row.value;
+ return details;
 }
 function unitCombatStats(unit,levels={}){
  const profile=profileFor(unit)||explorerTrooper,attack={...profile.attack};let health=profile.health,wallAttack=Number(profile.wallAttack)||0;
