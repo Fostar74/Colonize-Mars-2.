@@ -231,10 +231,10 @@ function Map() {
     const water = new Image();
     const alien = new Image();
 
-    gold.src = goldMineImg;
-    iron.src = ironMineImg;
-    solar.src = solarMineImg;
-    water.src = waterMineImg;
+    gold.src = "/map-mine-gold.svg";
+    iron.src = "/map-mine-iron.svg";
+    solar.src = "/map-mine-solar.svg";
+    water.src = "/map-mine-water.svg";
     alien.src = alienBaseImg;
 
     const onLoad = () => {
@@ -253,7 +253,7 @@ function Map() {
 
   useEffect(() => {
     const img = new Image();
-    img.src = hqIconFile;
+    img.src = "/map-colony.svg";
 
     img.onload = () => {
       setHqIcon(img);
