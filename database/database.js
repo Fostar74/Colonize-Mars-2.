@@ -1170,6 +1170,27 @@ class DatabaseManager {
       return {pointsEarned:10,resource,amount,economy:this.allianceEconomy(userId,member.alliance_id)};
     })();
   }
+  exchangeAllianceResource(userId,from,to,amount){
+    const resources=["Gold","Iron","Water","Solar"];
+    if(!resources.includes(from)||!resources.includes(to)||from===to)return {error:"Choose two different resources."};
+    if(!Number.isSafeInteger(amount)||amount<5||amount%5!==0)return {error:"Amount must be a positive multiple of 5."};
+    return db.transaction(()=>{
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance first."};
+      const progress=this.syncGame(userId);
+      if(!progress||Number(progress.resources[from]||0)<amount)return {error:"Not enough resources to exchange."};
+      const received=amount*4/5,donated=amount/5;
+      const treasuryRow=db.prepare("SELECT resources FROM alliance_treasury WHERE alliance_id=?").get(member.alliance_id);
+      const treasury=treasuryRow?JSON.parse(treasuryRow.resources):{};
+      progress.resources[from]-=amount;
+      progress.resources[to]=(Number(progress.resources[to])||0)+received;
+      treasury[from]=(Number(treasury[from])||0)+donated;
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
+      db.prepare("INSERT OR IGNORE INTO alliance_treasury(alliance_id,resources,bonuses) VALUES (?,?,?)").run(member.alliance_id,JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),"{}");
+      db.prepare("UPDATE alliance_treasury SET resources=? WHERE alliance_id=?").run(JSON.stringify(treasury),member.alliance_id);
+      return {from,to,amount,received,donated,economy:this.allianceEconomy(userId,member.alliance_id)};
+    }).immediate();
+  }
   upgradeAllianceBonus(userId,kind){
     if (!Object.hasOwn(research.catalog, kind)) return {error:"Unknown alliance bonus."};
     const item = research.catalog[kind];
