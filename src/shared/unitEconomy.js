@@ -64,7 +64,7 @@ function allianceUpgradeDuration(duration, speed = 0) {
   return Math.ceil(duration * (100 - speed) / 100);
 }
 function upgradeDuration(level, speed = 0) {
-  return allianceUpgradeDuration(Math.min(24*3600000,Math.ceil(60000*Math.pow(level+1,1.7))), speed);
+  return Math.max(1000, Math.ceil(allianceUpgradeDuration(Math.min(24*3600000,Math.ceil(60000*Math.pow(level+1,1.7))), speed) / 10));
 }
 function upgradePrice(level, discount = 0, unit, stat) {
   const specific=explorerUpgrade(unit,stat,level,discount,0);if(specific?.cost)return specific.cost;
