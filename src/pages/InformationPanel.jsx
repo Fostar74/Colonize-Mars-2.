@@ -102,9 +102,35 @@ export default function InformationPanel(){
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].slice(0,10).map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
  };
- const heavyUnit=(unit,bg)=><article key={unit.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
+ const demolitionBotDetails=(
+  <>
+   <p>{t("Available to all factions. Attacks only the Defense Grid. It is the fastest Heavy System and has the most health. Recommended position: first row.","Достъпен за всички нации. Атакува само Отбранителната мрежа. Това е най-бързата тежка система и има най-много живот. Препоръчителна позиция: първи ред.")}</p>
+   <p>{affectedProtocols(demolitionBot)}</p>
+   <p>{t("Speed","Скорост")}: {demolitionBot.speed} · {t("Cargo","Товар")}: {demolitionBot.cargo} · {t("Population","Население")}: {demolitionBot.population}</p>
+   <p>{t("Drone Factory level","Фабрика за дронове, ниво")} {demolitionBot.requirement.level} · {t("Training time","Време за обучение")}: {time(demolitionBot.trainingSeconds)}</p>
+   <p>{t("Training cost","Цена за обучение")}: {res.map(k=>label(k)+": "+demolitionBot.price[k]).join(" · ")}</p>
+   {[["attackUpgrades",t("Attack upgrades","Подобрения на атаката"),t("Attack against the Defense Grid","Атака срещу Отбранителната мрежа")],
+     ["healthUpgrades",t("Health upgrades","Защитни подобрения"),t("Health increase","Увеличение на живота")]].map(([kind,title,bonusLabel])=>(
+    <section key={kind}>
+     <h4>{title}</h4>
+     <div style={{overflowX:"auto"}}>
+      <table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}>
+       <thead><tr>{[t("Level","Ниво"),bonusLabel,t("Cost","Цена"),t("Time","Време")].map(heading=><th key={heading} scope="col" style={{padding:7,border:"1px solid #54758a"}}>{heading}</th>)}</tr></thead>
+       <tbody>{demolitionBot[kind].map((row,index)=>(
+        <tr key={index}>
+         {[index+1,"+"+(kind==="attackUpgrades"?row.values[3]:row.value),cost(row),time(row.seconds)].map((value,column)=><td key={column} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{value}</td>)}
+        </tr>
+       ))}</tbody>
+      </table>
+     </div>
+    </section>
+   ))}
+  </>
+ );
+ const heavyUnit=(unit,bg,details)=><article key={unit.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
    <h3>{t(unit.name,bg)}</h3>
    {combatStatsTable(unit)}
+   {details}
   </article>;
  const mobileUnit=(u,bg,desc)=>{
   const building=t("Battle Simulator","Боен симулатор");
@@ -187,7 +213,7 @@ export default function InformationPanel(){
   {category?.id==="heavy"&&<>
    <h2>{t("Heavy Systems","Тежки системи")}</h2>
    <p>{t(categoryProtocols.heavy[0],categoryProtocols.heavy[1])}</p>
-   {heavyUnit(demolitionBot,"Бот за разрушаване")}
+   {heavyUnit(demolitionBot,"Бот за разрушаване",demolitionBotDetails)}
    {heavyUnit(missileCarrier,"Ракетоносец")}
    {heavyUnit(particleBlaster,"Бластер с частици")}
    {heavyUnit(orbitalStrikeBeacon,"Маркер за орбитален удар")}

@@ -4,6 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import "./StructurePanel.css";
 import unitEconomy from "../shared/unitEconomy";
 import {unitUpgradeMaxLevel} from "../shared/unitProfiles";
+import {demolitionBot} from "../shared/heavyUnitProfiles";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
@@ -15,6 +16,11 @@ const structureTypes = {
   Economy: ["Cargo Depot", "Defense Grid", "Upgrade Lab", "Bio-Lab"],
   Military: ["Training Center", "Combat Simulator", "Vehicle Bay", "Drone Factory"]
 };
+
+// The Demolition Bot starts at the base stat, before its first purchased upgrade.
+function displayedUpgradeLevel(unit, level) {
+  return unit === demolitionBot.name ? Math.min(10, level - 1) : level;
+}
 
 const unitCategories = {
   Ground: ["Explorer Trooper", "Exo-Soldier", "Plasma Bladesman", "Nano Shieldman"],
@@ -312,7 +318,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
           const job = game.upgradeJobs?.[slot];
           const selectable = !job && (slot === 0 || !!game.upgradeJobs?.[0]);
           const status = job
-            ? `${localLabel(job.unit)} · ${job.stat === "attack" ? localLabel("Attack") : localLabel("Health / Defense")} · ${t("Level","Ниво")} ${job.level} · ${job.endsAt == null ? t("Queued","На опашка") : formatTime(remaining(job))}`
+            ? `${localLabel(job.unit)} · ${job.stat === "attack" ? localLabel("Attack") : localLabel("Health / Defense")} · ${t("Level","Ниво")} ${displayedUpgradeLevel(job.unit, job.level)} · ${job.endsAt == null ? t("Queued","На опашка") : formatTime(remaining(job))}`
             : t("Empty","Свободен");
           return <button key={slot} className="upgrade-slot" disabled={!selectable}
             aria-pressed={upgradeSlot === slot && selectable} onClick={()=>setUpgradeSlot(slot)}>
@@ -337,8 +343,8 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                   const duration=special?.durationMs||upgradeDuration(level, game.allianceBonuses?.speed);
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
-                  <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {level}</p>
-                  {level<maxLevel&&<p>{t("Next level","Следващо ниво")} {level+1}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>}
+                  <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {displayedUpgradeLevel(unit, level)}</p>
+                  {level<maxLevel&&<p>{t("Next level","Следващо ниво")} {displayedUpgradeLevel(unit, level+1)}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>}
                   <button disabled={!!busy || level>=maxLevel || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
                     onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>
                     {level>=maxLevel?localLabel("MAX LEVEL"):stat==="attack"?localLabel("Upgrade Attack"):localLabel("Upgrade Health / Defense")}
