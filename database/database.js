@@ -5,7 +5,7 @@ const alienBases = require("../src/shared/alienBases");
 const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
+const {allianceUpgradeDuration,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -660,8 +660,8 @@ class DatabaseManager {
   }
 
   upgradeBuilding(userId, name) {
-    const allowed = ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor", "Cargo Depot", "Defense Grid", "Upgrade Lab", "Bio-Lab", "Training Center", "Combat Simulator", "Vehicle Bay", "Drone Factory"];
-    if (!allowed.includes(name)) return { error: "Unknown building." };
+    const maxLevel = typeof name === "string" ? buildingMaxLevel(name) : 0;
+    if (!maxLevel) return { error: "Unknown building." };
     return db.transaction(() => {
       const current = this.syncGame(userId);
       if (!current) return { error: "Player progress not found." };
@@ -669,7 +669,7 @@ class DatabaseManager {
       if (current.buildingJob && buildingQueue.length >= 2) return { error: "Construction queue is full (3 total buildings)." };
       const queuedLevels = buildingQueue.filter(job => job.name === name).length;
       const level = Number(current.structures[name] || 0) + (current.buildingJob?.name === name ? 1 : 0) + queuedLevels;
-      if (level >= 20) return { error: "Maximum building level reached." };
+      if (level >= maxLevel) return { error: "Maximum building level reached." };
       const cost = buildingPrice(name, level + 1, current.allianceBonuses.discount);
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];

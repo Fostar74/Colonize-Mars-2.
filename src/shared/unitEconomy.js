@@ -34,11 +34,11 @@ function unitPrice(unit) {
 }
 const unlockBuildings = {
   Ground:"Training Center", Ranged:"Drone Factory",
-  Mobile:"Vehicle Bay", "Heavy Systems":"Drone Factory", Elite:"Drone Factory"
+  Mobile:"Vehicle Bay", "Heavy Systems":"Drone Factory", Elite:"Order"
 };
 const unlockLevels = {
   Ground:[1,2,4,6], Ranged:[1,8,16], Mobile:[1,3,5,7],
-  "Heavy Systems":[2,4,6,8], Elite:[12,15]
+  "Heavy Systems":[2,4,6,8], Elite:[1,1]
 };
 function unitRequirement(unit) {
   const entry=Object.entries(categories).find(([,units])=>units.includes(unit));
@@ -91,10 +91,20 @@ const buildingBaseCosts = {
   "Vehicle Bay": {Gold:130,Iron:190,Water:70,Solar:110},
   "Drone Factory": {Gold:170,Iron:210,Water:100,Solar:170}
 };
-function buildingPrice(name,nextLevel,discount = 0) {
-  const base=buildingBaseCosts[name];
-  if (!base || !Number.isInteger(nextLevel) || nextLevel<1 || nextLevel>20) return null;
-  return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * nextLevel * (100 - discount) / 100)]));
+const orderLevelCosts = [30000, 50000, 100000];
+
+function buildingMaxLevel(name) {
+  if (name === "Order") return orderLevelCosts.length;
+  return Object.prototype.hasOwnProperty.call(buildingBaseCosts, name) ? 20 : 0;
 }
 
-module.exports={allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};
+function buildingPrice(name,nextLevel,discount = 0) {
+  if (!Number.isInteger(nextLevel) || nextLevel < 1 || nextLevel > buildingMaxLevel(name)) return null;
+  if (name === "Order") {
+    const cost = Math.ceil(orderLevelCosts[nextLevel - 1] * (100 - discount) / 100);
+    return {Gold:cost,Iron:cost,Water:cost,Solar:cost};
+  }
+  return Object.fromEntries(Object.entries(buildingBaseCosts[name]).map(([resource,amount])=>[resource,Math.ceil(amount * nextLevel * (100 - discount) / 100)]));
+}
+
+module.exports={allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};
