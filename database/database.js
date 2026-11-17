@@ -611,19 +611,19 @@ class DatabaseManager {
         // One-time migration of existing training queues to the normal x10 speed.
         // Preserve completed jobs and elapsed progress; never re-charge resources.
         let previousEnd = now;
-        for (const job of queue) {
+        for (const [index, job] of queue.entries()) {
           if (job.trainingSpeedVersion !== 10) {
             const oldStart = Number(job.startsAt) || now;
             const oldEnd = Number(job.endsAt) || oldStart;
             const oldDuration = Math.max(0, oldEnd - oldStart);
             if (oldEnd > now) {
-              if (oldStart <= now) {
+              if (index === 0 && oldStart <= now) {
                 const remaining = Math.max(0, oldEnd - now);
                 job.startsAt = now;
                 job.endsAt = now + Math.max(1000, Math.ceil(remaining / 10));
               } else {
-                job.startsAt = previousEnd;
-                job.endsAt = previousEnd + Math.max(1000, Math.ceil(oldDuration / 10));
+                job.startsAt = Math.max(now, previousEnd);
+                job.endsAt = job.startsAt + Math.max(1000, Math.ceil(oldDuration / 10));
               }
             }
             job.trainingSpeedVersion = 10;
