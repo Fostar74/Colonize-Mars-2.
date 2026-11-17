@@ -15,7 +15,9 @@ import InformationPanel from "./InformationPanel";
 
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
-const colonyBackground="/mars-colony-home.jpg";
+// User-supplied artwork: 16:9 desktop and 9:16 mobile. Files belong in public/.
+const desktopColonyBackground = "/mars-colony-desktop.jpg";
+const mobileColonyBackground = "/mars-colony-mobile.jpg";
 import AVATARS from "../shared/avatarCatalog";
 
 const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;
@@ -613,14 +615,11 @@ function Game() {
 
   return (
     <div
-      className="game-container"
+      className="game-container game-colony-background"
       style={{
-        backgroundImage: `url("${colonyBackground}"), url("${colonyBackground}"), url(${marsBackground})`,
-        backgroundSize: "contain, cover, cover",
-        backgroundRepeat: "no-repeat",
-        backgroundPosition: "center center, center center, center center",
-        backgroundAttachment: "scroll",
-        backgroundColor: "#120e1b",
+        "--mars-desktop-background": `url("${desktopColonyBackground}")`,
+        "--mars-mobile-background": `url("${mobileColonyBackground}")`,
+        "--mars-fallback-background": `url(${marsBackground})`,
         minHeight: "100dvh",
       }}
     >
