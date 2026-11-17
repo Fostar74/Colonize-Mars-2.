@@ -81,7 +81,8 @@ function armyTravelDuration(baseDuration,army,speedBonus=0){
   const bonus=Math.max(-99,Number(speedBonus)||0);
   return Math.max(1000,Math.ceil(baseDuration/(armySpeed(army)*(1+bonus/100))));
 }
-function unitTrainingDuration(unit){return profileFor(unit)?.trainingSeconds??30;}
+// Normal troop training speed: ten times faster than the original profile durations.
+function unitTrainingDuration(unit){return (profileFor(unit)?.trainingSeconds??30)/10;}
 function unitUpgradeDetails(unit,stat,level,discount=0,speed=0){return explorerUpgrade(unit,stat,level,discount,speed);}
 // Building resource specialization; nextLevel starts at 1.
 const buildingBaseCosts = {
