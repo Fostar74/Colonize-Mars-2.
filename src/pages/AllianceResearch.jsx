@@ -8,7 +8,7 @@ import solar from "../images/solar.png";
 import "./AllianceResearch.css";
 
 const icons = { Gold: gold, Iron: iron, Water: water, Solar: solar };
-const tabs = [["attack", "Attack", "Атака"], ["health", "Defense", "Защита"], ["development", "Development", "Развитие"]];
+const tabs = [["attack", "Attack", "Атака"], ["health", "Health", "Живот"], ["development", "Development", "Развитие"]];
 
 export default function AllianceResearch({ economy, role, busy, start }) {
   const { t, label } = useLanguage();
@@ -28,6 +28,7 @@ export default function AllianceResearch({ economy, role, busy, start }) {
 
   return <section className="alliance-research">
     <h3>{t("Alliance Research", "Изследвания на алианса")}</h3>
+    <p>{t("Three independent research branches: Attack, Health and Development. The leader or co-leader chooses which branch to advance.", "Три отделни клона: Атака, Живот и Развитие. Лидерът или заместник-лидерът избира кой клон да развива.")}</p>
     <div className="alliance-research-tabs">
       {tabs.map(([key, en, bg]) => <button key={key} type="button" aria-pressed={key === branch} onClick={() => setBranch(key)}>{t(en, bg)}</button>)}
     </div>
