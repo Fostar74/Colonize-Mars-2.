@@ -8,7 +8,7 @@ const categories = {
 };
 const tiers = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3 };
 const {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,explorerUpgrade,profileFor}=require("./unitProfiles");
-// Maximum resources a single surviving unit can carry home after a player battle.
+// Base cargo per troop, shared by PvP loot and external mine gathering.
 const baseCargoCapacity = {
   "Explorer Trooper":10, "Exo-Soldier":10, "Plasma Bladesman":10, "Nano Shieldman":10,
   "Railgunner":5, "Pulse Sniper":5, "Drone Operator":5,
