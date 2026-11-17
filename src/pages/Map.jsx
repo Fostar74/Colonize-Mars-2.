@@ -105,7 +105,7 @@ function Map() {
   const suppressClickRef = useRef(false);
   const [zoom, setZoom] = useState(1);
   const [terrainImage,setTerrainImage]=useState(null);
-  useEffect(()=>{const image=new Image();image.onload=()=>setTerrainImage(image);image.src="/mars-terrain-realistic.jpg";},[]);
+  useEffect(()=>{const image=new Image();image.onload=()=>setTerrainImage(image);image.src="/mars-terrain.svg";},[]);
   const tileSize = 60 * zoom;
   const mapSize = 100;
 
