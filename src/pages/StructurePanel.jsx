@@ -378,10 +378,16 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
           const status = job
             ? `${localLabel(job.unit)} · ${job.stat === "attack" ? localLabel("Attack") : localLabel("Health / Defense")} · ${t("Level","Ниво")} ${displayedUpgradeLevel(job.unit, job.level)} · ${job.endsAt == null ? t("Queued","На опашка") : formatTime(remaining(job))}`
             : t("Empty","Свободен");
-          return <button key={slot} className="upgrade-slot" disabled={!selectable}
-            aria-pressed={upgradeSlot === slot && selectable} onClick={()=>setUpgradeSlot(slot)}>
-            {t("Slot","Слот")} {slot+1} · {status}
-          </button>;
+          return <div key={slot} style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <button className="upgrade-slot" disabled={!selectable}
+              aria-pressed={upgradeSlot === slot && selectable} onClick={()=>setUpgradeSlot(slot)}>
+              {t("Slot","Слот")} {slot+1} · {status}
+            </button>
+            {job && <button type="button" disabled={!!busy} onClick={()=>{
+              if(window.confirm(t("Cancel this upgrade and refund 100% of its resources?","Отказ от подобрението и връщане на 100% от ресурсите?")))
+                act("/cancel-unit-upgrade",{slot},`cancel-upgrade-${slot}`);
+            }}>{t("Cancel — 100% refund","Отказ — 100% ресурси обратно")}</button>}
+          </div>;
         })}
       </div>
       {upgradeSlot === (game.upgradeJobs?.[0] ? 1 : 0) && !game.upgradeJobs?.[upgradeSlot] && <div className="upgrade-window">
