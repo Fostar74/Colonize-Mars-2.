@@ -9,13 +9,15 @@ const categories = {
 const tiers = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3 };
 const {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,explorerUpgrade,profileFor}=require("./unitProfiles");
 // Maximum resources a single surviving unit can carry home after a player battle.
-const cargoCapacity = {
+const baseCargoCapacity = {
   "Explorer Trooper":10, "Exo-Soldier":10, "Plasma Bladesman":10, "Nano Shieldman":10,
   "Railgunner":5, "Pulse Sniper":5, "Drone Operator":5,
   ...Object.fromEntries(categories.Mobile.map(unit=>[unit,profileFor(unit).cargo])),
   ...Object.fromEntries(categories["Heavy Systems"].map(unit=>[unit,profileFor(unit).cargo])),
   ...Object.fromEntries(categories.Elite.map(unit=>[unit,profileFor(unit).cargo]))
-};
+}; 
+// Triple carrying capacity for every troop category; shared by server and map UI.
+const cargoCapacity = Object.fromEntries(Object.entries(baseCargoCapacity).map(([unit,capacity])=>[unit,capacity*3]));
 // Resource emphasis for units without a fixed price.
 const emphasis = [
   {Gold:100,Iron:80,Water:60,Solar:40},
