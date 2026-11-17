@@ -58,13 +58,33 @@ const pulseSniper = {
 const rangedProfiles=[railgunner,pulseSniper,droneOperator];
 const resources=["Gold","Iron","Water","Solar"];
 function profileFor(unit){return unit==="Explorer Trooper"?explorerTrooper:unit==="Nano Shieldman"?nanoShieldman:unit==="Exo-Soldier"?exoSoldier:unit==="Plasma Bladesman"?plasmaBladesman:rangedProfiles.find(profile=>profile.name===unit)||mobileUnitProfiles.find(profile=>profile.name===unit)||heavyUnitProfiles.find(profile=>profile.name===unit)||null;}
+function unitUpgradeMaxLevel(unit, stat) {
+ const profile=profileFor(unit);
+ if(!profile?.upgradeBonusesAreCumulative)return 10;
+ return (stat==="attack"?profile.attackUpgrades:profile.healthUpgrades).length+1;
+}
+function armyPopulation(army) {
+ return Object.entries(army).reduce((total,[unit,count])=>total+count*(profileFor(unit)?.population??1),0);
+}
 function explorerUpgrade(unit,stat,currentLevel,discount=0,speed=0){
  const profile=profileFor(unit);if(!profile)return null;
  const rows=stat==="attack"?profile.attackUpgrades:profile.healthUpgrades,row=rows[currentLevel-1];if(!row)return null;
- return {cost:Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)])),durationMs:Math.ceil(row.seconds*1000*(100-speed)/100),maxLevel:Math.min(10,rows.length+1)};
+ return {cost:Object.fromEntries(resources.map((key,i)=>[key,Math.ceil(row.cost[i]*(100-discount)/100)])),durationMs:Math.ceil(row.seconds*1000*(100-speed)/100),maxLevel:unitUpgradeMaxLevel(unit,stat)};
 }
 function unitCombatStats(unit,levels={}){
  const profile=profileFor(unit)||explorerTrooper,attack={...profile.attack};let health=profile.health,wallAttack=Number(profile.wallAttack)||0;
+ if(profile.upgradeBonusesAreCumulative){
+  const attackLevel=Math.min(profile.attackUpgrades.length,(Number(levels.attack)||1)-1);
+  const defenseLevel=Math.min(profile.healthUpgrades.length,(Number(levels.defense)||1)-1);
+  const values=profile.attackUpgrades[attackLevel-1]?.values??[0,0,0,0,0];
+  attack.infantry+=values[0];
+  attack.mobile+=values[1];
+  attack.ranged+=values[2];
+  wallAttack+=values[3];
+  attack.artillery+=values[4];
+  health+=profile.healthUpgrades[defenseLevel-1]?.value??0;
+  return {...profile,attack,wallAttack,health};
+ }
  for(let i=0;i<Math.max(0,Math.min(profile.attackUpgrades.length,(Number(levels.attack)||1)-1));i++){
   const v=profile.attackUpgrades[i].values;attack.infantry+=v[0];attack.mobile+=v[1];attack.ranged+=v[2];wallAttack+=v[3]||0;attack.artillery+=v[4];
  }
@@ -72,4 +92,4 @@ function unitCombatStats(unit,levels={}){
  return {...profile,attack,wallAttack,health};
 }
 function explorerCombatStats(levels={}){return unitCombatStats("Explorer Trooper",levels);}
-module.exports={explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,railgunner,pulseSniper,droneOperator,rangedProfiles,profileFor,explorerUpgrade,explorerCombatStats,unitCombatStats,resources};
+module.exports={explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,railgunner,pulseSniper,droneOperator,rangedProfiles,profileFor,explorerUpgrade,explorerCombatStats,unitCombatStats,resources,unitUpgradeMaxLevel,armyPopulation};

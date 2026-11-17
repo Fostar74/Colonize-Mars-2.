@@ -75,7 +75,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
       const shots=[];
       for(let side=0;side<2;side++)for(const group of sides[side]){
         if(group.count<=0||phase[group.category]!==step)continue;
-        const enemies=sides[1-side].filter(g=>g.count>0&&group.range>=group.row+g.row-1);
+        const enemies=sides[1-side].filter(g=>g.count>0&&group.range>=group.row+g.row-1&&(group.attackVs?.[g.category]??group.attack)>0);
         if(!enemies.length)continue;
         const target=enemies[Math.floor(Math.random()*enemies.length)];
         const damage=group.count*(group.attackVs?.[target.category]??group.attack*effectiveness[group.category][target.category]);

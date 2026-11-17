@@ -1,45 +1,182 @@
-const artilleryDamage={infantry:0.9,mobile:1.1,ranged:1.3,artillery:1.5};
-function upgradesFor(attack,health){
- const attackUpgrades=[];
- const healthUpgrades=[];
- for(let level=1;level<=9;level++){
-  const amount=Math.ceil(2*Math.pow(level+1,2)*100);
-  const seconds=Math.ceil(60000*Math.pow(level+1,1.7))/1000;
-  attackUpgrades.push({
-   values:[attack.infantry*.1,attack.mobile*.1,attack.ranged*.1,0,attack.artillery*.1],
-   cost:[amount,amount,0,0],
-   seconds
-  });
-  healthUpgrades.push({value:health*.1,cost:[amount,amount,0,0],seconds});
- }
- return {attackUpgrades,healthUpgrades};
+function durationInSeconds(time) {
+  const [hours, minutes, seconds] = time.split(":").map(Number);
+  return hours * 3600 + minutes * 60 + seconds;
 }
 
-function createHeavyUnit(name,baseAttack,health,cargo,price,level){
- const attack=Object.fromEntries(Object.entries(artilleryDamage).map(([target,multiplier])=>[target,baseAttack*multiplier]));
- const {attackUpgrades,healthUpgrades}=upgradesFor(attack,health);
- return {
-  name,
-  category:"artillery",
-  attack,
-  wallAttack:0,
-  health,
-  range:5,
-  speed:1,
-  cargo,
-  requirement:{building:"Drone Factory",level},
-  price,
-  trainingSeconds:30,
-  attackUpgrades,
-  healthUpgrades,
-  skills:["Defender","Siege"]
- };
-}
+// Each listed bonus is the total increase over the unit's base stat.
+const demolitionBot = {
+  name: "Demolition Bot",
+  category: "artillery",
+  attack: { infantry: 0, mobile: 0, ranged: 0, artillery: 0 },
+  wallAttack: 120,
+  health: 1000,
+  range: 1,
+  speed: 1,
+  cargo: 20,
+  population: 4,
+  requirement: { building: "Drone Factory", level: 1 },
+  price: { Gold: 200, Iron: 350, Water: 400, Solar: 250 },
+  trainingSeconds: 1440,
+  upgradeBonusesAreCumulative: true,
+  skills: ["Defender", "Siege"],
+  attackUpgrades: [
+    [[0,0,0,4.8,0],[120,200,240,80],"03:26:16"],
+    [[0,0,0,12,0],[480,800,960,320],"05:27:26"],
+    [[0,0,0,21.6,0],[1680,2800,3360,1120],"06:52:36"],
+    [[0,0,0,33.6,0],[3780,6300,7560,2520],"08:39:52"],
+    [[0,0,0,48,0],[6307,10504,12605,4205],"10:55:02"],
+    [[0,0,0,66,0],[9852,16410,19692,6568],"13:45:22"],
+    [[0,0,0,87.6,0],[18468,30765,36918,12312],"17:20:00"],
+    [[0,0,0,112.8,0],[30768,51260,61512,20512],"21:50:20"],
+    [[0,0,0,141.6,0],[48060,80100,96120,32040],"27:31:04"],
+    [[0,0,0,174,0],[72108,120150,144180,48072],"34:40:20"],
+    [[0,0,0,222,0],[140000,140000,140000,140000],"48:32:30"]
+  ].map(([values, cost, time]) => ({ values, cost, seconds: durationInSeconds(time) })),
+  healthUpgrades: [
+    [10,[150,250,300,100],"02:42:04"],
+    [30,[600,1000,1200,400],"04:17:16"],
+    [60,[2102,3500,4200,1402],"05:24:12"],
+    [100,[4730,7878,9454,3154],"06:48:28"],
+    [150,[7882,13128,15754,5254],"08:34:40"],
+    [210,[12312,20510,24612,8208],"10:48:32"],
+    [280,[23076,38445,46134,15384],"13:37:06"],
+    [360,[38448,64080,76896,25632],"17:09:34"],
+    [450,[60090,100125,120150,40060],"21:37:16"],
+    [550,[90144,150210,180252,60096],"27:14:34"],
+    [700,[140000,140000,140000,140000],"38:08:22"]
+  ].map(([value, cost, time]) => ({ value, cost, seconds: durationInSeconds(time) }))
+};
 
-const demolitionBot=createHeavyUnit("Demolition Bot",55,120,20,{Gold:300,Iron:240,Water:180,Solar:120},2);
-const missileCarrier=createHeavyUnit("Missile Carrier",75,170,50,{Gold:180,Iron:240,Water:360,Solar:120},4);
-const particleBlaster=createHeavyUnit("Particle Blaster",95,220,10,{Gold:180,Iron:390,Water:150,Solar:120},6);
-const orbitalStrikeBeacon=createHeavyUnit("Orbital Strike Beacon",115,270,10,{Gold:180,Iron:210,Water:150,Solar:360},8);
+const missileCarrier = {
+  name: "Missile Carrier",
+  category: "artillery",
+  attack: { infantry: 150, mobile: 150, ranged: 150, artillery: 150 },
+  wallAttack: 90,
+  health: 360,
+  range: 4,
+  speed: 1,
+  cargo: 30,
+  population: 6,
+  requirement: { building: "Drone Factory", level: 6 },
+  price: { Gold: 275, Iron: 400, Water: 625, Solar: 500 },
+  trainingSeconds: 1980,
+  upgradeBonusesAreCumulative: true,
+  skills: ["Defender", "Siege"],
+  attackUpgrades: [
+    [[6,6,6,3.6,6],[135,225,90,270],"03:38:24"],
+    [[15,15,15,9,15],[540,900,360,1080],"05:46:42"],
+    [[27,27,27,16.2,27],[1890,3150,1260,3780],"07:16:50"],
+    [[42,42,42,25.2,42],[4255,7088,2837,8505],"09:10:28"],
+    [[60,60,60,36,60],[7092,11814,4728,14177],"11:33:34"],
+    [[82.5,82.5,82.5,49.5,82.5],[11079,18458,7386,22149],"14:33:54"],
+    [[109.5,109.5,109.5,65.7,109.5],[20763,34605,13842,41526],"18:21:08"],
+    [[141,141,141,84.6,141],[34614,57675,23076,69210],"23:07:26"],
+    [[177,177,177,106.2,177],[54090,90131,36060,108158],"29:08:10"],
+    [[217.5,217.5,217.5,130.5,217.5],[81108,135180,54072,162216],"36:42:40"],
+    [[277.5,277.5,277.5,166.5,277.5],[160000,160000,160000,160000],"51:23:44"]
+  ].map(([values, cost, time]) => ({ values, cost, seconds: durationInSeconds(time) })),
+  healthUpgrades: [
+    [3.6,[169,281,113,338],"02:51:36"],
+    [10.8,[675,1125,450,1350],"04:32:26"],
+    [21.6,[2365,3939,1577,4727],"05:43:14"],
+    [36,[5319,8861,3546,10633],"07:12:30"],
+    [54,[8863,14766,5909,17719],"09:04:58"],
+    [75.6,[13842,23070,9228,27684],"11:26:40"],
+    [100.8,[25961,43256,17307,51908],"14:25:12"],
+    [129.6,[43272,72105,28848,86526],"18:10:08"],
+    [162,[67590,112650,45060,135180],"22:53:34"],
+    [198,[101385,168975,67590,202770],"28:50:42"],
+    [252,[160000,160000,160000,160000],"40:22:58"]
+  ].map(([value, cost, time]) => ({ value, cost, seconds: durationInSeconds(time) }))
+};
 
-const heavyUnitProfiles=[demolitionBot,missileCarrier,particleBlaster,orbitalStrikeBeacon];
-module.exports={demolitionBot,missileCarrier,particleBlaster,orbitalStrikeBeacon,heavyUnitProfiles};
+const particleBlaster = {
+  name: "Particle Blaster",
+  category: "artillery",
+  attack: { infantry: 250, mobile: 70, ranged: 250, artillery: 70 },
+  wallAttack: 120,
+  health: 400,
+  range: 5,
+  speed: 1,
+  cargo: 40,
+  population: 8,
+  requirement: { building: "Drone Factory", level: 11 },
+  price: { Gold: 900, Iron: 700, Water: 600, Solar: 200 },
+  trainingSeconds: 2400,
+  upgradeBonusesAreCumulative: true,
+  buildingDamageChance: 0.0003,
+  skills: ["Defender", "Siege"],
+  attackUpgrades: [
+    [[10,2.8,10,4.8,2.8],[264,220,132,88],"03:50:32"],
+    [[25,7,25,12,7],[1056,880,528,352],"06:05:58"],
+    [[45,12.6,45,21.6,12.6],[3696,3080,1848,1232],"07:41:08"],
+    [[70,19.6,70,33.6,19.6],[8316,6930,4162,2774],"09:41:02"],
+    [[100,28,100,48,28],[13862,11552,6931,4621],"12:12:06"],
+    [[137.5,38.5,137.5,66,38.5],[21660,18050,10836,7224],"15:22:28"],
+    [[182.5,51.1,182.5,87.6,51.1],[40608,33840,20304,13536],"19:22:20"],
+    [[235,65.8,235,112.8,65.8],[67680,56400,33840,22560],"24:24:30"],
+    [[295,82.6,295,141.6,82.6],[105750,88125,52890,35260],"30:45:18"],
+    [[362.5,101.5,362.5,174,101.5],[158616,132180,79308,52872],"38:45:06"],
+    [[462.5,129.5,462.5,222,129.5],[180000,180000,180000,180000],"54:15:08"]
+  ].map(([values, cost, time]) => ({ values, cost, seconds: durationInSeconds(time) })),
+  healthUpgrades: [
+    [4,[330,275,166,110],"03:01:08"],
+    [12,[1320,1100,660,440],"04:47:32"],
+    [24,[4622,3852,2314,1542],"06:02:20"],
+    [40,[10397,8664,5198,3466],"07:36:32"],
+    [60,[17328,14440,8669,5779],"09:35:14"],
+    [84,[27072,22560,13536,9024],"12:04:50"],
+    [112,[50760,42300,25380,16920],"15:13:14"],
+    [144,[84600,70500,42312,28208],"19:10:42"],
+    [180,[132180,110150,66090,44060],"24:09:54"],
+    [220,[198252,165210,99144,66096],"30:26:52"],
+    [280,[180000,180000,180000,180000],"42:37:36"]
+  ].map(([value, cost, time]) => ({ value, cost, seconds: durationInSeconds(time) }))
+};
+
+const orbitalStrikeBeacon = {
+  name: "Orbital Strike Beacon",
+  category: "artillery",
+  attack: { infantry: 80, mobile: 320, ranged: 80, artillery: 320 },
+  wallAttack: 150,
+  health: 500,
+  range: 5,
+  speed: 1,
+  cargo: 50,
+  population: 10,
+  requirement: { building: "Drone Factory", level: 16 },
+  price: { Gold: 400, Iron: 900, Water: 1100, Solar: 600 },
+  trainingSeconds: 2700,
+  upgradeBonusesAreCumulative: true,
+  buildingDamageChance: 0.0005,
+  skills: ["Defender", "Siege"],
+  attackUpgrades: [
+    [[3.2,12.8,3.2,6,12.8],[242,145,290,97],"04:22:04"],
+    [[8,32,8,15,32],[968,581,1162,387],"06:56:04"],
+    [[14.4,57.6,14.4,27,57.6],[3388,2033,4066,1355],"08:44:12"],
+    [[22.4,89.6,22.4,42,89.6],[7623,4578,9148,3052],"11:00:34"],
+    [[32,128,32,60,128],[12707,7624,15249,5083],"13:52:16"],
+    [[44,176,44,82.5,176],[19855,11920,23826,7946],"17:28:42"],
+    [[58.4,233.6,58.4,109.5,233.6],[37224,22334,44669,14890],"22:01:22"],
+    [[75.2,300.8,75.2,141,300.8],[62040,37224,74448,24816],"27:44:56"],
+    [[94.4,377.6,94.4,177,377.6],[96938,58179,116325,38786],"34:57:48"],
+    [[116,464,116,217.5,464],[145398,87239,174478,58159],"44:03:12"],
+    [[148,592,148,277.5,592],[200000,200000,200000,200000],"61:40:30"]
+  ].map(([values, cost, time]) => ({ values, cost, seconds: durationInSeconds(time) })),
+  healthUpgrades: [
+    [5,[303,182,363,121],"03:25:56"],
+    [15,[1210,726,1452,484],"05:26:56"],
+    [30,[4237,2545,5085,1697],"06:51:54"],
+    [50,[9530,5718,11436,3812],"08:39:00"],
+    [75,[15884,9536,19061,6357],"10:53:58"],
+    [105,[24816,14890,29779,9926],"13:44:00"],
+    [140,[46530,27918,55836,18612],"17:18:14"],
+    [180,[77550,46543,93060,31029],"21:48:10"],
+    [225,[121165,72699,145398,48466],"27:28:18"],
+    [275,[181731,109058,218077,72706],"34:36:50"],
+    [350,[200000,200000,200000,200000],"48:27:34"]
+  ].map(([value, cost, time]) => ({ value, cost, seconds: durationInSeconds(time) }))
+};
+
+const heavyUnitProfiles = [demolitionBot, missileCarrier, particleBlaster, orbitalStrikeBeacon];
+module.exports = { demolitionBot, missileCarrier, particleBlaster, orbitalStrikeBeacon, heavyUnitProfiles };

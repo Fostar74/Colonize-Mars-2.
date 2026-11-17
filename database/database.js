@@ -1,3 +1,4 @@
+const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
@@ -753,7 +754,7 @@ class DatabaseManager {
       if(jobs.some(j=>j&&j.unit===unit&&j.stat===stat))return {error:"This unit stat is already upgrading."};
       const level=Number(current.unitUpgrades[unit]?.[stat]||1);
       const specific=unitUpgradeDetails(unit,stat,level,current.allianceBonuses.discount,current.allianceBonuses.speed);
-      if(level>=(specific?.maxLevel||10))return {error:"Maximum upgrade level."};
+      if(level>=unitUpgradeMaxLevel(unit,stat))return {error:"Maximum upgrade level."};
       const price=specific?.cost||upgradePrice(level,current.allianceBonuses.discount);
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
@@ -1848,12 +1849,14 @@ class DatabaseManager {
       for(const group of formation){
         const type=playerTypes[group.unit];if(!type)continue;
         const upgrades=current.unitUpgrades?.[group.unit]||{};
-        const upgradeBonus=Math.max(0,Number(upgrades.attack||1)-1)*10+Math.max(0,Number(upgrades.defense||1)-1)*3;
+        const usesProfileUpgrades=type.upgradeBonusesAreCumulative===true;
+        const upgradeBonus=usesProfileUpgrades?0:Math.max(0,Number(upgrades.attack||1)-1)*10+Math.max(0,Number(upgrades.defense||1)-1)*3;
+        const attackVs=usesProfileUpgrades?unitCombatStats(group.unit,upgrades).attack:type.attackVs;
         const categoryBonus=protocols[type.category]||0;
         const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+protocols.leadership+Number(attack.knight_level||1)*2+(Number(gearEffects.unitEffects[group.unit]?.attack)||0);
         // The Mother Ship has no target category. Average the unit's matchup values.
-        const baseAttack=type.attackVs
-          ? ["infantry","mobile","ranged","artillery"].reduce((sum,category)=>sum+(Number(type.attackVs[category])||0),0)/4
+        const baseAttack=attackVs
+          ? ["infantry","mobile","ranged","artillery"].reduce((sum,category)=>sum+(Number(attackVs[category])||0),0)/4
           : Number(type.attack)||0;
         damage+=Math.max(0,Number(group.count)||0)*baseAttack*(1+attackBonus/100);
       }
@@ -2150,7 +2153,7 @@ class DatabaseManager {
         if(!playerTypes[unit]||!Number.isSafeInteger(count)||count<0||count>Number(current.army[unit]||0))return {error:"Invalid troop selection."};
         if(count){selected[unit]=count;total+=count;}
       }
-      if(!total||total>marchLimit)return {error:"Select 1 to 50,000 troops."};
+      if(!total||armyPopulation(selected)>marchLimit)return {error:"Select troops with a total population between 1 and 50,000."};
       const rows=defaultFormation(),battleFormation=formation||Object.entries(selected).map(([unit,count])=>({unit,count,row:rows[unit]})),tally={};
       if(!Array.isArray(battleFormation)||battleFormation.length>100)return {error:"Invalid formation."};
       for(const group of battleFormation){
@@ -2549,7 +2552,7 @@ class DatabaseManager {
         total+=n;
       }
       if(!total)return {error:"Select at least one unit."};
-      if(total>marchLimit)return {error:"Cyber Knight can command at most 50,000 troops."};
+      if(armyPopulation(selectedArmy)>marchLimit)return {error:"Cyber Knight can command at most 50,000 population."};
       // Validate formation before reserving any troops.
       // Battle is computed at arrival, using the chosen formation and static garrison.
       const selected=Object.fromEntries(Object.entries(selectedArmy).filter(([,n])=>n>0));

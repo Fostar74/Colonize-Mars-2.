@@ -3,6 +3,7 @@ import { useLanguage } from "../language";
 import React, { useState, useEffect, useRef } from "react";
 import "./StructurePanel.css";
 import unitEconomy from "../shared/unitEconomy";
+import {unitUpgradeMaxLevel} from "../shared/unitProfiles";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
@@ -330,16 +331,17 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
               <h4>{localLabel(unit)}</h4>
               {["attack","defense"].map(stat=>{
                 const level=Number(game.unitUpgrades?.[unit]?.[stat] ?? 1);
+                const maxLevel=unitUpgradeMaxLevel(unit,stat);
                 const special=unitUpgradeDetails(unit,stat,level,game.allianceBonuses?.discount,game.allianceBonuses?.speed);
                   const cost=special?.cost||upgradePrice(level, game.allianceBonuses?.discount);
                   const duration=special?.durationMs||upgradeDuration(level, game.allianceBonuses?.speed);
                 const affordable=Object.entries(cost).every(([key,value])=>Number(resources[key]||0)>=value);
                 return <div key={stat} style={{marginBottom:12}}>
                   <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {level}</p>
-                  <p>{t("Next level","Следващо ниво")} {Math.min(special?.maxLevel||10,level+1)}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>
-                  <button disabled={!!busy || level>=(special?.maxLevel||10) || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
+                  {level<maxLevel&&<p>{t("Next level","Следващо ниво")} {level+1}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>}
+                  <button disabled={!!busy || level>=maxLevel || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
                     onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>
-                    {level>=(special?.maxLevel||10)?localLabel("MAX LEVEL"):stat==="attack"?localLabel("Upgrade Attack"):localLabel("Upgrade Health / Defense")}
+                    {level>=maxLevel?localLabel("MAX LEVEL"):stat==="attack"?localLabel("Upgrade Attack"):localLabel("Upgrade Health / Defense")}
                   </button>
                 </div>;
               })}

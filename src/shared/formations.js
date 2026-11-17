@@ -9,7 +9,7 @@ function defaultFormation(defense = false) {
     ? {Ground:1, Ranged:3, Mobile:2, "Heavy Systems":4, Elite:4}
     : {Ground:1, Ranged:4, Mobile:1, "Heavy Systems":4, Elite:3};
   return Object.fromEntries(Object.entries(categories).flatMap(([category, troops]) =>
-    troops.map((unit, index) => [unit, !defense && category === "Mobile" && index === 3 ? 2 : rows[category]])));
+    troops.map((unit, index) => [unit, unit === "Demolition Bot" ? 1 : !defense && category === "Mobile" && index === 3 ? 2 : rows[category]])));
 }
 
 function normalizeFormation(formation) {
