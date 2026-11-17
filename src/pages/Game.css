@@ -311,17 +311,11 @@
 .message-notification-alert button { background:#d9f2ff; color:#11364c; }
 @media(max-width:600px) { .message-notification-alert { top:60px; left:12px; flex-wrap:wrap; justify-content:center; text-align:center; } }
 
-/* Responsive home artwork: supplied 16:9 and 9:16 images. */
+/* Restore the existing Mars aircraft background until the new artwork is uploaded. */
 .game-container.game-colony-background {
-  background-image: var(--mars-desktop-background), var(--mars-fallback-background);
+  background-image: var(--mars-fallback-background);
   background-size: cover;
   background-position: center center;
   background-repeat: no-repeat;
   background-color: #120e1b;
-}
-@media (max-width: 767px) and (orientation: portrait) {
-  .game-container.game-colony-background {
-    background-image: var(--mars-mobile-background), var(--mars-fallback-background);
-    background-position: center center;
-  }
 }
