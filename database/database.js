@@ -807,12 +807,55 @@ class DatabaseManager {
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
       const completionXp=2*Object.values(price).reduce((total,cost)=>total+cost,0);
       const durationMs = specific?.durationMs||upgradeDuration(level,current.allianceBonuses.speed);
-      const job = {unit,stat,level:level+1,completionXp,durationMs};
+      const job = {unit,stat,level:level+1,completionXp,durationMs,resourceCost:{...price},upgradeSpeedVersion:10};
       if (nextSlot === 0) job.endsAt = Date.now() + durationMs;
       jobs[nextSlot] = job;
       db.prepare("UPDATE game_runtime SET upgrade_jobs=? WHERE user_id=?").run(JSON.stringify(jobs),userId);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
       return {...current,upgradeJobs:jobs};
+    })();
+  }
+
+  cancelUnitUpgrade(userId, slot) {
+    if (![0, 1].includes(slot)) return {error:"Invalid upgrade slot."};
+    return db.transaction(() => {
+      const current = this.syncGame(userId);
+      if (!current) return {error:"Player not found."};
+      const jobs = [...(current.upgradeJobs || [])];
+      const job = jobs[slot];
+      if (!job) return {error:"No upgrade in this slot."};
+      // The original cost is persisted on all new jobs. For legacy jobs,
+      // reconstruct the paid amount from their stored completion XP.
+      let refund = job.resourceCost;
+      if (!refund) {
+        const {unitUpgradeDetails,upgradePrice} = require("../src/shared/unitEconomy");
+        const previousLevel = Math.max(1, Number(job.level) - 1);
+        const estimate = unitUpgradeDetails(job.unit,job.stat,previousLevel,current.allianceBonuses.discount,0)?.cost ||
+          upgradePrice(previousLevel,current.allianceBonuses.discount,job.unit,job.stat);
+        const totalPaid = Math.round((Number(job.completionXp)||0)/2);
+        const estimateTotal = Object.values(estimate).reduce((a,b)=>a+b,0);
+        if (!totalPaid || !estimateTotal) return {error:"Cannot verify the original resource cost for this upgrade."};
+        const entries = Object.entries(estimate);
+        let allocated = 0;
+        refund = Object.fromEntries(entries.map(([resource, amount], index) => {
+          const value = index === entries.length-1 ? totalPaid-allocated : Math.round(totalPaid*amount/estimateTotal);
+          allocated += value;
+          return [resource,value];
+        }));
+      }
+      for (const [resource, amount] of Object.entries(refund)) {
+        current.resources[resource] = (Number(current.resources[resource])||0) + Number(amount);
+      }
+      jobs[slot] = null;
+      // If the active job was cancelled, immediately activate the queued one.
+      if (slot === 0 && jobs[1]) {
+        jobs[0] = jobs[1];
+        jobs[1] = null;
+        if (jobs[0].endsAt == null) jobs[0].endsAt = Date.now() + jobs[0].durationMs;
+      }
+      db.prepare("UPDATE game_runtime SET upgrade_jobs=? WHERE user_id=?").run(JSON.stringify(jobs),userId);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(current.resources),userId);
+      return {...current,upgradeJobs:jobs,resources:current.resources};
     })();
   }
 
