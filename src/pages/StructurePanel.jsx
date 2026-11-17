@@ -209,7 +209,14 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
             {expandedSections[section] ? "▾" : "▸"} {localLabel(section)} {section === "Resources" ? t("— start here","— започни тук") : ""}
           </button>
           {expandedSections[section] && <div className="building-grid">
-            {buildings.length === 0 && <p>{t("No buildings yet.", "Все още няма сгради.")}</p>}
+            {section === "Order" && <div className="building" style={{padding:14}}>
+              <h4 style={{margin:"6px 0"}}>{t("Information", "Информация")}</h4>
+              <p>{t(
+                "The Order is one of the most important buildings in the game. It will train special units.",
+                "Орденът е една от най-важните сгради в играта. Тук ще можете да тренирате специални единици."
+              )}</p>
+              <ul>{unitCategories.Elite.map(unit => <li key={unit}>{localLabel(unit)}</li>)}</ul>
+            </div>}
             {buildings.map(name => {
               const level = Number(structures[name] || 0);
               const queuedBuildings = game.buildingQueue || (game.queuedBuildingJob ? [game.queuedBuildingJob] : []);
