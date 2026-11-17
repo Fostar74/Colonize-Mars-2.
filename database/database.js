@@ -3034,7 +3034,7 @@ class DatabaseManager {
     this.settleResourceMines();
     const now=Date.now();
     const mines=db.prepare(`SELECT m.id,m.resource,m.x,m.y,m.amount,m.claimed_by,m.launched_at,m.arrives_at,
-      m.origin_x,m.origin_y,m.gathering_started_at,m.gathering_rate,u.username AS owner
+      m.origin_x,m.origin_y,m.gathering_started_at,m.gathering_rate,m.gathering_units,u.username AS owner
       FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by ORDER BY m.id`).all().map(mine=>{
         const elapsed=Math.max(0,now-Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now));
         const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
