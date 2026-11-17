@@ -615,11 +615,13 @@ function Game() {
     <div
       className="game-container"
       style={{
-        backgroundImage: `url("${colonyBackground}"), url(${marsBackground})`,
-        backgroundSize: "cover",
+        backgroundImage: `url("${colonyBackground}"), url("${colonyBackground}"), url(${marsBackground})`,
+        backgroundSize: "contain, cover, cover",
         backgroundRepeat: "no-repeat",
-        backgroundPosition: "center top",
-        minHeight: "100vh",
+        backgroundPosition: "center center, center center, center center",
+        backgroundAttachment: "scroll",
+        backgroundColor: "#120e1b",
+        minHeight: "100dvh",
       }}
     >
       <div className="top-resource-bar">
