@@ -6,7 +6,7 @@ const categories = {
   "Heavy Systems": ["Demolition Bot","Missile Carrier","Particle Blaster","Orbital Strike Beacon"],
   Elite: ["AI General","Gene Warrior"]
 };
-const tiers = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3, Elite:5 };
+const tiers = { Ground:1, Ranged:1.5, Mobile:2, "Heavy Systems":3 };
 const {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,explorerUpgrade,profileFor}=require("./unitProfiles");
 // Maximum resources a single surviving unit can carry home after a player battle.
 const cargoCapacity = {
@@ -16,7 +16,7 @@ const cargoCapacity = {
   ...Object.fromEntries(categories["Heavy Systems"].map(unit=>[unit,profileFor(unit).cargo])),
   "AI General":50, "Gene Warrior":30
 };
-// Each unit has a dominant resource; rotate the emphasis within every class.
+// Resource emphasis for units without a fixed price.
 const emphasis = [
   {Gold:100,Iron:80,Water:60,Solar:40},
   {Gold:60,Iron:80,Water:120,Solar:40},
@@ -29,7 +29,8 @@ function unitPrice(unit) {
   const entry = Object.entries(categories).find(([,units])=>units.includes(unit));
   if (!entry) return null;
   const [category,units]=entry;
-  const base=emphasis[(units.indexOf(unit) + (category === "Elite" ? 1 : 0)) % emphasis.length];
+  if (category === "Elite") return {Gold:5000,Iron:5000,Water:5000,Solar:5000};
+  const base=emphasis[units.indexOf(unit) % emphasis.length];
   return Object.fromEntries(Object.entries(base).map(([resource,value])=>[resource,Math.ceil(value*tiers[category])]));
 }
 const unlockBuildings = {
