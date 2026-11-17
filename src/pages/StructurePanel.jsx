@@ -239,8 +239,11 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
               const next = level + (game.buildingJob?.name === name ? 1 : 0) + queuedLevels + 1;
               const cost = buildingPrice(name, next, game.allianceBonuses?.discount);
               const affordable = !!cost && Object.entries(cost).every(([key,amount]) => Number(resources[key] || 0) >= amount);
-              const requirements = next <= maxLevel ? Object.entries(buildingRequirements(name)) : [];
-              const meetsRequirements = requirements.every(([building, minimum]) => Number(structures[building] || 0) >= minimum);
+              const requirements = Object.entries(buildingRequirements(name, next));
+              const meetsRequirements = requirements.every(([building, minimum]) => {
+                const prerequisiteLevel = building === name ? next - 1 : Number(structures[building] || 0);
+                return prerequisiteLevel >= minimum;
+              });
               const wallStats = name === "Defense Grid" ? defenseGridLevels[level] : null;
               return <div key={name} ref={questTarget?.building === name ? questDestination : null} className="building" style={{padding:14}}>
                 {buildingImages[name] && <img src={buildingImages[name]} alt="" style={{width:44,height:44,objectFit:"contain"}} />}

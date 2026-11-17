@@ -672,8 +672,11 @@ class DatabaseManager {
       if (level >= maxLevel) return { error: "Maximum building level reached." };
       const cost = buildingPrice(name, level + 1, current.allianceBonuses.discount);
       if (!cost) return { error: "Construction data for this level is not available yet." };
-      const requirements = buildingRequirements(name);
-      if (Object.entries(requirements).some(([building, minimum]) => Number(current.structures[building] || 0) < minimum)) {
+      const requirements = buildingRequirements(name, level + 1);
+      if (Object.entries(requirements).some(([building, minimum]) => {
+        const prerequisiteLevel = building === name ? level : Number(current.structures[building] || 0);
+        return prerequisiteLevel < minimum;
+      })) {
         return { error: "Building requirements are not met." };
       }
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };

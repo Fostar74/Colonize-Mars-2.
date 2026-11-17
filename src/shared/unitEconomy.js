@@ -90,7 +90,6 @@ const buildingBaseCosts = {
   "Solar Array": {Gold:80,Iron:100,Water:50,Solar:50},
   "Water Extractor": {Gold:80,Iron:90,Water:120,Solar:30},
   "Cargo Depot": {Gold:130,Iron:110,Water:50,Solar:60},
-  "Defense Grid": {Gold:100,Iron:160,Water:50,Solar:90},
   "Upgrade Lab": {Gold:160,Iron:130,Water:100,Solar:110},
   "Bio-Lab": {Gold:120,Iron:90,Water:170,Solar:120},
   "Training Center": {Gold:110,Iron:150,Water:70,Solar:70},
@@ -100,18 +99,44 @@ const buildingBaseCosts = {
 };
 const orderLevelCosts = [30000, 50000, 100000];
 const defenseGridMaxLevel = 30;
-const defenseGridRequirements = {"Gold Synthesizer":1,"Iron Driller":1,"Solar Array":1,"Water Extractor":1};
+const defenseGridResourceBuildings = ["Gold Synthesizer","Iron Driller","Solar Array","Water Extractor"];
 const defenseGridLevels = {
-  1: {
-    cost: {Gold:35,Iron:50,Water:100,Solar:20},
-    durationMs: 5 * 60 * 1000,
-    attack: 2000,
-    health: 1000
+  1: {cost:{Gold:35,Iron:50,Water:100,Solar:20},durationMs:300000,attack:2000,health:1000},
+  2: {cost:{Gold:53,Iron:75,Water:150,Solar:30},durationMs:420000,attack:4000,health:2000},
+  3: {cost:{Gold:79,Iron:113,Water:225,Solar:45},durationMs:588000,attack:6000,health:3000},
+  4: {cost:{Gold:118,Iron:169,Water:338,Solar:68},durationMs:823000,attack:8000,health:4000},
+  [defenseGridMaxLevel]: {
+    cost:{Gold:37586,Iron:53696,Water:107389,Solar:21479},
+    durationMs:(19 * 3600 + 5 * 60 + 21) * 1000,
+    attack:200000,
+    health:100000
   }
 };
+const lastSpecifiedEarlyLevel = 4;
+const earlyGrid = defenseGridLevels[lastSpecifiedEarlyLevel];
+const finalGrid = defenseGridLevels[defenseGridMaxLevel];
+const gridLevelSpan = defenseGridMaxLevel - lastSpecifiedEarlyLevel;
+const earlyHealthStep = earlyGrid.health - defenseGridLevels[lastSpecifiedEarlyLevel - 1].health;
+const extraHealth = finalGrid.health - earlyGrid.health - earlyHealthStep * gridLevelSpan;
 
-function buildingRequirements(name) {
-  return name === "Defense Grid" ? defenseGridRequirements : {};
+// Fill the missing levels using geometric construction growth and a gradually
+// increasing health gain. Attack follows the supplied 2:1 attack-to-health ratio.
+for (let step = 1; step < gridLevelSpan; step++) {
+  const progress = step / gridLevelSpan;
+  const cost = Object.fromEntries(Object.entries(earlyGrid.cost).map(([resource, amount]) => [
+    resource, Math.round(amount * (finalGrid.cost[resource] / amount) ** progress)
+  ]));
+  const seconds = Math.round(earlyGrid.durationMs / 1000 * (finalGrid.durationMs / earlyGrid.durationMs) ** progress);
+  const healthProgress = step * (step - 1) / (gridLevelSpan * (gridLevelSpan - 1));
+  const health = earlyGrid.health + earlyHealthStep * step + Math.round(extraHealth * healthProgress);
+  defenseGridLevels[lastSpecifiedEarlyLevel + step] = {cost,durationMs:seconds * 1000,attack:2 * health,health};
+}
+
+function buildingRequirements(name, level) {
+  if (name !== "Defense Grid" || !defenseGridLevels[level]) return {};
+  const requirements = Object.fromEntries(defenseGridResourceBuildings.map(building => [building, level]));
+  if (level > 1) requirements[name] = level - 1;
+  return requirements;
 }
 
 function buildingDuration(name, level, speed = 0) {
@@ -121,7 +146,7 @@ function buildingDuration(name, level, speed = 0) {
 
 function buildingMaxLevel(name) {
   if (name === "Order") return orderLevelCosts.length;
-  if (name === "Defense Grid") return defenseGridMaxLevel;
+  if (name === "Defense Grid" || defenseGridResourceBuildings.includes(name)) return defenseGridMaxLevel;
   return Object.prototype.hasOwnProperty.call(buildingBaseCosts, name) ? 20 : 0;
 }
 
@@ -132,8 +157,6 @@ function buildingPrice(name,nextLevel,discount = 0) {
     return {Gold:cost,Iron:cost,Water:cost,Solar:cost};
   }
   const defenseGridCost = name === "Defense Grid" ? defenseGridLevels[nextLevel]?.cost : undefined;
-  // Already available Defense Grid levels keep their construction costs until their new data is supplied.
-  if (name === "Defense Grid" && nextLevel > 20 && !defenseGridCost) return null;
   const base = defenseGridCost ?? buildingBaseCosts[name];
   const levelMultiplier = defenseGridCost ? 1 : nextLevel;
   return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * levelMultiplier * (100 - discount) / 100)]));

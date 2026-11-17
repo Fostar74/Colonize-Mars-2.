@@ -218,19 +218,17 @@ export default function InformationPanel(){
      <tbody>
       <tr>
        <th scope="row">{t("Requirements","Изисквания")}</th>
-       <td>{Object.entries(buildingRequirements("Defense Grid")).map(([building,level])=><div key={building}>{label(building)} · {t("Level","Ниво")} {level}</div>)}</td>
+       <td>{Object.entries(buildingRequirements("Defense Grid",wallLevel)).map(([building,level])=><div key={building}>{label(building)} · {t("Level","Ниво")} {level}</div>)}</td>
       </tr>
-      {wallStats && <>
       {Object.entries(wallStats.cost).map(([resource,amount])=><tr key={resource}>
        <th scope="row">{label(resource)}</th><td>{amount.toLocaleString()}</td>
       </tr>)}
       <tr><th scope="row">{t("Construction time","Време за строеж")}</th><td>{time(wallStats.durationMs / 1000)}</td></tr>
       <tr><th scope="row">{t("Attack","Атака")}</th><td>{wallStats.attack.toLocaleString()}</td></tr>
       <tr><th scope="row">{t("Health","Живот")}</th><td>{wallStats.health.toLocaleString()}</td></tr>
-      </>}
+
      </tbody>
     </table>
-    {!wallStats && <p role="status">{t("The construction and combat statistics for this level have not been added to the table yet.","Данните за строежа и бойните показатели за това ниво още не са добавени в таблицата.")}</p>}
    </article>
   </>}
   {section?.id==="units"&&<>
