@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from "react";
 import "./StructurePanel.css";
 import unitEconomy from "../shared/unitEconomy";
 import {unitUpgradeMaxLevel} from "../shared/unitProfiles";
-import {demolitionBot} from "../shared/heavyUnitProfiles";
+import {demolitionBot,missileCarrier} from "../shared/heavyUnitProfiles";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
@@ -17,9 +17,10 @@ const structureTypes = {
   Military: ["Training Center", "Combat Simulator", "Vehicle Bay", "Drone Factory"]
 };
 
-// The Demolition Bot starts at the base stat, before its first purchased upgrade.
+// These profiles start at the base stat, before the first purchased upgrade.
 function displayedUpgradeLevel(unit, level) {
-  return unit === demolitionBot.name ? Math.min(10, level - 1) : level;
+  const countsFromBase = unit === demolitionBot.name || unit === missileCarrier.name;
+  return countsFromBase ? Math.min(10, level - 1) : level;
 }
 
 const unitCategories = {

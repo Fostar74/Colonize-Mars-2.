@@ -102,23 +102,23 @@ export default function InformationPanel(){
    {["attackUpgrades","healthUpgrades"].map(kind=><section key={kind}><h3>{kind==="attackUpgrades"?t("Attack upgrades","Подобрения на атаката"):t("Health upgrades","Подобрения на здравето")}</h3><div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}><thead><tr>{(kind==="attackUpgrades"?[t("Level","Ниво"),t("Infantry","Пехота"),t("Mobile","Мобилни"),t("Ranged","Стрелци"),t("Wall","Стена"),t("Siege","Обсада"),t("Cost","Цена"),t("Time","Време")]:[t("Level","Ниво"),t("Health increase","Увеличение на здравето"),t("Cost","Цена"),t("Time","Време")]).map(x=><th key={x} style={{padding:7,border:"1px solid #54758a"}}>{x}</th>)}</tr></thead><tbody>{u[kind].slice(0,10).map((r,i)=><tr key={i}>{(kind==="attackUpgrades"?[i+1,...r.values.map(v=>"+"+v),cost(r),time(r.seconds)]:[i+1,"+"+r.value,cost(r),time(r.seconds)]).map((v,j)=><td key={j} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{v}</td>)}</tr>)}</tbody></table></div></section>)}
   </article>;
  };
- const demolitionBotDetails=(
+ const heavyUnitDetails=(unit,description,attackColumns)=>(
   <>
-   <p>{t("Available to all factions. Attacks only the Defense Grid. It is the fastest Heavy System and has the most health. Recommended position: first row.","Достъпен за всички нации. Атакува само Отбранителната мрежа. Това е най-бързата тежка система и има най-много живот. Препоръчителна позиция: първи ред.")}</p>
-   <p>{affectedProtocols(demolitionBot)}</p>
-   <p>{t("Speed","Скорост")}: {demolitionBot.speed} · {t("Cargo","Товар")}: {demolitionBot.cargo} · {t("Population","Население")}: {demolitionBot.population}</p>
-   <p>{t("Drone Factory level","Фабрика за дронове, ниво")} {demolitionBot.requirement.level} · {t("Training time","Време за обучение")}: {time(demolitionBot.trainingSeconds)}</p>
-   <p>{t("Training cost","Цена за обучение")}: {res.map(k=>label(k)+": "+demolitionBot.price[k]).join(" · ")}</p>
-   {[["attackUpgrades",t("Attack upgrades","Подобрения на атаката"),t("Attack against the Defense Grid","Атака срещу Отбранителната мрежа")],
-     ["healthUpgrades",t("Health upgrades","Защитни подобрения"),t("Health increase","Увеличение на живота")]].map(([kind,title,bonusLabel])=>(
+   <p>{t(...description)}</p>
+   <p>{affectedProtocols(unit)}</p>
+   <p>{t("Speed","Скорост")}: {unit.speed} · {t("Cargo","Товар")}: {unit.cargo} · {t("Population","Население")}: {unit.population}</p>
+   <p>{t("Drone Factory level","Фабрика за дронове, ниво")} {unit.requirement.level} · {t("Training time","Време за обучение")}: {time(unit.trainingSeconds)}</p>
+   <p>{t("Training cost","Цена за обучение")}: {res.map(k=>label(k)+": "+unit.price[k]).join(" · ")}</p>
+   {[["attackUpgrades",t("Attack upgrades","Подобрения на атаката"),attackColumns.map(({label})=>label)],
+     ["healthUpgrades",t("Health upgrades","Защитни подобрения"),[t("Health increase","Увеличение на живота")]]].map(([kind,title,bonusLabels])=>(
     <section key={kind}>
      <h4>{title}</h4>
      <div style={{overflowX:"auto"}}>
       <table style={{width:"100%",borderCollapse:"collapse",background:"#172432"}}>
-       <thead><tr>{[t("Level","Ниво"),bonusLabel,t("Cost","Цена"),t("Time","Време")].map(heading=><th key={heading} scope="col" style={{padding:7,border:"1px solid #54758a"}}>{heading}</th>)}</tr></thead>
-       <tbody>{demolitionBot[kind].map((row,index)=>(
+       <thead><tr>{[t("Level","Ниво"),...bonusLabels,t("Cost","Цена"),t("Time","Време")].map(heading=><th key={heading} scope="col" style={{padding:7,border:"1px solid #54758a"}}>{heading}</th>)}</tr></thead>
+       <tbody>{unit[kind].map((row,index)=>(
         <tr key={index}>
-         {[index+1,"+"+(kind==="attackUpgrades"?row.values[3]:row.value),cost(row),time(row.seconds)].map((value,column)=><td key={column} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{value}</td>)}
+         {[index+1,...(kind==="attackUpgrades"?attackColumns.map(({index})=>"+"+row.values[index]):["+"+row.value]),cost(row),time(row.seconds)].map((value,column)=><td key={column} style={{padding:7,border:"1px solid #54758a",whiteSpace:"nowrap"}}>{value}</td>)}
         </tr>
        ))}</tbody>
       </table>
@@ -127,6 +127,14 @@ export default function InformationPanel(){
    ))}
   </>
  );
+ const wallUpgradeColumn={index:3,label:t("Attack against the Defense Grid","Атака срещу Отбранителната мрежа")};
+ const demolitionBotDetails=heavyUnitDetails(demolitionBot,["Available to all factions. Attacks only the Defense Grid. It is the fastest Heavy System and has the most health. Recommended position: first row.","Достъпен за всички нации. Атакува само Отбранителната мрежа. Това е най-бързата тежка система и има най-много живот. Препоръчителна позиция: първи ред."],[wallUpgradeColumn]);
+ const missileCarrierDetails=heavyUnitDetails(missileCarrier,[
+  "Available to all factions. Deals equal damage to ground, mobile, ranged, and heavy units. Place it behind the front row.",
+  "Достъпен за всички нации. Нанася еднакви щети срещу сухопътни, мобилни, стрелкови и тежки единици. Поставяйте го зад предния ред."
+ ],[
+  {index:0,label:t("Attack against troops","Атака срещу войски")},wallUpgradeColumn
+ ]);
  const heavyUnit=(unit,bg,details)=><article key={unit.name} style={{padding:14,border:"1px solid #54758a",borderRadius:10,marginBottom:14}}>
    <h3>{t(unit.name,bg)}</h3>
    {combatStatsTable(unit)}
@@ -214,7 +222,7 @@ export default function InformationPanel(){
    <h2>{t("Heavy Systems","Тежки системи")}</h2>
    <p>{t(categoryProtocols.heavy[0],categoryProtocols.heavy[1])}</p>
    {heavyUnit(demolitionBot,"Бот за разрушаване",demolitionBotDetails)}
-   {heavyUnit(missileCarrier,"Ракетоносец")}
+   {heavyUnit(missileCarrier,"Ракетоносец",missileCarrierDetails)}
    {heavyUnit(particleBlaster,"Бластер с частици")}
    {heavyUnit(orbitalStrikeBeacon,"Маркер за орбитален удар")}
   </>}
