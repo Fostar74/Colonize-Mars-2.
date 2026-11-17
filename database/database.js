@@ -757,7 +757,7 @@ class DatabaseManager {
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
       const duration=Math.max(1000,Math.ceil(quantity*unitTrainingDuration(unit)*1000*(1-trainingBonus)));
       const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
-      const job={unit,quantity,startsAt,endsAt:startsAt+duration,trainingSpeedVersion:10};
+      const job={unit,quantity,startsAt,endsAt:startsAt+duration,trainingSpeedVersion:10,resourceCost:{...cost}};
       const trainingQueues={...current.trainingQueues,[category]:[...queue,job]};
       db.prepare("UPDATE game_runtime SET training_queues=? WHERE user_id=?").run(JSON.stringify(trainingQueues),userId);
       db.prepare("UPDATE game_progress SET resources=?, last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
@@ -816,6 +816,64 @@ class DatabaseManager {
     })();
   }
 
+  refundCancelledMilitaryJob(userId, current, paidCost) {
+    const member = db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+    if (!member) return {error:"An alliance is required to donate the 10% cancellation fee."};
+    const treasuryRow = db.prepare("SELECT resources FROM alliance_treasury WHERE alliance_id=?").get(member.alliance_id);
+    const treasury = treasuryRow ? JSON.parse(treasuryRow.resources) : {Gold:0,Iron:0,Water:0,Solar:0};
+    for (const [resource, raw] of Object.entries(paidCost)) {
+      const paid = Number(raw);
+      if (!Number.isSafeInteger(paid) || paid < 0 || !["Gold","Iron","Water","Solar"].includes(resource))
+        return {error:"Invalid original resource cost."};
+      const donated = Math.ceil(paid / 10);
+      current.resources[resource] = (Number(current.resources[resource]) || 0) + paid - donated;
+      treasury[resource] = (Number(treasury[resource]) || 0) + donated;
+    }
+    db.prepare("INSERT OR IGNORE INTO alliance_treasury(alliance_id,resources,bonuses) VALUES (?,?,?)")
+      .run(member.alliance_id,JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),"{}");
+    db.prepare("UPDATE alliance_treasury SET resources=? WHERE alliance_id=?")
+      .run(JSON.stringify(treasury),member.alliance_id);
+    return {donatedToAlliance:true};
+  }
+
+  cancelTrainingGroup(userId, category, index) {
+    const {categories} = require("../src/shared/unitEconomy");
+    if (!Object.hasOwn(categories,category) || !Number.isInteger(index) || index < 0)
+      return {error:"Invalid training group."};
+    return db.transaction(() => {
+      const current = this.syncGame(userId);
+      if (!current) return {error:"Player not found."};
+      const queue = [...(current.trainingQueues[category] || [])];
+      const job = queue[index];
+      if (!job) return {error:"Training group not found."};
+      const paidCost = job.resourceCost || Object.fromEntries(
+        Object.entries(unitPrice(job.unit)).map(([resource,price])=>[resource,price*job.quantity])
+      );
+      const refund = this.refundCancelledMilitaryJob(userId,current,paidCost);
+      if (refund.error) return refund;
+      queue.splice(index,1);
+      // Preserve progress for the active group; bring later queued groups forward.
+      const now = Date.now();
+      let previousEnd = now;
+      for (let i=0;i<queue.length;i++) {
+        const item = queue[i];
+        const duration = Math.max(1000,Number(item.endsAt)-Number(item.startsAt) || 1000);
+        if (i===0 && Number(item.startsAt)<=now && Number(item.endsAt)>now) {
+          previousEnd = item.endsAt;
+        } else {
+          item.startsAt = previousEnd;
+          item.endsAt = previousEnd + duration;
+          previousEnd = item.endsAt;
+        }
+      }
+      const trainingQueues = {...current.trainingQueues,[category]:queue};
+      db.prepare("UPDATE game_runtime SET training_queues=? WHERE user_id=?").run(JSON.stringify(trainingQueues),userId);
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+        .run(JSON.stringify(current.resources),userId);
+      return {...current,trainingQueues,resources:current.resources};
+    })();
+  }
+
   cancelUnitUpgrade(userId, slot) {
     if (![0, 1].includes(slot)) return {error:"Invalid upgrade slot."};
     return db.transaction(() => {
@@ -843,9 +901,8 @@ class DatabaseManager {
           return [resource,value];
         }));
       }
-      for (const [resource, amount] of Object.entries(refund)) {
-        current.resources[resource] = (Number(current.resources[resource])||0) + Number(amount);
-      }
+      const cancellation = this.refundCancelledMilitaryJob(userId,current,refund);
+      if (cancellation.error) return cancellation;
       jobs[slot] = null;
       // If the active job was cancelled, immediately activate the queued one.
       if (slot === 0 && jobs[1]) {
