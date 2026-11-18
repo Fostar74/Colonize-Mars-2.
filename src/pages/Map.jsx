@@ -127,7 +127,7 @@ function Map() {
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
   const suppressClickRef = useRef(false);
-  const [zoom, setZoom] = useState(1);
+  const zoom = .39;
   const [terrainImage,setTerrainImage]=useState(null);
   const [earthDetailTexture]=useState(createEarthDetailTexture);
   useEffect(()=>{const img=new Image();img.onload=()=>setTerrainImage(img);img.src=earthMapBackground;},[]);
@@ -844,7 +844,7 @@ function Map() {
           const d=await r.json();setMapError(r.ok?"Side quest claimed! "+d.amount+" of each resource added to Inventory.":d.message);
           if(r.ok)setCampaign(old=>({...old,sideQuests:old.sideQuests.map(x=>x.level===q.level?{...x,claimed:true}:x)}));
         }}>{t("Side Quest: claim Level","Странична мисия: вземи наградата за ниво")} {q.level} {t("reward"," ")}</button>)}
-        <div style={{margin:"8px 0"}}>{t("Zoom","Мащаб")} <button onClick={()=>setZoom(z=>Math.max(.065,Number((z/1.6).toFixed(4))))}>−</button> <span>{Math.round(zoom*100)}%</span> <button onClick={()=>setZoom(z=>Math.min(3,Number((z*1.6).toFixed(4))))}>+</button> <button onClick={()=>{setZoom(.065);centerMapOn(50.5,50.5);}}>{t("Full map 100×100","Цяла карта 100×100")}</button> <button onClick={()=>setZoom(1)}>100%</button></div>
+        <div style={{margin:"8px 0"}}>{t("Drag the map to explore (fixed 39% scale)","Плъзгай картата във всички посоки (фиксиран мащаб 39%)")}</div>
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
         <input type="text" id="usernameInput" placeholder={localLabel("Search Username")} />
