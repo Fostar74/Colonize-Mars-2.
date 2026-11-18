@@ -362,7 +362,7 @@ function Map() {
         py < canvas.height
       ) {
         // Double the previously enlarged mine marker, keeping its center and world coordinates.
-        ctx.drawImage(icon, px-tileSize*1.5, py-tileSize*1.5, tileSize*4, tileSize*4);
+        ctx.drawImage(icon, px-tileSize*.25, py-tileSize*.25, tileSize*1.5, tileSize*1.5);
       }
     });
 
@@ -376,7 +376,7 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
-        if(alienIcon)ctx.drawImage(alienIcon, px-tileSize*1.5, py-tileSize*1.5, tileSize*4, tileSize*4);
+        if(alienIcon)ctx.drawImage(alienIcon, px-tileSize*.25, py-tileSize*.25, tileSize*1.5, tileSize*1.5);
         ctx.fillStyle = "white";
         ctx.font = "bold 14px Arial";
         ctx.fillText(`Lv${base.level}`, px + 5, py + 15);
@@ -404,7 +404,7 @@ function Map() {
       // Preserve world coordinates while drawing a larger screen-space marker.
       const sx = (c.x-.5)*tileSize + offset.x;
       const sy = (c.y-.5)*tileSize + offset.y;
-      const markerSize = Math.max(42,tileSize)*3;
+      const markerSize = Math.max(42,tileSize)*1.5;
       if(sx+markerSize/2<0||sy+markerSize/2<0||sx-markerSize/2>canvas.width||sy-markerSize/2>canvas.height)return;
       const isOwn=c.username===sessionStorage.getItem("username");
       ctx.save();
@@ -421,7 +421,7 @@ function Map() {
       ctx.strokeStyle=isOwn?"#67ffd0":"#a8d8ff";
       ctx.lineWidth=isOwn?3:2;ctx.stroke();
       if(hqIcon)ctx.drawImage(hqIcon,sx-markerSize/2,sy-markerSize/2,markerSize,markerSize);
-      ctx.font=isOwn?"bold 13px Arial":"12px Arial";
+      ctx.font=isOwn?"bold 15px Arial":"14px Arial";
       ctx.textAlign="center";
       ctx.lineWidth=3;ctx.strokeStyle="rgba(0,0,0,.9)";
       const name=`${isOwn?"★ ":""}${c.username} (${c.x}:${c.y})`;
