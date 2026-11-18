@@ -1,5 +1,7 @@
 module.exports = Array.from({length:20},(_,index)=>{
     const level=index+1;
+    // Keep Lv19 clear of alliance station 3 (50:44); Lv20 remains at (50:50).
+    if (level === 19) return [{x:49,y:35,level}];
     const count=1; // One alien base per level (Lv1–Lv20), preserving each level's first position.
     const radius=level===20?0:3+(20-level)*2.25;
     return Array.from({length:count},(_,j)=>{
