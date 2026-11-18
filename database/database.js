@@ -2411,7 +2411,7 @@ class DatabaseManager {
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
     const rankings=db.prepare("SELECT l.user_id,u.username,l.medicine_found,l.deepest_depth,l.rooms_opened,l.total_moves,l.completed_at FROM labyrinth_players l JOIN users u ON u.id=l.user_id ORDER BY l.medicine_found DESC,CASE WHEN l.medicine_found=1 THEN l.completed_at END ASC,l.deepest_depth DESC,l.rooms_opened DESC,l.total_moves ASC,u.username COLLATE NOCASE LIMIT 50").all().map((entry,index)=>({...entry,rank:index+1}));
-    if(knight<10)return {unlocked:false,knightLevel:knight,requiredLevel:10,rankings};
+    if(knight<7)return {unlocked:false,knightLevel:knight,requiredLevel:7,rankings};
     const maze=JSON.parse(row.maze),visited=JSON.parse(row.visited||"[]"),current=maze.rooms[row.current_room];
     const visitedRooms=visited.map(id=>maze.rooms[id]).filter(Boolean).map(room=>({id:room.id,depth:room.depth,goal:room.goal,current:room.id===row.current_room}));
     const exits=(current?.children||[]).filter(exit=>!visited.includes(exit.id)).map(exit=>({id:exit.id,direction:exit.direction}));
@@ -2419,7 +2419,7 @@ class DatabaseManager {
   }
 
   runLabyrinthMission(userId){
-    const status=this.getLabyrinthStatus(userId);if(!status.unlocked)return {error:"Reach Cyber Knight level 10 to enter the Labyrinth."};
+    const status=this.getLabyrinthStatus(userId);if(!status.unlocked)return {error:"Reach Cyber Knight level 7 to enter the Labyrinth."};
     return db.transaction(()=>{
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);if(!row)return {error:"Labyrinth state is unavailable."};
       if(Number(row.missions_today)>=10)return {error:"You have completed all 10 Labyrinth missions for today."};
@@ -2436,7 +2436,7 @@ class DatabaseManager {
   }
 
   moveLabyrinth(userId,roomId){
-    const status=this.getLabyrinthStatus(userId);if(!status.unlocked)return {error:"Reach Cyber Knight level 10 to enter the Labyrinth."};
+    const status=this.getLabyrinthStatus(userId);if(!status.unlocked)return {error:"Reach Cyber Knight level 7 to enter the Labyrinth."};
     return db.transaction(()=>{
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);if(!row)return {error:"Labyrinth state is unavailable."};
       if(Number(row.medicine_found))return {error:"The medicine has already been found."};
@@ -2453,7 +2453,7 @@ class DatabaseManager {
   }
 
   backtrackLabyrinth(userId,roomId){
-    const status=this.getLabyrinthStatus(userId);if(!status.unlocked)return {error:"Reach Cyber Knight level 10 to enter the Labyrinth."};
+    const status=this.getLabyrinthStatus(userId);if(!status.unlocked)return {error:"Reach Cyber Knight level 7 to enter the Labyrinth."};
     return db.transaction(()=>{
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);if(!row)return {error:"Labyrinth state is unavailable."};
       const visited=JSON.parse(row.visited||"[]");if(!visited.includes(roomId))return {error:"You can return only to a square you have already visited."};
