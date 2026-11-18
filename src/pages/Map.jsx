@@ -370,16 +370,27 @@ function Map() {
       const px = (base.x-1) * tileSize + offset.x;
       const py = (base.y-1) * tileSize + offset.y;
 
+      // Keep alien fortresses legible even at the default 39% map zoom.
+      // Only the visual marker grows; its map position stays unchanged.
+      const markerSize = Math.max(104, tileSize * 2.5);
+      const sx = px + tileSize / 2;
+      const sy = py + tileSize / 2;
       if (
-        px + tileSize >= 0 &&
-        py + tileSize >= 0 &&
-        px < canvas.width &&
-        py < canvas.height
+        sx + markerSize / 2 >= 0 &&
+        sy + markerSize / 2 >= 0 &&
+        sx - markerSize / 2 < canvas.width &&
+        sy - markerSize / 2 < canvas.height
       ) {
-        if(alienIcon)ctx.drawImage(alienIcon, px-tileSize*.25, py-tileSize*.25, tileSize*1.5, tileSize*1.5);
-        ctx.fillStyle = "white";
-        ctx.font = "bold 14px Arial";
-        ctx.fillText(`Lv${base.level}`, px + 5, py + 15);
+        ctx.save();
+        if (alienIcon) ctx.drawImage(alienIcon, sx - markerSize / 2, sy - markerSize / 2, markerSize, markerSize);
+        ctx.font = "bold 16px Arial";
+        ctx.textAlign = "center";
+        ctx.lineWidth = 4;
+        ctx.strokeStyle = "rgba(0,0,0,.9)";
+        ctx.strokeText(`Lv${base.level}`, sx, sy - markerSize / 2 - 5);
+        ctx.fillStyle = "#ffffff";
+        ctx.fillText(`Lv${base.level}`, sx, sy - markerSize / 2 - 5);
+        ctx.restore();
       }
     });
 
