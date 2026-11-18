@@ -361,8 +361,8 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
-        // Triple the previously enlarged mine marker, keeping its center and world coordinates.
-        ctx.drawImage(icon, px-tileSize*2.5, py-tileSize*2.5, tileSize*6, tileSize*6);
+        // Double the previously enlarged mine marker, keeping its center and world coordinates.
+        ctx.drawImage(icon, px-tileSize*1.5, py-tileSize*1.5, tileSize*4, tileSize*4);
       }
     });
 
@@ -376,7 +376,7 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
-        if(alienIcon)ctx.drawImage(alienIcon, px-tileSize*2.5, py-tileSize*2.5, tileSize*6, tileSize*6);
+        if(alienIcon)ctx.drawImage(alienIcon, px-tileSize*1.5, py-tileSize*1.5, tileSize*4, tileSize*4);
         ctx.fillStyle = "white";
         ctx.font = "bold 14px Arial";
         ctx.fillText(`Lv${base.level}`, px + 5, py + 15);
