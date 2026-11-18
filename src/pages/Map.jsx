@@ -15,6 +15,10 @@ import ironMine3d from "../images/mine-iron-3d.png";
 import waterMine3d from "../images/mine-water-3d.png";
 import solarMine3d from "../images/mine-solar-3d.png";
 import playerBaseImg from "../images/player-base-3d.png";
+import allianceStation1Img from "../images/329C1EC6-E042-46DB-9F1E-3C2A6277CE96.png";
+import allianceStation2Img from "../images/607F9C13-D618-4DB4-9754-5D55CAE574E0.png";
+import allianceStation3Img from "../images/C10DEF92-EFAB-4F74-8A66-64FA32B299EF.png";
+import allianceStation4Img from "../images/D90ED024-2738-4822-B0D2-37EC882FF8DD.png";
 import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
 import alienBases from "../shared/alienBases";
@@ -247,6 +251,7 @@ function Map() {
   const [cursorCoord, setCursorCoord] = useState(null);
   const [mineIcons, setMineIcons] = useState({});
   const [alienIcon, setAlienIcon] = useState(null);
+  const [stationIcons, setStationIcons] = useState([]);
   const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
 
@@ -288,6 +293,17 @@ function Map() {
     img.onload = () => {
       setHqIcon(img);
     };
+  }, []);
+
+  useEffect(() => {
+    const icons = [allianceStation1Img, allianceStation2Img, allianceStation3Img, allianceStation4Img].map(src => {
+      const img = new Image();
+      img.src = src;
+      return img;
+    });
+    const onLoad = () => setStationIcons([...icons]);
+    icons.forEach(img => { img.onload = onLoad; img.onerror = onLoad; });
+    return () => icons.forEach(img => { img.onload = null; img.onerror = null; });
   }, []);
 
   useEffect(() => {
@@ -404,19 +420,27 @@ function Map() {
     (campaign.stations?.stations||spaceStations).forEach(station=>{
       const sx=(station.x-1)*tileSize+offset.x+tileSize/2;
       const sy=(station.y-1)*tileSize+offset.y+tileSize/2;
-      if(sx+tileSize<0||sy+tileSize<0||sx-tileSize>canvas.width||sy-tileSize>canvas.height)return;
+      const markerSize=Math.max(158,tileSize*3.6);
+      if(sx+markerSize/2<0||sy+markerSize/2<0||sx-markerSize/2>canvas.width||sy-markerSize/2>canvas.height)return;
       const unlocked=!station.locked;
+      const icon=stationIcons[Number(station.id)-1];
       ctx.save();
-      ctx.strokeStyle=unlocked?"#7cffd2":"#9bb1c3";ctx.fillStyle=unlocked?"rgba(57,220,171,.22)":"rgba(150,177,198,.16)";
-      ctx.lineWidth=Math.max(2,tileSize*.045);ctx.shadowColor=unlocked?"#54ffc3":"#a6c4d4";ctx.shadowBlur=tileSize*.18;
-      ctx.beginPath();ctx.arc(sx,sy,tileSize*1.26,0,Math.PI*2);ctx.fill();ctx.stroke();
-      ctx.beginPath();ctx.moveTo(sx,sy-tileSize*.84);ctx.lineTo(sx+tileSize*.84,sy);ctx.lineTo(sx,sy+tileSize*.84);ctx.lineTo(sx-tileSize*.84,sy);ctx.closePath();
-      ctx.fillStyle=unlocked?"#7affd1":"#a9c0d0";ctx.fill();ctx.stroke();
-      ctx.shadowBlur=0;ctx.fillStyle="#f3ffe8";ctx.font="bold 10px Arial";ctx.textAlign="center";
-      ctx.fillText(unlocked?"СТАНЦИЯ "+station.id:"🔒 "+station.id,sx,sy+tileSize*.67);
+      if(icon?.complete&&icon.naturalWidth>0){
+        ctx.drawImage(icon,sx-markerSize/2,sy-markerSize/2,markerSize,markerSize);
+      }else{
+        ctx.strokeStyle=unlocked?"#7cffd2":"#9bb1c3";
+        ctx.fillStyle=unlocked?"rgba(57,220,171,.22)":"rgba(150,177,198,.16)";
+        ctx.lineWidth=3;
+        ctx.beginPath();ctx.arc(sx,sy,markerSize*.35,0,Math.PI*2);ctx.fill();ctx.stroke();
+      }
+      const name=station.allianceName;
+      const label=name?name:`КОСМОДРУМ ${station.id}`;
+      ctx.textAlign="center";ctx.font="bold 15px Arial";
+      ctx.lineWidth=4;ctx.strokeStyle="rgba(0,0,0,.92)";
+      ctx.strokeText(label,sx,sy+markerSize*.48);
+      ctx.fillStyle="#ffffff";ctx.fillText(label,sx,sy+markerSize*.48);
       ctx.restore();
     });
-
 
     castles.forEach((c) => {
       // Preserve world coordinates while drawing a larger screen-space marker.
@@ -458,7 +482,7 @@ function Map() {
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
       ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
-  }, [offset, castles, hqIcon, mineIcons, alienIcon, terrainImage, earthDetailTexture, zoom, campaign, mineData, t]);
+  }, [offset, castles, hqIcon, mineIcons, alienIcon, stationIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, t]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
