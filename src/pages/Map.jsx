@@ -251,7 +251,9 @@ function Map() {
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
 
   // World coordinates are 1–100; each tile has a stable geographic location.
-  const mineData = mapMines;
+  // Reserve the central sector for the four alliance bases and Lv20.
+  // Hide central deposits on the map without deleting active gathering records.
+  const mineData = mapMines.filter(mine => Math.hypot(Number(mine.x)-50, Number(mine.y)-50) > 15);
 
 
   useEffect(() => {
@@ -404,16 +406,20 @@ function Map() {
     (campaign.stations?.stations||spaceStations).forEach(station=>{
       const sx=(station.x-1)*tileSize+offset.x+tileSize/2;
       const sy=(station.y-1)*tileSize+offset.y+tileSize/2;
-      if(sx+tileSize<0||sy+tileSize<0||sx-tileSize>canvas.width||sy-tileSize>canvas.height)return;
+      const markerSize=Math.max(104,tileSize*2.5);
+      if(sx+markerSize/2<0||sy+markerSize/2<0||sx-markerSize/2>canvas.width||sy-markerSize/2>canvas.height)return;
       const unlocked=!station.locked;
       ctx.save();
       ctx.strokeStyle=unlocked?"#7cffd2":"#9bb1c3";ctx.fillStyle=unlocked?"rgba(57,220,171,.22)":"rgba(150,177,198,.16)";
       ctx.lineWidth=Math.max(2,tileSize*.045);ctx.shadowColor=unlocked?"#54ffc3":"#a6c4d4";ctx.shadowBlur=tileSize*.18;
-      ctx.beginPath();ctx.arc(sx,sy,tileSize*1.26,0,Math.PI*2);ctx.fill();ctx.stroke();
-      ctx.beginPath();ctx.moveTo(sx,sy-tileSize*.84);ctx.lineTo(sx+tileSize*.84,sy);ctx.lineTo(sx,sy+tileSize*.84);ctx.lineTo(sx-tileSize*.84,sy);ctx.closePath();
+      ctx.beginPath();ctx.arc(sx,sy,markerSize*.45,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.beginPath();ctx.moveTo(sx,sy-markerSize*.32);ctx.lineTo(sx+markerSize*.32,sy);ctx.lineTo(sx,sy+markerSize*.32);ctx.lineTo(sx-markerSize*.32,sy);ctx.closePath();
       ctx.fillStyle=unlocked?"#7affd1":"#a9c0d0";ctx.fill();ctx.stroke();
       ctx.shadowBlur=0;ctx.fillStyle="#f3ffe8";ctx.font="bold 10px Arial";ctx.textAlign="center";
-      ctx.fillText(unlocked?"СТАНЦИЯ "+station.id:"🔒 "+station.id,sx,sy+tileSize*.67);
+      ctx.font="bold 13px Arial";ctx.lineWidth=3;ctx.strokeStyle="rgba(0,0,0,.85)";
+      const stationLabel=unlocked?"СЪЮЗНИЧЕСКА БАЗА "+station.id:"🔒 СЪЮЗНИЧЕСКА БАЗА "+station.id;
+      ctx.strokeText(stationLabel,sx,sy+markerSize*.61);
+      ctx.fillText(stationLabel,sx,sy+markerSize*.61);
       ctx.restore();
     });
 
