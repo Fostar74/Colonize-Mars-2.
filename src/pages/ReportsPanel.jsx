@@ -12,6 +12,7 @@ export default function ReportsPanel({onClose,onRead}) {
   const {t,label:localLabel}=useLanguage();
   const userId=sessionStorage.getItem("userId");
   const [data,setData]=useState(null);
+  const [activeTab,setActiveTab]=useState("military");
   const [error,setError]=useState("");
   const [newReportIds,setNewReportIds]=useState([]);
   const [clock,setClock]=useState(Date.now);
@@ -137,20 +138,29 @@ export default function ReportsPanel({onClose,onRead}) {
     <header style={header}><span>{t("REPORTS","ДОКЛАДИ")}</span><button onClick={onClose} style={close}>×</button></header>
     <div style={{padding:20,overflowY:"auto",maxHeight:"calc(90vh - 70px)"}}>
       {error&&<p role="alert">{error}</p>}{!data&&!error&&<p>{t("Loading reports…","Зареждане на докладите…")}</p>}
-      {data&&<>{activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}
+      {data&&<div style={{display:"flex",gap:8,marginBottom:16}}>
+        <button type="button" onClick={()=>setActiveTab("military")} style={{...tabButton,background:activeTab==="military"?"#24629b":"#293443"}}>{t("Military","Военни")}</button>
+        <button type="button" onClick={()=>setActiveTab("economy")} style={{...tabButton,background:activeTab==="economy"?"#24629b":"#293443"}}>{t("Economy","Икономика")}{newGathering.length>0?" · "+newGathering.length:""}</button>
+      </div>}
+      {data&&activeTab==="military"&&<>{activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}
         {newPlayer.length>0&&<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}</>}
-        {newGathering.length>0&&<><h2>{t("New resource gathering reports","Нови доклади от добив")}</h2>{newGathering.map(gatheringReport)}</>}
-        {newPlayer.length===0&&newAlienCount===0&&newGathering.length===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
+        {newPlayer.length===0&&newAlienCount===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
         {alienReports.length>0&&<><h2>{t("Alien battle reports","Доклади от битки с извънземните")}{newAlienCount?" · "+t("New","Нови")+": "+newAlienCount:""}</h2>
           {alienReports.map(({type,report})=>type==="alien"?alienReport(report):mothershipReport(report))}
         </>}
         {previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
-        {previousGathering.length>0&&<details style={{marginTop:20}}><summary>{t("Previous resource gathering reports","Предишни доклади от добив")}</summary>{previousGathering.map(gatheringReport)}</details>}
+      </>}
+      {data&&activeTab==="economy"&&<>
+        {newGathering.length>0&&<><h2>{t("New resource gathering reports","Нови доклади от добив")}</h2>{newGathering.map(gatheringReport)}</>}
+        {previousGathering.length>0&&<><h2>{t("Previous resource gathering reports","Предишни доклади от добив")}</h2>{previousGathering.map(gatheringReport)}</>}
+        {gathering.length===0&&<p>{t("No economic reports yet.","Все още няма икономически доклади.")}</p>}
       </>}
     </div></section></div>;
 }
+const tabButton={border:"1px solid #64839a",borderRadius:6,color:"white",padding:"9px 14px",cursor:"pointer",fontWeight:"bold"};
 const overlay={position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,.8)",display:"grid",placeItems:"center",padding:12};
 const panel={width:"min(100%,1050px)",maxHeight:"90vh",background:"#111",border:"3px solid #777",color:"#eef5ff",overflow:"hidden",boxShadow:"0 10px 40px #000"};
 const header={position:"sticky",top:0,display:"flex",alignItems:"center",justifyContent:"space-between",background:"#333",padding:"14px 20px",fontSize:22};
 const close={background:"red",color:"white",border:0,fontSize:28,fontWeight:"bold",width:44,height:44,cursor:"pointer"};
 const card={border:"1px solid #64839a",borderRadius:10,background:"#182c3e",padding:"12px 16px",marginBottom:12,lineHeight:1.7};
+\n
