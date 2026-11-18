@@ -1,6 +1,6 @@
 module.exports = Array.from({length:20},(_,index)=>{
     const level=index+1;
-    const count=level===20?1:level>=16?2:level>=11?3:level>=6?4:5;
+    const count=1; // One alien base per level (Lv1–Lv20), preserving each level's first position.
     const radius=level===20?0:3+(20-level)*2.25;
     return Array.from({length:count},(_,j)=>{
       const angle=2*Math.PI*(j/count+(level*0.61803398875)%1);
