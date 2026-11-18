@@ -14,7 +14,7 @@ import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
 import alienBases from "../shared/alienBases";
 import spaceStations from "../shared/spaceStations";
-import { createMarsTerrain } from "../shared/marsTerrainPrototype";
+import earthMapBackground from "../images/3C5B6E22-97A8-422D-B54F-96E836796ABC.png";
 const {units, marchLimit, cellsPerRow, defaultFormation, normalizeFormation}=formations;
 
 const formationTypes = {
@@ -106,7 +106,7 @@ function Map() {
   const suppressClickRef = useRef(false);
   const [zoom, setZoom] = useState(1);
   const [terrainImage,setTerrainImage]=useState(null);
-  useEffect(()=>{setTerrainImage(createMarsTerrain(1024));},[]);
+  useEffect(()=>{const img=new Image();img.onload=()=>setTerrainImage(img);img.src=earthMapBackground;},[]);
   const tileSize = 60 * zoom;
   const mapSize = 100;
 
