@@ -362,8 +362,8 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
-        // Double the visible mine icon without changing its world coordinate.
-        ctx.drawImage(icon, px-tileSize/2, py-tileSize/2, tileSize*2, tileSize*2);
+        // Triple the previously enlarged mine marker, keeping its center and world coordinates.
+        ctx.drawImage(icon, px-tileSize*2.5, py-tileSize*2.5, tileSize*6, tileSize*6);
       }
     });
 
@@ -377,7 +377,7 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
-        if(alienIcon)ctx.drawImage(alienIcon, px-tileSize/2, py-tileSize/2, tileSize*2, tileSize*2);
+        if(alienIcon)ctx.drawImage(alienIcon, px-tileSize*2.5, py-tileSize*2.5, tileSize*6, tileSize*6);
         ctx.fillStyle = "white";
         ctx.font = "bold 14px Arial";
         ctx.fillText(`Lv${base.level}`, px + 5, py + 15);
@@ -392,8 +392,8 @@ function Map() {
       ctx.save();
       ctx.strokeStyle=unlocked?"#7cffd2":"#9bb1c3";ctx.fillStyle=unlocked?"rgba(57,220,171,.22)":"rgba(150,177,198,.16)";
       ctx.lineWidth=Math.max(2,tileSize*.045);ctx.shadowColor=unlocked?"#54ffc3":"#a6c4d4";ctx.shadowBlur=tileSize*.18;
-      ctx.beginPath();ctx.arc(sx,sy,tileSize*.42,0,Math.PI*2);ctx.fill();ctx.stroke();
-      ctx.beginPath();ctx.moveTo(sx,sy-tileSize*.28);ctx.lineTo(sx+tileSize*.28,sy);ctx.lineTo(sx,sy+tileSize*.28);ctx.lineTo(sx-tileSize*.28,sy);ctx.closePath();
+      ctx.beginPath();ctx.arc(sx,sy,tileSize*1.26,0,Math.PI*2);ctx.fill();ctx.stroke();
+      ctx.beginPath();ctx.moveTo(sx,sy-tileSize*.84);ctx.lineTo(sx+tileSize*.84,sy);ctx.lineTo(sx,sy+tileSize*.84);ctx.lineTo(sx-tileSize*.84,sy);ctx.closePath();
       ctx.fillStyle=unlocked?"#7affd1":"#a9c0d0";ctx.fill();ctx.stroke();
       ctx.shadowBlur=0;ctx.fillStyle="#f3ffe8";ctx.font="bold 10px Arial";ctx.textAlign="center";
       ctx.fillText(unlocked?"СТАНЦИЯ "+station.id:"🔒 "+station.id,sx,sy+tileSize*.67);
@@ -405,7 +405,7 @@ function Map() {
       // Preserve world coordinates while drawing a larger screen-space marker.
       const sx = (c.x-.5)*tileSize + offset.x;
       const sy = (c.y-.5)*tileSize + offset.y;
-      const markerSize = Math.max(42,tileSize);
+      const markerSize = Math.max(42,tileSize)*3;
       if(sx+markerSize/2<0||sy+markerSize/2<0||sx-markerSize/2>canvas.width||sy-markerSize/2>canvas.height)return;
       const isOwn=c.username===sessionStorage.getItem("username");
       ctx.save();
@@ -435,9 +435,9 @@ function Map() {
     if(event?.active){
       const sx=(event.coordinates.x-1)*tileSize+offset.x+tileSize/2;
       const sy=(event.coordinates.y-1)*tileSize+offset.y+tileSize/2;
-      ctx.save();ctx.beginPath();ctx.arc(sx,sy,tileSize*.85,0,Math.PI*2);
+      ctx.save();ctx.beginPath();ctx.arc(sx,sy,tileSize*2.55,0,Math.PI*2);
       ctx.fillStyle="rgba(220,66,44,.35)";ctx.fill();ctx.strokeStyle="#ff6347";ctx.lineWidth=3;ctx.stroke();
-      if(alienIcon)ctx.drawImage(alienIcon,sx-tileSize*.58,sy-tileSize*.58,tileSize*1.16,tileSize*1.16);
+      if(alienIcon)ctx.drawImage(alienIcon,sx-tileSize*1.74,sy-tileSize*1.74,tileSize*3.48,tileSize*3.48);
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
       ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
