@@ -163,4 +163,3 @@ const panel={width:"min(100%,1050px)",maxHeight:"90vh",background:"#111",border:
 const header={position:"sticky",top:0,display:"flex",alignItems:"center",justifyContent:"space-between",background:"#333",padding:"14px 20px",fontSize:22};
 const close={background:"red",color:"white",border:0,fontSize:28,fontWeight:"bold",width:44,height:44,cursor:"pointer"};
 const card={border:"1px solid #64839a",borderRadius:10,background:"#182c3e",padding:"12px 16px",marginBottom:12,lineHeight:1.7};
-\n
