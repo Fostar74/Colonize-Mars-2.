@@ -10,6 +10,7 @@ import ironMineImg from "../images/mine-iron.png";
 import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
 import alienBaseImg from "../images/alien-base.png";
+import playerBaseImg from "../images/player-base-3d.png";
 import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
 import alienBases from "../shared/alienBases";
@@ -278,7 +279,7 @@ function Map() {
 
   useEffect(() => {
     const img = new Image();
-    img.src = "/map-colony.svg";
+    img.src = playerBaseImg;
 
     img.onload = () => {
       setHqIcon(img);
@@ -415,7 +416,7 @@ function Map() {
       // Preserve world coordinates while drawing a larger screen-space marker.
       const sx = (c.x-.5)*tileSize + offset.x;
       const sy = (c.y-.5)*tileSize + offset.y;
-      const markerSize = Math.max(42,tileSize)*1.5;
+      const markerSize = Math.max(108, tileSize * 2.5);
       if(sx+markerSize/2<0||sy+markerSize/2<0||sx-markerSize/2>canvas.width||sy-markerSize/2>canvas.height)return;
       const isOwn=c.username===sessionStorage.getItem("username");
       ctx.save();
