@@ -390,7 +390,7 @@ function Game() {
         if(!active)return;
         const notices=data.notifications||[];
         const event=notices.find(item=>item.kind==="saturday_invasion_started");
-        const messages=notices.filter(item=>item.kind==="player_message"||item.kind==="game_message"||item.kind==="gathering_return");
+        const messages=notices.filter(item=>item.kind==="player_message"||item.kind==="game_message");
         if(event)setEventNotification(old=>old||event);
         setMessageNotifications(messages);
       }catch{}
