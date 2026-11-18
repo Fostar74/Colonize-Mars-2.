@@ -127,7 +127,7 @@ function Map() {
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
   const suppressClickRef = useRef(false);
-  const zoom = .39;
+  const [zoom,setZoom] = useState(.39);
   const [terrainImage,setTerrainImage]=useState(null);
   const [earthDetailTexture]=useState(createEarthDetailTexture);
   useEffect(()=>{const img=new Image();img.onload=()=>setTerrainImage(img);img.src=earthMapBackground;},[]);
@@ -327,36 +327,18 @@ function Map() {
 
     ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-    // Prototype branch: a single continuous terrain image anchored to world coordinates.
-    // Only the visible portion is rasterized; gameplay markers remain in separate passes.
-    ctx.save();
-    ctx.beginPath();
-    ctx.rect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
-    ctx.clip();
+    // Earth is a fixed, full-viewport decorative backdrop. Zoom and pan affect
+    // world-space gameplay markers, never the image itself.
     if(terrainImage){
       ctx.imageSmoothingEnabled=true;
       ctx.imageSmoothingQuality="high";
-      ctx.drawImage(terrainImage,offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
-      // Fade in world-anchored microtexture from 63% to 100% zoom.
-      // Keep the original Earth panorama at wider zoom levels.
-      const detailOpacity=Math.max(0,Math.min(1,(zoom-.63)/.37))*.85;
-      if(detailOpacity>0&&earthDetailTexture){
-        ctx.save();
-        ctx.globalAlpha=detailOpacity;
-        ctx.translate(offset.x,offset.y);
-        ctx.scale(zoom,zoom);
-        const pattern=ctx.createPattern(earthDetailTexture,"repeat");
-        if(pattern){
-          ctx.fillStyle=pattern;
-          ctx.fillRect(0,0,mapSize*60,mapSize*60);
-        }
-        ctx.restore();
-      }
+      const scale=Math.max(canvas.width/terrainImage.width,canvas.height/terrainImage.height);
+      const width=terrainImage.width*scale,height=terrainImage.height*scale;
+      ctx.drawImage(terrainImage,(canvas.width-width)/2,(canvas.height-height)/2,width,height);
     }else{
-      ctx.fillStyle="#a65a3d";
-      ctx.fillRect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
+      ctx.fillStyle="#173447";
+      ctx.fillRect(0,0,canvas.width,canvas.height);
     }
-    ctx.restore();
     // Subtle coordinate lattice, visible mainly when zoomed in.
     if(tileSize>=16){
       ctx.strokeStyle="rgba(238,177,126,.14)";ctx.lineWidth=.7;
@@ -855,7 +837,12 @@ function Map() {
           const d=await r.json();setMapError(r.ok?"Side quest claimed! "+d.amount+" of each resource added to Inventory.":d.message);
           if(r.ok)setCampaign(old=>({...old,sideQuests:old.sideQuests.map(x=>x.level===q.level?{...x,claimed:true}:x)}));
         }}>{t("Side Quest: claim Level","Странична мисия: вземи наградата за ниво")} {q.level} {t("reward"," ")}</button>)}
-        <div style={{margin:"8px 0"}}>{t("Drag the map to explore (fixed 39% scale)","Плъзгай картата във всички посоки (фиксиран мащаб 39%)")}</div>
+        <div style={{margin:"8px 0",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
+          <span>{t("Object zoom","Мащаб на обектите")}: {Math.round(zoom*100)}%</span>
+          <button type="button" onClick={()=>setZoom(z=>Math.max(.15,Math.round((z-.15)*100)/100))}>−</button>
+          <button type="button" onClick={()=>setZoom(z=>Math.min(1,Math.round((z+.15)*100)/100))}>+</button>
+          <button type="button" onClick={()=>setZoom(1)}>100%</button>
+        </div>
         <button type="button" onClick={goToMyBase}>{t("My base","Моята база")}</button>
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
