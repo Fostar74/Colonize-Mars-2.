@@ -620,6 +620,10 @@ function Game() {
         "--mars-desktop-background": `url("${desktopColonyBackground}")`,
         "--mars-mobile-background": `url("${mobileColonyBackground}")`,
         "--mars-fallback-background": `url(${marsBackground})`,
+        backgroundImage: `url("${marsBackground}")`,
+        backgroundSize: "cover",
+        backgroundPosition: "center center",
+        backgroundRepeat: "no-repeat",
         minHeight: "100dvh",
       }}
     >
