@@ -32,7 +32,7 @@ const unreadBattleReportCount = (data,userId) => {
   let seen=[];
   try{seen=JSON.parse(localStorage.getItem(reportReadStorageKey(userId))||`[]`);}catch{}
   const read=new Set(Array.isArray(seen)?seen:[]);
-  return resolvedBattleReportIds(data).filter(id=>!id.startsWith("gathering:")&&!read.has(id)).length;
+  return resolvedBattleReportIds(data).filter(id=>!read.has(id)).length;
 };
 const rememberBattleReports = (data,userId) => {
   let seen=[];
