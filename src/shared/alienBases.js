@@ -4,6 +4,8 @@ module.exports = Array.from({length:20},(_,index)=>{
     if (level === 19) return [{x:49,y:35,level}];
     // Move Lv17 west to leave the central alliance-base area clear.
     if (level === 17) return [{x:32,y:50,level}];
+    // Keep Lv18 away from the four alliance bases around Lv20.
+    if (level === 18) return [{x:70,y:60,level}];
     const count=1; // One alien base per level (Lv1–Lv20), preserving each level's first position.
     const radius=level===20?0:3+(20-level)*2.25;
     return Array.from({length:count},(_,j)=>{
