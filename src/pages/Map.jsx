@@ -362,7 +362,8 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
-        ctx.drawImage(icon, px, py, tileSize, tileSize);
+        // Double the visible mine icon without changing its world coordinate.
+        ctx.drawImage(icon, px-tileSize/2, py-tileSize/2, tileSize*2, tileSize*2);
       }
     });
 
@@ -376,7 +377,7 @@ function Map() {
         px < canvas.width &&
         py < canvas.height
       ) {
-        if(alienIcon)ctx.drawImage(alienIcon, px, py, tileSize, tileSize);
+        if(alienIcon)ctx.drawImage(alienIcon, px-tileSize/2, py-tileSize/2, tileSize*2, tileSize*2);
         ctx.fillStyle = "white";
         ctx.font = "bold 14px Arial";
         ctx.fillText(`Lv${base.level}`, px + 5, py + 15);
