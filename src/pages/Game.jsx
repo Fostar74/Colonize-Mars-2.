@@ -78,7 +78,12 @@ function MarketPanel() {
     try{
       const response=await fetch(api+path,{method:"POST",headers,body:JSON.stringify({userId,...body})});
       const data=await response.json();if(!response.ok)throw Error(data.message||"Trade action failed.");
-      await refresh();setNotice(t("Trade completed. Both players have been notified in Messages.","Сделката приключи. И двамата играчи получиха съобщение."));
+      await refresh();
+      setNotice(path==="/market/offers"
+        ? t("Offer published successfully.","Офертата е публикувана успешно.")
+        : path.endsWith("/accept")
+          ? t("Trade completed. Both players have been notified in Messages.","Сделката приключи. И двамата играчи получиха съобщение.")
+          : t("Offer cancelled and resources returned.","Офертата е отменена и ресурсите са върнати."));
       setOffered(empty());setRequested(empty());window.dispatchEvent(new Event("game-progress-updated"));
     }catch(error){setNotice(error.message);}finally{setBusy(false);}
   };
