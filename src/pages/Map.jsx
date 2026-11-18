@@ -419,32 +419,34 @@ function Map() {
 
 
     castles.forEach((c) => {
-      const px = (c.x-1) * tileSize + offset.x;
-      const py = (c.y-1) * tileSize + offset.y;
-
-      if (
-        px + tileSize >= 0 &&
-        py + tileSize >= 0 &&
-        px < canvas.width &&
-        py < canvas.height
-      ) {
-        const protectedUntil=Number(c.protected_until||c.protectedUntil||0);
-        if(protectedUntil>Date.now()){
-          ctx.save();
-          ctx.fillStyle="rgba(135,225,255,0.20)";
-          ctx.strokeStyle="rgba(194,246,255,0.95)";
-          ctx.lineWidth=Math.max(2,tileSize*0.035);
-          ctx.shadowColor="#81e8ff";
-          ctx.shadowBlur=tileSize*0.25;
-          ctx.beginPath();
-          ctx.ellipse(px+tileSize/2,py+tileSize/2,tileSize*0.76,tileSize*0.68,0,0,Math.PI*2);
-          ctx.fill();ctx.stroke();ctx.restore();
-        }
-        if(hqIcon)ctx.drawImage(hqIcon, px, py, tileSize, tileSize);
-        ctx.fillStyle = "white";
-        ctx.font = "12px Arial";
-        ctx.fillText(`${c.username} (${c.x}:${c.y})`, px + 2, py + tileSize - 5);
+      // Preserve world coordinates while drawing a larger screen-space marker.
+      const sx = (c.x-.5)*tileSize + offset.x;
+      const sy = (c.y-.5)*tileSize + offset.y;
+      const markerSize = Math.max(42,tileSize);
+      if(sx+markerSize/2<0||sy+markerSize/2<0||sx-markerSize/2>canvas.width||sy-markerSize/2>canvas.height)return;
+      const isOwn=c.username===sessionStorage.getItem("username");
+      ctx.save();
+      const protectedUntil=Number(c.protected_until||c.protectedUntil||0);
+      if(protectedUntil>Date.now()){
+        ctx.fillStyle="rgba(135,225,255,0.20)";
+        ctx.strokeStyle="rgba(194,246,255,0.95)";
+        ctx.lineWidth=2;
+        ctx.beginPath();ctx.arc(sx,sy,markerSize*.62,0,Math.PI*2);ctx.fill();ctx.stroke();
       }
+      ctx.beginPath();ctx.arc(sx,sy,markerSize*.54,0,Math.PI*2);
+      ctx.fillStyle=isOwn?"rgba(22,92,79,.85)":"rgba(8,24,48,.8)";
+      ctx.fill();
+      ctx.strokeStyle=isOwn?"#67ffd0":"#a8d8ff";
+      ctx.lineWidth=isOwn?3:2;ctx.stroke();
+      if(hqIcon)ctx.drawImage(hqIcon,sx-markerSize/2,sy-markerSize/2,markerSize,markerSize);
+      ctx.font=isOwn?"bold 13px Arial":"12px Arial";
+      ctx.textAlign="center";
+      ctx.lineWidth=3;ctx.strokeStyle="rgba(0,0,0,.9)";
+      const name=`${isOwn?"★ ":""}${c.username} (${c.x}:${c.y})`;
+      ctx.strokeText(name,sx,sy+markerSize*.8);
+      ctx.fillStyle=isOwn?"#aaffdb":"white";
+      ctx.fillText(name,sx,sy+markerSize*.8);
+      ctx.restore();
     });
     const event=campaign.mothershipEvent;
     if(event?.active){
@@ -461,6 +463,15 @@ function Map() {
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
   const centerMapOn = (x, y) => setViewCenter({x,y});
+  const goToMyBase = () => {
+    const username=sessionStorage.getItem("username");
+    const own=castles.find(c=>c.username===username);
+    if(own){centerMapOn(Number(own.x),Number(own.y));return;}
+    try {
+      const saved=JSON.parse(sessionStorage.getItem("castle")||"null");
+      if(saved?.x&&saved?.y)centerMapOn(Number(saved.x),Number(saved.y));
+    } catch {}
+  };
   useEffect(() => {
     setOffset({x:viewport.width/2-(viewCenter.x-.5)*tileSize,y:viewport.height/2-(viewCenter.y-.5)*tileSize});
   }, [viewCenter, zoom, tileSize, viewport.width, viewport.height]);
@@ -845,6 +856,7 @@ function Map() {
           if(r.ok)setCampaign(old=>({...old,sideQuests:old.sideQuests.map(x=>x.level===q.level?{...x,claimed:true}:x)}));
         }}>{t("Side Quest: claim Level","Странична мисия: вземи наградата за ниво")} {q.level} {t("reward"," ")}</button>)}
         <div style={{margin:"8px 0"}}>{t("Drag the map to explore (fixed 39% scale)","Плъзгай картата във всички посоки (фиксиран мащаб 39%)")}</div>
+        <button type="button" onClick={goToMyBase}>{t("My base","Моята база")}</button>
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
         <input type="text" id="usernameInput" placeholder={localLabel("Search Username")} />
