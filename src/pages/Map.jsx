@@ -98,6 +98,29 @@ function FormationBoard({ rows, setRows }) {
   </div>;
 }
 
+// Small, repeatable ground texture for close zoom. Purely visual; no map coordinates change.
+function createEarthDetailTexture(){
+  const texture=document.createElement("canvas");
+  texture.width=512;texture.height=512;
+  const brush=texture.getContext("2d");
+  let seed=19761117;
+  const random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
+  for(let i=0;i<11000;i++){
+    const x=random()*512,y=random()*512;
+    const size=.4+random()*2.2;
+    const light=random()>.5;
+    brush.fillStyle=light?"rgba(241,247,190,0.12)":"rgba(17,46,28,0.13)";
+    brush.fillRect(x,y,size,size*(.4+random()));
+  }
+  for(let i=0;i<1100;i++){
+    const x=random()*512,y=random()*512;
+    brush.strokeStyle=random()>.5?"rgba(245,250,210,0.11)":"rgba(15,54,36,0.12)";
+    brush.lineWidth=.5+random()*.8;
+    brush.beginPath();brush.moveTo(x,y);brush.lineTo(x+random()*7,y+random()*3);brush.stroke();
+  }
+  return texture;
+}
+
 function Map() {
   const navigate=useNavigate();
   const { t , label: localLabel} = useLanguage();
@@ -106,6 +129,7 @@ function Map() {
   const suppressClickRef = useRef(false);
   const [zoom, setZoom] = useState(1);
   const [terrainImage,setTerrainImage]=useState(null);
+  const [earthDetailTexture]=useState(createEarthDetailTexture);
   useEffect(()=>{const img=new Image();img.onload=()=>setTerrainImage(img);img.src=earthMapBackground;},[]);
   const tileSize = 60 * zoom;
   const mapSize = 100;
@@ -313,6 +337,21 @@ function Map() {
       ctx.imageSmoothingEnabled=true;
       ctx.imageSmoothingQuality="high";
       ctx.drawImage(terrainImage,offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
+      // Fade in world-anchored microtexture from 63% to 100% zoom.
+      // Keep the original Earth panorama at wider zoom levels.
+      const detailOpacity=Math.max(0,Math.min(1,(zoom-.63)/.37))*.85;
+      if(detailOpacity>0&&earthDetailTexture){
+        ctx.save();
+        ctx.globalAlpha=detailOpacity;
+        ctx.translate(offset.x,offset.y);
+        ctx.scale(zoom,zoom);
+        const pattern=ctx.createPattern(earthDetailTexture,"repeat");
+        if(pattern){
+          ctx.fillStyle=pattern;
+          ctx.fillRect(0,0,mapSize*60,mapSize*60);
+        }
+        ctx.restore();
+      }
     }else{
       ctx.fillStyle="#a65a3d";
       ctx.fillRect(offset.x,offset.y,mapSize*tileSize,mapSize*tileSize);
@@ -417,7 +456,7 @@ function Map() {
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
       ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
-  }, [offset, castles, hqIcon, mineIcons, alienIcon, terrainImage, zoom, campaign, mineData, t]);
+  }, [offset, castles, hqIcon, mineIcons, alienIcon, terrainImage, earthDetailTexture, zoom, campaign, mineData, t]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
