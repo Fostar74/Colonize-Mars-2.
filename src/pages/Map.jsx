@@ -10,6 +10,10 @@ import ironMineImg from "../images/mine-iron.png";
 import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
 import alienBaseImg from "../images/alien-base.png";
+import goldMine3d from "../images/mine-gold-3d.png";
+import ironMine3d from "../images/mine-iron-3d.png";
+import waterMine3d from "../images/mine-water-3d.png";
+import solarMine3d from "../images/mine-solar-3d.png";
 import playerBaseImg from "../images/player-base-3d.png";
 import unitEconomy from "../shared/unitEconomy";
 import formations from "../shared/formations";
@@ -257,10 +261,10 @@ function Map() {
     const water = new Image();
     const alien = new Image();
 
-    gold.src = "/map-mine-gold.svg";
-    iron.src = "/map-mine-iron.svg";
-    solar.src = "/map-mine-solar.svg";
-    water.src = "/map-mine-water.svg";
+    gold.src = goldMine3d;
+    iron.src = ironMine3d;
+    solar.src = solarMine3d;
+    water.src = waterMine3d;
     alien.src = alienBaseImg;
 
     const onLoad = () => {
@@ -274,7 +278,7 @@ function Map() {
       setAlienIcon(alien);
     };
 
-    gold.onload = onLoad;
+    [gold, iron, solar, water, alien].forEach((img) => { img.onload = onLoad; });
   }, []);
 
   useEffect(() => {
@@ -355,15 +359,17 @@ function Map() {
       const py = (mine.y-1) * tileSize + offset.y;
       const icon = mineIcons[mine.resource];
 
+      const markerSize = Math.max(78, tileSize * 1.85);
+      const sx = px + tileSize / 2;
+      const sy = py + tileSize / 2;
       if (
-        icon &&
-        px + tileSize >= 0 &&
-        py + tileSize >= 0 &&
-        px < canvas.width &&
-        py < canvas.height
+        icon && icon.complete && icon.naturalWidth > 0 &&
+        sx + markerSize / 2 >= 0 &&
+        sy + markerSize / 2 >= 0 &&
+        sx - markerSize / 2 < canvas.width &&
+        sy - markerSize / 2 < canvas.height
       ) {
-        // Double the previously enlarged mine marker, keeping its center and world coordinates.
-        ctx.drawImage(icon, px-tileSize*.25, py-tileSize*.25, tileSize*1.5, tileSize*1.5);
+        ctx.drawImage(icon, sx - markerSize / 2, sy - markerSize / 2, markerSize, markerSize);
       }
     });
 
