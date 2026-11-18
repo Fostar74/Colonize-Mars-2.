@@ -348,7 +348,6 @@ function Map() {
         if(y>=0&&y<=canvas.height){ctx.beginPath();ctx.moveTo(0,y);ctx.lineTo(canvas.width,y);ctx.stroke();}
       }
     }
-    ctx.restore();
 
     mineData.forEach((mine) => {
       const px = (mine.x-1) * tileSize + offset.x;
