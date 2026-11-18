@@ -39,7 +39,7 @@ function writeTradeNotification(tradeId,senderId,recipientId,senderName,resource
   const english=keys.filter(key=>Number(resources[key]||0)>0).map(key=>`${Number(resources[key]).toLocaleString("en-US")} ${key}`).join(", ");
   const bulgarian=keys.filter(key=>Number(resources[key]||0)>0).map(key=>`${Number(resources[key]).toLocaleString("bg-BG")} ${{Gold:"злато",Iron:"желязо",Water:"вода",Solar:"слънчева енергия"}[key]}`).join(", ");
   const body=`Trade received from ${senderName}: ${english}. Resources were added to your base. / Получена търговия от ${senderName}: ${bulgarian}. Ресурсите са добавени към базата ти.`;
-  const result=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at) VALUES (?,?,?,?,?, 'trade')")
+  const result=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?, 'trade')")
     .run(senderId,recipientId,null,body,sentAt);
   db.prepare("INSERT INTO trade_message_notifications(trade_id,message_id) VALUES (?,?)").run(tradeId,Number(result.lastInsertRowid));
 }
