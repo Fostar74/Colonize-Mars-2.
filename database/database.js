@@ -2412,7 +2412,22 @@ class DatabaseManager {
     }
     const rankings=db.prepare("SELECT l.user_id,u.username,l.medicine_found,l.deepest_depth,l.rooms_opened,l.total_moves,l.completed_at FROM labyrinth_players l JOIN users u ON u.id=l.user_id ORDER BY l.medicine_found DESC,CASE WHEN l.medicine_found=1 THEN l.completed_at END ASC,l.deepest_depth DESC,l.rooms_opened DESC,l.total_moves ASC,u.username COLLATE NOCASE LIMIT 50").all().map((entry,index)=>({...entry,rank:index+1}));
     if(knight<7)return {unlocked:false,knightLevel:knight,requiredLevel:7,rankings};
-    const maze=JSON.parse(row.maze),visited=JSON.parse(row.visited||"[]"),current=maze.rooms[row.current_room];
+    const maze=JSON.parse(row.maze),visited=JSON.parse(row.visited||"[]");
+    // Keep all three paths available, including for mazes created before this update.
+    const active=maze.rooms[row.current_room];
+    if(active&&active.depth<10){
+      const directions=["North","East","South"];
+      const existing=new Set((active.children||[]).map(exit=>exit.direction));
+      let nextId=Math.max(-1,...Object.keys(maze.rooms).map(id=>Number(id.replace("room-",""))).filter(Number.isFinite))+1;
+      for(const direction of directions){
+        if(existing.has(direction))continue;
+        const id="room-"+nextId++;
+        maze.rooms[id]={id,depth:active.depth+1,parent:active.id,children:[],goal:false};
+        active.children.push({id,direction});
+      }
+      db.prepare("UPDATE labyrinth_players SET maze=? WHERE user_id=?").run(JSON.stringify(maze),userId);
+    }
+    const current=maze.rooms[row.current_room];
     const visitedRooms=visited.map(id=>maze.rooms[id]).filter(Boolean).map(room=>({id:room.id,depth:room.depth,goal:room.goal,current:room.id===row.current_room}));
     const exits=(current?.children||[]).filter(exit=>!visited.includes(exit.id)).map(exit=>({id:exit.id,direction:exit.direction}));
     return {unlocked:true,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:row.current_room,currentDepth:Number(current?.depth||0),exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
@@ -2440,14 +2455,11 @@ class DatabaseManager {
     return db.transaction(()=>{
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);if(!row)return {error:"Labyrinth state is unavailable."};
       if(Number(row.medicine_found))return {error:"The medicine has already been found."};
-      const crystals=JSON.parse(row.crystals||"{}");
-      for(const color of ["yellow","blue","orange","purple"])if(Number(crystals[color]||0)<1)return {error:"Collect one crystal of each color to open the next square."};
       const maze=JSON.parse(row.maze),visited=JSON.parse(row.visited||"[]"),current=maze.rooms[row.current_room];
       const exit=(current?.children||[]).find(option=>option.id===roomId);if(!exit||visited.includes(roomId))return {error:"Choose an unopened neighboring square."};
-      for(const color of ["yellow","blue","orange","purple"])crystals[color]--;
       visited.push(roomId);const next=maze.rooms[roomId],found=!!next.goal,now=Date.now();
-      db.prepare("UPDATE labyrinth_players SET current_room=?,visited=?,crystals=?,rooms_opened=rooms_opened+1,deepest_depth=MAX(deepest_depth,?),total_moves=total_moves+1,medicine_found=?,completed_at=? WHERE user_id=?")
-        .run(roomId,JSON.stringify(visited),JSON.stringify(crystals),Number(next.depth||0),found?1:0,found?now:null,userId);
+      db.prepare("UPDATE labyrinth_players SET current_room=?,visited=?,rooms_opened=rooms_opened+1,deepest_depth=MAX(deepest_depth,?),total_moves=total_moves+1,medicine_found=?,completed_at=? WHERE user_id=?")
+        .run(roomId,JSON.stringify(visited),Number(next.depth||0),found?1:0,found?now:null,userId);
       return {success:true,medicineFound:found,status:this.getLabyrinthStatus(userId)};
     })();
   }
