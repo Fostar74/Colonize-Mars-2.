@@ -291,8 +291,30 @@ function EventsPanel() {
         {labyrinth.medicineFound?<p style={{color:"#ffb6e6",fontWeight:"bold"}}>🧪 {t("Medicine found! Nova can be revived.","Лекарството е намерено! Nova може да бъде съживена.")}</p>:<div style={{border:"1px solid #564567",borderRadius:8,padding:10,marginTop:12}}>
           <strong>{t("Dark underground map","Затъмнена подземна карта")}</strong> · {t("Current square","Текущо квадратче")}: {labyrinth.currentRoom} · {t("Depth","Дълбочина")}: {labyrinth.currentDepth}/10
           <p>{t("Squares you have explored","Посетени квадратчета")}: {labyrinth.roomsOpened} · {t("Furthest depth","Най-голяма дълбочина")}: {labyrinth.deepestDepth}/10</p>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"8px 0"}}>{(labyrinth.visitedRooms||[]).map(room=><button type="button" key={room.id} disabled={labyrinthBusy||room.current} onClick={()=>labyrinthAction("/events/labyrinth/backtrack",{roomId:room.id},t("Returned to a visited square.","Върна се на посетено квадратче."))} style={{background:room.current?"#8054a8":"#30283d",color:"white",border:"1px solid #9c78bd",borderRadius:6,padding:"6px 9px"}}>{room.goal?"🧪": "◈"} {room.id} · {room.depth}</button>)}</div>
-          {(labyrinth.exits||[]).length>0?<div><p>{t("Choose one of the hidden neighboring squares. Each costs one of all four crystals.","Избери едно от скритите съседни квадратчета. Всяко струва по един кристал от четирите цвята.")}</p><div style={{display:"flex",gap:8,flexWrap:"wrap"}}>{labyrinth.exits.map(exit=><button type="button" key={exit.id} disabled={labyrinthBusy||!["yellow","blue","orange","purple"].every(color=>Number(labyrinth.crystals?.[color]||0)>0)} onClick={()=>labyrinthAction("/events/labyrinth/move",{roomId:exit.id},t("Square opened.","Квадратчето е отключено."))}>{t(exit.direction,exit.direction==="North"?"Север":exit.direction==="East"?"Изток":"Юг")} · ?</button>)}</div></div>:<p>{t("Dead end. Return to any explored square to continue.","Задънена улица. Върни се на произволно посетено квадратче, за да продължиш.")}</p>}
+          <div style={{border:"2px solid #66517f",borderRadius:14,padding:"18px 12px",margin:"14px 0",background:"radial-gradient(ellipse at 50% 18%,#344057 0%,#171727 44%,#090b16 100%)",boxShadow:"inset 0 0 45px #03050c",textAlign:"center"}}>
+            <div style={{fontSize:13,letterSpacing:3,color:"#bba7dc",fontWeight:700}}>{t("UNDERGROUND LABYRINTH · CHOOSE YOUR PATH","ПОДЗЕМЕН ЛАБИРИНТ · ИЗБЕРИ ПЪТЯ СИ")}</div>
+            <div style={{fontSize:12,color:"#a8bbd4",marginTop:8}}>{t("Each passage hides a different route. You decide where the Cyber Knight goes.","Всеки проход крие различен път. Ти решаваш накъде да тръгне Киберрицарят.")}</div>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,margin:"18px auto 10px",maxWidth:700}}>
+              {["North","East","South"].map((direction,index)=>{
+                const exit=(labyrinth.exits||[]).find(item=>item.direction===direction);
+                const enough=["yellow","blue","orange","purple"].every(color=>Number(labyrinth.crystals?.[color]||0)>0);
+                const label=direction==="North"?t("NORTH","СЕВЕР"):direction==="East"?t("EAST","ИЗТОК"):t("SOUTH","ЮГ");
+                return <button key={direction} type="button" disabled={labyrinthBusy||!exit||!enough} onClick={()=>exit&&labyrinthAction("/events/labyrinth/move",{roomId:exit.id},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} style={{minHeight:145,padding:"12px 5px",borderRadius:"45% 45% 8px 8px",border:exit?"2px solid #8c83bd":"2px solid #3b3b50",background:exit?"linear-gradient(180deg,#30304c,#101626 65%,#242036)":"linear-gradient(#262635,#101019)",color:exit?"#eee6ff":"#6e7085",cursor:exit&&enough&&!labyrinthBusy?"pointer":"not-allowed",opacity:exit?1:.55,boxShadow:exit?"inset 0 0 24px #08071a,0 0 14px #493b6a":"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+                  <span style={{fontSize:34}}>{!exit?"🪨":index===0?"⬆️":index===1?"➡️":"⬇️"}</span>
+                  <span style={{fontSize:13,fontWeight:800,letterSpacing:1}}>{label}</span>
+                  <span style={{fontSize:11}}>{!exit?t("Blocked","Затворен"):enough?t("ENTER PASSAGE","ВЛЕЗ В ПРОХОДА"):t("🔒 4 crystals needed","🔒 Нужни са 4 кристала")}</span>
+                </button>;
+              })}
+            </div>
+            <div style={{maxWidth:300,margin:"12px auto",padding:15,border:"1px solid #6d5d9a",borderRadius:12,background:"linear-gradient(#2a2540,#16152a)",boxShadow:"0 0 24px #32265b"}}>
+              <div style={{fontSize:36}}>🛡️</div>
+              <strong>{t("CYBER KNIGHT · CURRENT CHAMBER","КИБЕРРИЦАР · ТЕКУЩА ЗАЛА")}</strong>
+              <div style={{fontSize:13,color:"#c9b5eb",marginTop:5}}>{labyrinth.currentRoom==="room-0"?t("Entrance chamber","Входна зала"):t("Explored chamber","Открита зала")} · {labyrinth.currentDepth}/10</div>
+            </div>
+            <div style={{fontSize:12,color:"#d6c9e8",marginTop:12}}>{["yellow","blue","orange","purple"].every(color=>Number(labyrinth.crystals?.[color]||0)>0)?t("Choose a glowing passage to move forward.","Избери светещ проход, за да продължиш."):t("Complete missions and collect one crystal of each color to open a passage.","Изпълнявай мисии и събери по един кристал от всеки цвят, за да отвориш проход.")}</div>
+          </div>
+          <strong>{t("Explored chambers · click to return","Посетени зали · натисни, за да се върнеш")}</strong>
+          <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"8px 0"}}>{(labyrinth.visitedRooms||[]).map(room=><button type="button" key={room.id} disabled={labyrinthBusy||room.current} onClick={()=>labyrinthAction("/events/labyrinth/backtrack",{roomId:room.id},t("Returned to a visited chamber.","Върна се в посетена зала."))} style={{background:room.current?"#8054a8":"#30283d",color:"white",border:"1px solid #9c78bd",borderRadius:6,padding:"6px 9px"}}>{room.goal?"🧪":"◈"} {room.id==="room-0"?t("Entrance","Вход"):room.id} · {room.depth}{room.current?" ✓":""}</button>)}</div>
           <p style={{color:"#cdb8dd"}}>{t("Collected crystals are spent when a new square is opened. Your explored path and remaining crystals are saved.","Събраните кристали се изразходват при отваряне на ново квадратче. Посетеният път и останалите кристали се запазват.")}</p>
         </div>}
         {labyrinthNotice&&<p role="status">{labyrinthNotice}</p>}
