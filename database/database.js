@@ -2400,7 +2400,7 @@ class DatabaseManager {
   getLabyrinthStatus(userId){
     const knight=Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1);
     const today=new Date().toISOString().slice(0,10);let row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId)||null;
-    if(knight>=10&&!row){
+    if(knight>=7&&!row){
       const maze=this.createLabyrinthMap();
       db.prepare("INSERT OR IGNORE INTO labyrinth_players(user_id,mission_day,crystal_mission,crystals,maze,current_room,visited) VALUES (?,?,?,?,?,?,?)")
         .run(userId,today,require("crypto").randomInt(1,11),JSON.stringify({yellow:0,blue:0,orange:0,purple:0}),JSON.stringify(maze),maze.start,JSON.stringify([maze.start]));
