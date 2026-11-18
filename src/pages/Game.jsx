@@ -297,12 +297,12 @@ function EventsPanel() {
             <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,margin:"18px auto 10px",maxWidth:700}}>
               {["North","East","South"].map((direction,index)=>{
                 const exit=(labyrinth.exits||[]).find(item=>item.direction===direction);
-                const enough=["yellow","blue","orange","purple"].every(color=>Number(labyrinth.crystals?.[color]||0)>0);
+                const enough=true;
                 const label=direction==="North"?t("NORTH","СЕВЕР"):direction==="East"?t("EAST","ИЗТОК"):t("SOUTH","ЮГ");
-                return <button key={direction} type="button" disabled={labyrinthBusy||!exit||!enough} onClick={()=>exit&&labyrinthAction("/events/labyrinth/move",{roomId:exit.id},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} style={{minHeight:145,padding:"12px 5px",borderRadius:"45% 45% 8px 8px",border:exit?"2px solid #8c83bd":"2px solid #3b3b50",background:exit?"linear-gradient(180deg,#30304c,#101626 65%,#242036)":"linear-gradient(#262635,#101019)",color:exit?"#eee6ff":"#6e7085",cursor:exit&&enough&&!labyrinthBusy?"pointer":"not-allowed",opacity:exit?1:.55,boxShadow:exit?"inset 0 0 24px #08071a,0 0 14px #493b6a":"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+                return <button key={direction} type="button" disabled={labyrinthBusy||!exit} onClick={()=>exit&&labyrinthAction("/events/labyrinth/move",{roomId:exit.id},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} style={{minHeight:145,padding:"12px 5px",borderRadius:"45% 45% 8px 8px",border:exit?"2px solid #8c83bd":"2px solid #3b3b50",background:exit?"linear-gradient(180deg,#30304c,#101626 65%,#242036)":"linear-gradient(#262635,#101019)",color:exit?"#eee6ff":"#6e7085",cursor:exit&&!labyrinthBusy?"pointer":"not-allowed",opacity:exit?1:.55,boxShadow:exit?"inset 0 0 24px #08071a,0 0 14px #493b6a":"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
                   <span style={{fontSize:34}}>{!exit?"🪨":index===0?"⬆️":index===1?"➡️":"⬇️"}</span>
                   <span style={{fontSize:13,fontWeight:800,letterSpacing:1}}>{label}</span>
-                  <span style={{fontSize:11}}>{!exit?t("Blocked","Затворен"):enough?t("ENTER PASSAGE","ВЛЕЗ В ПРОХОДА"):t("🔒 4 crystals needed","🔒 Нужни са 4 кристала")}</span>
+                  <span style={{fontSize:11}}>{!exit?t("Blocked","Затворен"):t("ENTER PASSAGE","ВЛЕЗ В ПРОХОДА")}</span>
                 </button>;
               })}
             </div>
@@ -311,11 +311,11 @@ function EventsPanel() {
               <strong>{t("CYBER KNIGHT · CURRENT CHAMBER","КИБЕРРИЦАР · ТЕКУЩА ЗАЛА")}</strong>
               <div style={{fontSize:13,color:"#c9b5eb",marginTop:5}}>{labyrinth.currentRoom==="room-0"?t("Entrance chamber","Входна зала"):t("Explored chamber","Открита зала")} · {labyrinth.currentDepth}/10</div>
             </div>
-            <div style={{fontSize:12,color:"#d6c9e8",marginTop:12}}>{["yellow","blue","orange","purple"].every(color=>Number(labyrinth.crystals?.[color]||0)>0)?t("Choose a glowing passage to move forward.","Избери светещ проход, за да продължиш."):t("Complete missions and collect one crystal of each color to open a passage.","Изпълнявай мисии и събери по един кристал от всеки цвят, за да отвориш проход.")}</div>
+            <div style={{fontSize:12,color:"#d6c9e8",marginTop:12}}>{t("All three passages are free. Crystals are rewards and remain in your inventory.","И трите прохода са безплатни. Кристалите са награди и остават в инвентара.")}</div>
           </div>
           <strong>{t("Explored chambers · click to return","Посетени зали · натисни, за да се върнеш")}</strong>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"8px 0"}}>{(labyrinth.visitedRooms||[]).map(room=><button type="button" key={room.id} disabled={labyrinthBusy||room.current} onClick={()=>labyrinthAction("/events/labyrinth/backtrack",{roomId:room.id},t("Returned to a visited chamber.","Върна се в посетена зала."))} style={{background:room.current?"#8054a8":"#30283d",color:"white",border:"1px solid #9c78bd",borderRadius:6,padding:"6px 9px"}}>{room.goal?"🧪":"◈"} {room.id==="room-0"?t("Entrance","Вход"):room.id} · {room.depth}{room.current?" ✓":""}</button>)}</div>
-          <p style={{color:"#cdb8dd"}}>{t("Collected crystals are spent when a new square is opened. Your explored path and remaining crystals are saved.","Събраните кристали се изразходват при отваряне на ново квадратче. Посетеният път и останалите кристали се запазват.")}</p>
+          <p style={{color:"#cdb8dd"}}>{t("Crystals are rewards and are never spent on movement. Your explored path is saved.","Кристалите са награди и не се изразходват при движение. Посетеният път се запазва.")}</p>
         </div>}
         {labyrinthNotice&&<p role="status">{labyrinthNotice}</p>}
       </>}
