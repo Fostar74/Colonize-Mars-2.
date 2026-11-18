@@ -1053,11 +1053,13 @@ class DatabaseManager {
     const today=db.prepare("SELECT spun_at,reward_id,free FROM wheel_spins WHERE user_id=? AND spun_at>=? AND spun_at<? ORDER BY id").all(userId,dayStart,dayStart+day);
     const opened=Array(prizes.length).fill(null);
     for(const spin of today.slice(0,prizes.length)){
-      // Older landings could award the same prize more than once.
-      const index=opened[spin.reward_id]===null?spin.reward_id:opened.indexOf(null);
-      opened[index]=prizes[spin.reward_id];
+      // Each crater keeps its original position for the entire UTC day.
+      if(Number.isInteger(spin.reward_id) && spin.reward_id>=0 && spin.reward_id<prizes.length){
+        opened[spin.reward_id]=prizes[spin.reward_id];
+      }
     }
-    const remaining=opened.filter(prize=>prize===null).length;
+    // The daily limit is based on recorded landings, not visually empty craters.
+    const remaining=Math.max(0,prizes.length-today.length);
     const freeHours=new Set(today.filter(spin=>spin.free).map(spin=>Math.floor((spin.spun_at-dayStart)/hour)));
     const currentHour=(hourStart-dayStart)/hour;
     const freeReady=remaining>0&&!freeHours.has(currentHour);
