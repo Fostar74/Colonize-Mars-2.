@@ -2380,7 +2380,7 @@ class DatabaseManager {
 
   createLabyrinthMap(){
     // One shared, coordinate-based maze. Each player keeps private exploration.
-    const rooms={},size=11,center=5,goalX=10,goalY=5;
+    const rooms={},size=11,center=5,goalX=10,goalY=10;
     const id=(x,y)=>"room-"+x+"-"+y;
     const directions=[["North",0,-1],["East",1,0],["South",0,1],["West",-1,0]];
     for(let y=0;y<size;y++)for(let x=0;x<size;x++)rooms[id(x,y)]={id:id(x,y),x,y,depth:Math.abs(x-center)+Math.abs(y-center),parent:null,children:[],goal:x===goalX&&y===goalY};
