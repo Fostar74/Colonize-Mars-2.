@@ -260,6 +260,7 @@ function initializeDatabase() {
     db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_runs_week ON saturday_invasion_runs(week_start,status)");
     db.exec("CREATE TABLE IF NOT EXISTS labyrinth_players (user_id INTEGER PRIMARY KEY REFERENCES users(id), mission_day TEXT NOT NULL, missions_today INTEGER NOT NULL DEFAULT 0, crystal_mission INTEGER NOT NULL DEFAULT 0, last_mission_at INTEGER NOT NULL DEFAULT 0, crystals TEXT NOT NULL DEFAULT '{\"yellow\":0,\"blue\":0,\"orange\":0,\"purple\":0}', maze TEXT NOT NULL, current_room TEXT NOT NULL, visited TEXT NOT NULL DEFAULT '[]', rooms_opened INTEGER NOT NULL DEFAULT 1, deepest_depth INTEGER NOT NULL DEFAULT 0, total_moves INTEGER NOT NULL DEFAULT 0, medicine_found INTEGER NOT NULL DEFAULT 0, completed_at INTEGER)");
     db.exec("CREATE INDEX IF NOT EXISTS labyrinth_rank ON labyrinth_players(medicine_found,deepest_depth,rooms_opened,total_moves)");
+    db.exec("CREATE TABLE IF NOT EXISTS labyrinth_world (id INTEGER PRIMARY KEY CHECK(id=1), maze TEXT NOT NULL)");
 
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
     db.exec(`CREATE TABLE IF NOT EXISTS scout_missions (
@@ -2378,64 +2379,66 @@ class DatabaseManager {
   }
 
   createLabyrinthMap(){
-    const rooms={},directions=["North","East","South"];let serial=0;
-    const addRoom=(depth,parent,goal=false)=>{const id="room-"+(serial++);rooms[id]={id,depth,parent,children:[],goal};return rooms[id];};
-    const start=addRoom(0,null,false);let spine=start;
-    for(let depth=0;depth<10;depth++){
-      const next=addRoom(depth+1,spine.id,depth+1===10);
-      const available=directions.slice().sort(()=>Math.random()-0.5);
-      const mainDirection=available.pop();spine.children.push({id:next.id,direction:mainDirection});
-      const branchCount=require("crypto").randomInt(0,3);
-      for(let branch=0;branch<branchCount&&available.length;branch++){
-        const first=addRoom(depth+1,spine.id,false);spine.children.push({id:first.id,direction:available.pop()});
-        let tail=first;
-        const length=require("crypto").randomInt(1,11-depth);
-        for(let step=1;step<length;step++){const child=addRoom(depth+1+step,tail.id,false);const dir=directions[require("crypto").randomInt(directions.length)];tail.children.push({id:child.id,direction:dir});tail=child;}
-      }
-      spine=next;
+    // One shared, coordinate-based maze. Each player keeps private exploration.
+    const rooms={},size=11,center=5,goalX=10,goalY=5;
+    const id=(x,y)=>"room-"+x+"-"+y;
+    const directions=[["North",0,-1],["East",1,0],["South",0,1],["West",-1,0]];
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++)rooms[id(x,y)]={id:id(x,y),x,y,depth:Math.abs(x-center)+Math.abs(y-center),parent:null,children:[],goal:x===goalX&&y===goalY};
+    // All rooms are reachable. Physical directions always mean the same thing.
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++)for(const [direction,dx,dy] of directions){
+      if(x+dx>=0&&x+dx<size&&y+dy>=0&&y+dy<size)rooms[id(x,y)].children.push({id:id(x+dx,y+dy),direction});
     }
-    return {rooms,start:start.id,goal:spine.id};
+    return {rooms,start:id(center,center),goal:id(goalX,goalY),version:2};
+  }
+
+  getSharedLabyrinth(){
+    let world=db.prepare("SELECT maze FROM labyrinth_world WHERE id=1").get();
+    if(!world){
+      const maze=JSON.stringify(this.createLabyrinthMap());
+      db.prepare("INSERT OR IGNORE INTO labyrinth_world(id,maze) VALUES (1,?)").run(maze);
+      world=db.prepare("SELECT maze FROM labyrinth_world WHERE id=1").get();
+    }
+    return JSON.parse(world.maze);
   }
 
   getLabyrinthStatus(userId){
     const knight=Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1);
-    const today=new Date().toISOString().slice(0,10);let row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId)||null;
+    const today=new Date().toISOString().slice(0,10);
+    const maze=this.getSharedLabyrinth();
+    let row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId)||null;
     if(knight>=7&&!row){
-      const maze=this.createLabyrinthMap();
       db.prepare("INSERT OR IGNORE INTO labyrinth_players(user_id,mission_day,crystal_mission,crystals,maze,current_room,visited) VALUES (?,?,?,?,?,?,?)")
         .run(userId,today,require("crypto").randomInt(1,11),JSON.stringify({yellow:0,blue:0,orange:0,purple:0}),JSON.stringify(maze),maze.start,JSON.stringify([maze.start]));
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
-    if(row&&row.mission_day!==today){
-      db.prepare("UPDATE labyrinth_players SET mission_day=?,missions_today=0,crystal_mission=?,last_mission_at=0 WHERE user_id=?").run(today,require("crypto").randomInt(1,11),userId);
-      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+    // One-time migration of old individual mazes; keep crystals, gear and mission counters.
+    if(row){
+      let oldMaze=null;
+      try{oldMaze=JSON.parse(row.maze);}catch(error){}
+      if(oldMaze?.version!==2){
+        db.prepare("UPDATE labyrinth_players SET maze=?,current_room=?,visited=?,rooms_opened=1,deepest_depth=0,total_moves=0,medicine_found=0,completed_at=NULL WHERE user_id=?")
+          .run(JSON.stringify(maze),maze.start,JSON.stringify([maze.start]),userId);
+        row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+      }
+      if(row.mission_day!==today){
+        db.prepare("UPDATE labyrinth_players SET mission_day=?,missions_today=0,crystal_mission=?,last_mission_at=0 WHERE user_id=?")
+          .run(today,require("crypto").randomInt(1,11),userId);
+        row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+      }
     }
     const rankings=db.prepare("SELECT l.user_id,u.username,l.medicine_found,l.deepest_depth,l.rooms_opened,l.total_moves,l.completed_at FROM labyrinth_players l JOIN users u ON u.id=l.user_id ORDER BY l.medicine_found DESC,CASE WHEN l.medicine_found=1 THEN l.completed_at END ASC,l.deepest_depth DESC,l.rooms_opened DESC,l.total_moves ASC,u.username COLLATE NOCASE LIMIT 50").all().map((entry,index)=>({...entry,rank:index+1}));
     if(knight<7)return {unlocked:false,knightLevel:knight,requiredLevel:7,rankings};
-    const maze=JSON.parse(row.maze),visited=JSON.parse(row.visited||"[]");
-    // Keep all three paths available, including for mazes created before this update.
-    const active=maze.rooms[row.current_room];
-    if(active&&active.depth<10){
-      const directions=["North","East","South"];
-      const existing=new Set((active.children||[]).map(exit=>exit.direction));
-      let nextId=Math.max(-1,...Object.keys(maze.rooms).map(id=>Number(id.replace("room-",""))).filter(Number.isFinite))+1;
-      for(const direction of directions){
-        if(existing.has(direction))continue;
-        const id="room-"+nextId++;
-        maze.rooms[id]={id,depth:active.depth+1,parent:active.id,children:[],goal:false};
-        active.children.push({id,direction});
-      }
-      db.prepare("UPDATE labyrinth_players SET maze=? WHERE user_id=?").run(JSON.stringify(maze),userId);
-    }
-    const current=maze.rooms[row.current_room];
-    const visitedRooms=visited.map(id=>maze.rooms[id]).filter(Boolean).map(room=>({id:room.id,depth:room.depth,goal:room.goal,current:room.id===row.current_room}));
-    const exits=(current?.children||[]).filter(exit=>!visited.includes(exit.id)).map(exit=>({id:exit.id,direction:exit.direction}));
-    // Only reveal visited chambers and the immediately adjacent unexplored exits.
-    const explored=new Set(visited);
+    const visited=JSON.parse(row.visited||"[]"),explored=new Set(visited);
+    const current=maze.rooms[row.current_room]||maze.rooms[maze.start];
     const visible=new Set(visited);
     for(const id of visited)for(const exit of maze.rooms[id]?.children||[])visible.add(exit.id);
-    const mapRooms=[...visible].filter(id=>maze.rooms[id]).map(id=>({id,depth:maze.rooms[id].depth,parent:maze.rooms[id].parent,direction:maze.rooms[maze.rooms[id].parent]?.children?.find(exit=>exit.id===id)?.direction||null,visited:explored.has(id),current:id===row.current_room,goal:explored.has(id)&&!!maze.rooms[id].goal}));
-    return {unlocked:true,mapRooms,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:row.current_room,currentDepth:Number(current?.depth||0),exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
+    const mapRooms=[...visible].filter(id=>maze.rooms[id]).map(id=>{
+      const room=maze.rooms[id];
+      return {id,x:room.x,y:room.y,depth:room.depth,visited:explored.has(id),current:id===current.id,goal:explored.has(id)&&room.goal};
+    });
+    const exits=(current.children||[]).filter(exit=>!explored.has(exit.id));
+    const visitedRooms=visited.map(id=>maze.rooms[id]).filter(Boolean).map(room=>({id:room.id,depth:room.depth,goal:room.goal,current:room.id===current.id}));
+    return {unlocked:true,mapRooms,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:current.id,currentDepth:current.depth,exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
   }
 
   runLabyrinthMission(userId){
@@ -2460,7 +2463,7 @@ class DatabaseManager {
     return db.transaction(()=>{
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);if(!row)return {error:"Labyrinth state is unavailable."};
       if(Number(row.medicine_found))return {error:"The medicine has already been found."};
-      const maze=JSON.parse(row.maze),visited=JSON.parse(row.visited||"[]"),current=maze.rooms[row.current_room];
+      const maze=this.getSharedLabyrinth(),visited=JSON.parse(row.visited||"[]"),current=maze.rooms[row.current_room];
       const exit=(current?.children||[]).find(option=>option.id===roomId);if(!exit||visited.includes(roomId))return {error:"Choose an unopened neighboring square."};
       visited.push(roomId);const next=maze.rooms[roomId],found=!!next.goal,now=Date.now();
       db.prepare("UPDATE labyrinth_players SET current_room=?,visited=?,rooms_opened=rooms_opened+1,deepest_depth=MAX(deepest_depth,?),total_moves=total_moves+1,medicine_found=?,completed_at=? WHERE user_id=?")
