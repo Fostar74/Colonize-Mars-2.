@@ -637,10 +637,15 @@ function Map() {
         setCampaign(old=>({...old,mothershipEvent:{...old.mothershipEvent,attacksRemaining:data.attacksRemaining,myAttacks:(old.mothershipEvent?.myAttacks||0)+1,attacks:[...(old.mothershipEvent?.attacks||[]),{id:data.attackId,user_id:sessionStorage.getItem("userId"),username:sessionStorage.getItem("username"),origin_x:data.origin.x,origin_y:data.origin.y,launched_at:data.launchedAt,arrives_at:data.arrivesAt,resolved_at:null,damage:0,xp:0}]}}));
         setMarchSuccess(t("Cyber Knight is heading to the Alien Command Ship. Your full army returns after the battle in 30 seconds and can be sent again.","Киберрицарят лети към командния кораб на извънземните. Цялата ти армия ще се върне след битката след 30 секунди и ще можеш да я изпратиш отново."));
       }else if(isAlienAttack){
-        setCampaign(old=>({...old,remaining:data.remaining,knightBusy:true,missions:[{
-          id:data.missionId,level:data.level,arrives_at:data.arrivesAt,launched_at:data.launchedAt,target:data.target,origin:data.origin,units:selected,formation,cyberKnightLevel:old.knightLevel||1
-        },...(old.missions||[]).filter(m=>m.id!==data.missionId)]}));
-        setMarchSuccess("Attack sent successfully. Track the march and its return in CAMPAIGNS.");
+        const [latestCampaign,latestProgress]=await Promise.all([
+          fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"}),
+          fetch(base+"/get-progress/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"})
+        ]);
+        if(latestCampaign.ok)setCampaign(await latestCampaign.json());
+        if(latestProgress.ok){const progress=await latestProgress.json();setAvailableArmy(progress.gameProgress?.army||{});}
+        setMarchUnits({});
+        window.dispatchEvent(new Event("game-progress-updated"));
+        setMarchSuccess(t("Alien Base battle completed instantly. Surviving troops and Cyber Knight are ready for the next mission.","Битката с извънземната база приключи мигновено. Оцелелите войници и Киберрицарят са готови за следващата мисия."));
       }else{
         setCampaign(old=>({...old,playerMissions:[{
           id:data.missionId,attacker_name:marchDraft.origin.username,defender_name:marchDraft.target.username,
@@ -877,7 +882,7 @@ function Map() {
         </div>
         <div id="map-menu-controls" hidden={!mapMenuOpen}>
         <div>{t("Alien campaign: defeated level","Извънземна кампания: победено ниво")} {campaign.highestDefeated}{t("/20 · Next: level","/20 · Следващо ниво")} {campaign.nextLevel} {t("· Attacks left:","· Оставащи атаки:")} {campaign.remaining??"—"}{t("/20 · Cyber Knight Lv","/20 · Киберрицар ниво")} {campaign.knightLevel||1}</div>
-        <div style={{fontSize:12}}>{t("Mission travel: 60 seconds · Daily reset: 00:00 UTC","Пътуване: 60 секунди · Нулиране в 00:00 UTC")}</div>
+        <div style={{fontSize:12}}>{t("Instant Alien Base battles · Daily reset: 00:00 UTC","Мигновени битки с извънземните · Нулиране в 00:00 UTC")}</div>
         {(campaign.sideQuests||[]).filter(q=>q.completed&&!q.claimed).map(q=><button key={q.level} onClick={async()=>{
           const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
           const r=await fetch(base+"/alien-campaign/side-quest",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),milestone:q.level})});
@@ -1069,7 +1074,7 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
               {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
-              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
+              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
