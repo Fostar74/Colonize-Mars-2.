@@ -2788,14 +2788,6 @@ class DatabaseManager {
 
   resolveAlienMissions(userId) {
     return db.transaction(()=>{
-      const returning=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?").all(userId,Date.now());
-      for(const mission of returning){
-        const result=JSON.parse(mission.result);
-        const current=this.syncGame(userId);
-        for(const [unit,n] of Object.entries(result.survivors||{}))current.army[unit]=(current.army[unit]||0)+n;
-        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
-        db.prepare("UPDATE alien_missions SET returned_at=? WHERE id=?").run(Date.now(),mission.id);
-      }
       const due=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(userId,Date.now());
       for(const mission of due){
         const armyData=JSON.parse(mission.army);
@@ -2862,7 +2854,15 @@ class DatabaseManager {
         }
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
         db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=MIN(50,1+CAST((prestige+1)/20 AS INTEGER)) WHERE user_id=?").run(userId);
-        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),Date.now()+Math.max(1000,mission.arrives_at-mission.launched_at),JSON.stringify(result),mission.id);
+        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),mission.arrives_at+5000,JSON.stringify(result),mission.id);
+      }
+      const returning=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?").all(userId,Date.now());
+      for(const mission of returning){
+        const result=JSON.parse(mission.result);
+        const current=this.syncGame(userId);
+        for(const [unit,n] of Object.entries(result.survivors||{}))current.army[unit]=(current.army[unit]||0)+n;
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+        db.prepare("UPDATE alien_missions SET returned_at=? WHERE id=?").run(Date.now(),mission.id);
       }
       return due.length;
     })();
