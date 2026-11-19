@@ -1841,7 +1841,7 @@ class DatabaseManager {
   }
 
   getMarketOffers(userId) {
-    return db.prepare("SELECT o.*,s.username AS seller_name FROM market_offers o JOIN users s ON s.id=o.seller_id WHERE o.status='open' OR o.seller_id=? ORDER BY CASE WHEN o.status='open' THEN 0 ELSE 1 END,o.id DESC LIMIT 100").all(userId)
+    return db.prepare("SELECT o.*,s.username AS seller_name FROM market_offers o JOIN users s ON s.id=o.seller_id WHERE o.status='open' ORDER BY o.id DESC LIMIT 100").all()
       .map(o=>({...o,offeredResources:JSON.parse(o.offered_resources),requestedResources:JSON.parse(o.requested_resources)}));
   }
 
