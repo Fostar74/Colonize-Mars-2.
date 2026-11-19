@@ -1689,7 +1689,7 @@ class DatabaseManager {
       for(const [unit,count] of Object.entries(selected)) current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       const now=Date.now();
-      const travelMs=5000; // Alien Base missions: five seconds outbound (and five seconds to return).
+      const travelMs=armyTravelDuration(60000,selected,this.protocolBonus(userId,"Rapid Deployment"));
       const origin={username:this.findUserById(userId)?.username||current.castle.username,x:current.castle.x,y:current.castle.y};
       const destination={username:target.username,x:target.x,y:target.y};
       const armyData={units:selected,formation:battleFormation,origin,target:destination};
@@ -2769,8 +2769,8 @@ class DatabaseManager {
       for(const [unit,n] of Object.entries(selected))current.army[unit]-=n;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       const now=Date.now();
-      // Hyperdrive increases march speed (not a flat reduction in travel duration).
-      const travelMs=armyTravelDuration(60000,selected,this.protocolBonus(userId,"Rapid Deployment"));
+      // Alien Base missions use a fixed five-second journey; PvP and other marches retain their normal speed.
+      const travelMs=5000;
       const arrivesAt=now+travelMs;
       const activeBuffs = db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,now);
       const allianceCombat = {
