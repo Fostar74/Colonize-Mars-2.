@@ -185,6 +185,46 @@ function HospitalPanel() {
   </div>;
 }
 
+
+function LabyrinthMap({labyrinth,busy,onMove,onBacktrack,t}){
+  const rooms=labyrinth.mapRooms||[];
+  const byId=Object.fromEntries(rooms.map(room=>[room.id,room]));
+  const children={};
+  rooms.forEach(room=>{if(room.parent&&byId[room.parent]){(children[room.parent]||=[]).push(room.id);}});
+  const order={North:0,East:1,South:2};
+  Object.values(children).forEach(list=>list.sort((a,b)=>(order[byId[a].direction]??3)-(order[byId[b].direction]??3)));
+  let column=0;
+  const positions={};
+  const layout=(id,seen=new Set())=>{
+    if(seen.has(id))return 0;
+    seen.add(id);
+    const kids=children[id]||[];
+    const xs=kids.map(child=>layout(child,seen));
+    const x=xs.length?xs.reduce((sum,n)=>sum+n,0)/xs.length:column++;
+    positions[id]={x:x*82+55,y:(byId[id]?.depth||0)*95+48};
+    return x;
+  };
+  if(byId["room-0"])layout("room-0");
+  const width=Math.max(330,column*82+110),height=1050;
+  const current=byId[labyrinth.currentRoom];
+  const accessible=new Set((labyrinth.exits||[]).map(exit=>exit.id));
+  return <div style={{margin:"14px 0",padding:10,border:"1px solid #7963a5",borderRadius:12,background:"#0b1020"}}>
+    <strong>🗺️ {t("Explored Labyrinth map","Карта на изследвания лабиринт")}</strong>
+    <p style={{fontSize:12,color:"#c8bbdf"}}>{t("Blue: explored · Gold: Cyber Knight · Purple: unexplored · Pink: medicine found. Tap a chamber to travel.","Синьо: посетена · Златно: Киберрицар · Лилаво: неизследвана · Розово: намерено лекарство. Натисни зала за придвижване.")}</p>
+    <div style={{overflow:"auto",maxHeight:540,borderRadius:8,background:"radial-gradient(#1b2740,#080b16)"}}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{width:Math.max(320,width),height,display:"block"}} role="img" aria-label={t("Map of explored chambers and corridors","Карта на откритите зали и коридори")}>
+        {rooms.map(room=>{const a=positions[room.parent],b=positions[room.id];return a&&b?<line key={"line-"+room.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={room.visited?"#6a95ba":"#5b476f"} strokeWidth={room.visited?3:2} strokeDasharray={room.visited?"none":"5 5"}/>:null;})}
+        {rooms.map(room=>{const p=positions[room.id];if(!p)return null;const canMove=room.visited&&!room.current||accessible.has(room.id);const fill=room.current?"#d7aa4e":room.goal?"#ef85c9":room.visited?"#31658c":"#29213d";return <g key={room.id} onClick={()=>{if(busy||!canMove)return;if(room.visited)onBacktrack(room.id);else onMove(room.id);}} style={{cursor:canMove&&!busy?"pointer":"default"}} role={canMove?"button":undefined} aria-label={room.id}>
+          <circle cx={p.x} cy={p.y} r={room.current?23:19} fill={fill} stroke={canMove?"#e0c9ff":"#68718a"} strokeWidth={room.current?4:2}/>
+          <text x={p.x} y={p.y+4} textAnchor="middle" fill="#fff" fontSize="11" fontWeight="bold">{room.current?"🛡":room.goal?"🧪":room.visited?room.id.replace("room-",""):"?"}</text>
+          <text x={p.x} y={p.y+34} textAnchor="middle" fill="#bdc8e4" fontSize="10">{room.depth}/10</text>
+        </g>;})}
+      </svg>
+    </div>
+    <p style={{fontSize:12,color:"#d6c9e8"}}>{t("You are here","Тук се намираш")}: <b>{current?.id||labyrinth.currentRoom}</b> · {t("Depth","Дълбочина")} {current?.depth??labyrinth.currentDepth}/10. {t("The goal is hidden until discovered; reaching depth 10 alone does not mean victory.","Целта е скрита, докато не я откриеш. Дълбочина 10 сама по себе си не означава победа.")}</p>
+  </div>;
+}
+
 function EventsPanel() {
   const {language,t}=useLanguage();
   const navigate=useNavigate();
@@ -291,6 +331,7 @@ function EventsPanel() {
         {labyrinth.medicineFound?<p style={{color:"#ffb6e6",fontWeight:"bold"}}>🧪 {t("Medicine found! Nova can be revived.","Лекарството е намерено! Nova може да бъде съживена.")}</p>:<div style={{border:"1px solid #564567",borderRadius:8,padding:10,marginTop:12}}>
           <strong>{t("Dark underground map","Затъмнена подземна карта")}</strong> · {t("Current square","Текущо квадратче")}: {labyrinth.currentRoom} · {t("Depth","Дълбочина")}: {labyrinth.currentDepth}/10
           <p>{t("Squares you have explored","Посетени квадратчета")}: {labyrinth.roomsOpened} · {t("Furthest depth","Най-голяма дълбочина")}: {labyrinth.deepestDepth}/10</p>
+          <LabyrinthMap labyrinth={labyrinth} busy={labyrinthBusy} t={t} onMove={roomId=>labyrinthAction("/events/labyrinth/move",{roomId},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} onBacktrack={roomId=>labyrinthAction("/events/labyrinth/backtrack",{roomId},t("Returned to a visited chamber.","Върна се в посетена зала."))}/>
           <div style={{border:"2px solid #66517f",borderRadius:14,padding:"18px 12px",margin:"14px 0",background:"radial-gradient(ellipse at 50% 18%,#344057 0%,#171727 44%,#090b16 100%)",boxShadow:"inset 0 0 45px #03050c",textAlign:"center"}}>
             <div style={{fontSize:13,letterSpacing:3,color:"#bba7dc",fontWeight:700}}>{t("UNDERGROUND LABYRINTH · CHOOSE YOUR PATH","ПОДЗЕМЕН ЛАБИРИНТ · ИЗБЕРИ ПЪТЯ СИ")}</div>
             <div style={{fontSize:12,color:"#a8bbd4",marginTop:8}}>{t("Each passage hides a different route. You decide where the Cyber Knight goes.","Всеки проход крие различен път. Ти решаваш накъде да тръгне Киберрицарят.")}</div>
