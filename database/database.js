@@ -261,6 +261,13 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS labyrinth_players (user_id INTEGER PRIMARY KEY REFERENCES users(id), mission_day TEXT NOT NULL, missions_today INTEGER NOT NULL DEFAULT 0, crystal_mission INTEGER NOT NULL DEFAULT 0, last_mission_at INTEGER NOT NULL DEFAULT 0, crystals TEXT NOT NULL DEFAULT '{\"yellow\":0,\"blue\":0,\"orange\":0,\"purple\":0}', maze TEXT NOT NULL, current_room TEXT NOT NULL, visited TEXT NOT NULL DEFAULT '[]', rooms_opened INTEGER NOT NULL DEFAULT 1, deepest_depth INTEGER NOT NULL DEFAULT 0, total_moves INTEGER NOT NULL DEFAULT 0, medicine_found INTEGER NOT NULL DEFAULT 0, completed_at INTEGER)");
     db.exec("CREATE INDEX IF NOT EXISTS labyrinth_rank ON labyrinth_players(medicine_found,deepest_depth,rooms_opened,total_moves)");
     db.exec("CREATE TABLE IF NOT EXISTS labyrinth_world (id INTEGER PRIMARY KEY CHECK(id=1), maze TEXT NOT NULL)");
+    // Movement is limited separately from equipment missions.
+    const labyrinthColumns=db.prepare("PRAGMA table_info(labyrinth_players)").all().map(column=>column.name);
+    if(!labyrinthColumns.includes("moves_day"))db.exec("ALTER TABLE labyrinth_players ADD COLUMN moves_day TEXT NOT NULL DEFAULT ''");
+    if(!labyrinthColumns.includes("moves_today"))db.exec("ALTER TABLE labyrinth_players ADD COLUMN moves_today INTEGER NOT NULL DEFAULT 0");
+    // The medicine cannot be claimed before collecting all four crystal colors.
+    db.prepare("UPDATE labyrinth_players SET medicine_found=0,completed_at=NULL WHERE medicine_found=1 AND (CAST(json_extract(crystals,'$.yellow') AS INTEGER)<1 OR CAST(json_extract(crystals,'$.blue') AS INTEGER)<1 OR CAST(json_extract(crystals,'$.orange') AS INTEGER)<1 OR CAST(json_extract(crystals,'$.purple') AS INTEGER)<1)").run();
+
 
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
     db.exec(`CREATE TABLE IF NOT EXISTS scout_missions (
@@ -2428,6 +2435,7 @@ class DatabaseManager {
     }
     const rankings=db.prepare("SELECT l.user_id,u.username,l.medicine_found,l.deepest_depth,l.rooms_opened,l.total_moves,l.completed_at FROM labyrinth_players l JOIN users u ON u.id=l.user_id ORDER BY l.medicine_found DESC,CASE WHEN l.medicine_found=1 THEN l.completed_at END ASC,l.deepest_depth DESC,l.rooms_opened DESC,l.total_moves ASC,u.username COLLATE NOCASE LIMIT 50").all().map((entry,index)=>({...entry,rank:index+1}));
     if(knight<7)return {unlocked:false,knightLevel:knight,requiredLevel:7,rankings};
+    if(row.moves_day!==today){db.prepare("UPDATE labyrinth_players SET moves_day=?,moves_today=0 WHERE user_id=?").run(today,userId);row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);}
     const visited=JSON.parse(row.visited||"[]"),explored=new Set(visited);
     const current=maze.rooms[row.current_room]||maze.rooms[maze.start];
     const visible=new Set(visited);
@@ -2438,7 +2446,7 @@ class DatabaseManager {
     });
     const exits=(current.children||[]).filter(exit=>!explored.has(exit.id));
     const visitedRooms=visited.map(id=>maze.rooms[id]).filter(Boolean).map(room=>({id:room.id,depth:room.depth,goal:room.goal,current:room.id===current.id}));
-    return {unlocked:true,mapRooms,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:current.id,currentDepth:current.depth,exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
+    return {unlocked:true,mapRooms,movesToday:Number(row.moves_today||0),movesPerDay:10,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:current.id,currentDepth:current.depth,exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
   }
 
   runLabyrinthMission(userId){
@@ -2463,11 +2471,16 @@ class DatabaseManager {
     return db.transaction(()=>{
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);if(!row)return {error:"Labyrinth state is unavailable."};
       if(Number(row.medicine_found))return {error:"The medicine has already been found."};
+      const today=new Date().toISOString().slice(0,10);
+      const movesToday=row.moves_day===today?Number(row.moves_today||0):0;
+      if(movesToday>=10)return {error:"All 10 Labyrinth moves have been used today. Try again after 00:00 UTC."};
       const maze=this.getSharedLabyrinth(),visited=JSON.parse(row.visited||"[]"),current=maze.rooms[row.current_room];
       const exit=(current?.children||[]).find(option=>option.id===roomId);if(!exit||visited.includes(roomId))return {error:"Choose an unopened neighboring square."};
-      visited.push(roomId);const next=maze.rooms[roomId],found=!!next.goal,now=Date.now();
-      db.prepare("UPDATE labyrinth_players SET current_room=?,visited=?,rooms_opened=rooms_opened+1,deepest_depth=MAX(deepest_depth,?),total_moves=total_moves+1,medicine_found=?,completed_at=? WHERE user_id=?")
-        .run(roomId,JSON.stringify(visited),Number(next.depth||0),found?1:0,found?now:null,userId);
+      const next=maze.rooms[roomId],crystals=JSON.parse(row.crystals||"{}");
+      if(next.goal&&!["yellow","blue","orange","purple"].every(color=>Number(crystals[color]||0)>=1))return {error:"Collect at least one crystal of each of the four colors before entering the medicine chamber."};
+      visited.push(roomId);const found=!!next.goal,now=Date.now();
+      db.prepare("UPDATE labyrinth_players SET current_room=?,visited=?,rooms_opened=rooms_opened+1,deepest_depth=MAX(deepest_depth,?),total_moves=total_moves+1,medicine_found=?,completed_at=?,moves_day=?,moves_today=? WHERE user_id=?")
+        .run(roomId,JSON.stringify(visited),Number(next.depth||0),found?1:0,found?now:null,today,movesToday+1,userId);
       return {success:true,medicineFound:found,status:this.getLabyrinthStatus(userId)};
     })();
   }
