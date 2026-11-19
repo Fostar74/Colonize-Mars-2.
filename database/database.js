@@ -2736,7 +2736,7 @@ class DatabaseManager {
     if(!Number.isInteger(level)||level<1||level>20)return {error:"Invalid alien base level."};
     const target=targetCoords===undefined ? undefined : alienBases.find(base=>base.level===level&&base.x===targetCoords?.x&&base.y===targetCoords?.y);
     if(targetCoords!==undefined&&!target)return {error:"Invalid Alien Base coordinates."};
-    return db.transaction(()=>{
+    const launched=db.transaction(()=>{
       const campaign=this.getAlienCampaign(userId);
       if(level>campaign.nextLevel)return {error:"Defeat the previous alien base level first."};
       if(campaign.remaining<=0)return {error:"All 20 daily attacks have been used. Reset is at 00:00 UTC."};
@@ -2769,8 +2769,8 @@ class DatabaseManager {
       for(const [unit,n] of Object.entries(selected))current.army[unit]-=n;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       const now=Date.now();
-      // Alien Base missions use a fixed five-second journey; PvP and other marches retain their normal speed.
-      const travelMs=5000;
+      // Alien Base battles are instant; player-versus-player march timing is unchanged.
+      const travelMs=0;
       const arrivesAt=now+travelMs;
       const activeBuffs = db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,now);
       const allianceCombat = {
@@ -2784,11 +2784,15 @@ class DatabaseManager {
       if(campaign.used>=20&&Number(campaign.bonusMissions||0)>0)db.prepare("UPDATE alien_rewards SET bonus_missions=MAX(0,bonus_missions-1) WHERE user_id=?").run(userId);
       return {missionId:Number(mission.lastInsertRowid),level,launchedAt:now,arrivesAt,origin,target,remaining:campaign.remaining-1};
     })();
+    if(!launched.error){
+      this.resolveAlienMissions(userId);
+    }
+    return launched;
   }
 
   resolveAlienMissions(userId) {
     return db.transaction(()=>{
-      // Resolve the battle at arrival (5 seconds outbound); troops return 5 seconds later.
+      // Resolve Alien Base battles immediately; return survivors in the same transaction.
       const due=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(userId,Date.now());
       for(const mission of due){
         const armyData=JSON.parse(mission.army);
@@ -2855,7 +2859,7 @@ class DatabaseManager {
         }
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
         db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=MIN(50,1+CAST((prestige+1)/20 AS INTEGER)) WHERE user_id=?").run(userId);
-        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),mission.arrives_at+5000,JSON.stringify(result),mission.id);
+        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),mission.arrives_at,JSON.stringify(result),mission.id);
       }
       const returning=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?").all(userId,Date.now());
       for(const mission of returning){
