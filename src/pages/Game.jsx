@@ -189,39 +189,23 @@ function HospitalPanel() {
 function LabyrinthMap({labyrinth,busy,onMove,onBacktrack,t}){
   const rooms=labyrinth.mapRooms||[];
   const byId=Object.fromEntries(rooms.map(room=>[room.id,room]));
-  const children={};
-  rooms.forEach(room=>{if(room.parent&&byId[room.parent]){(children[room.parent]||=[]).push(room.id);}});
-  const order={North:0,East:1,South:2};
-  Object.values(children).forEach(list=>list.sort((a,b)=>(order[byId[a].direction]??3)-(order[byId[b].direction]??3)));
-  let column=0;
-  const positions={};
-  const layout=(id,seen=new Set())=>{
-    if(seen.has(id))return 0;
-    seen.add(id);
-    const kids=children[id]||[];
-    const xs=kids.map(child=>layout(child,seen));
-    const x=xs.length?xs.reduce((sum,n)=>sum+n,0)/xs.length:column++;
-    positions[id]={x:x*82+55,y:(byId[id]?.depth||0)*95+48};
-    return x;
-  };
-  if(byId["room-0"])layout("room-0");
-  const width=Math.max(330,column*82+110),height=1050;
-  const current=byId[labyrinth.currentRoom];
+  const positions=Object.fromEntries(rooms.map(room=>[room.id,{x:room.x*68+42,y:room.y*68+42}]));
   const accessible=new Set((labyrinth.exits||[]).map(exit=>exit.id));
+  const width=11*68+16,height=11*68+16;
   return <div style={{margin:"14px 0",padding:10,border:"1px solid #7963a5",borderRadius:12,background:"#0b1020"}}>
-    <strong>🗺️ {t("Explored Labyrinth map","Карта на изследвания лабиринт")}</strong>
-    <p style={{fontSize:12,color:"#c8bbdf"}}>{t("Blue: explored · Gold: Cyber Knight · Purple: unexplored · Pink: medicine found. Tap a chamber to travel.","Синьо: посетена · Златно: Киберрицар · Лилаво: неизследвана · Розово: намерено лекарство. Натисни зала за придвижване.")}</p>
+    <strong>🗺️ {t("Shared Labyrinth · your discoveries","Общ Лабиринт · твоите открития")}</strong>
+    <p style={{fontSize:12,color:"#c8bbdf"}}>{t("All players share the same map, but only your explored rooms are shown. North is up, east is right, south is down, west is left.","Всички играчи имат една карта, но виждаш само собствените си открития. Север е нагоре, изток надясно, юг надолу, запад наляво.")}</p>
+    <p style={{fontSize:12,color:"#c8bbdf"}}>{t("Blue: visited · Gold: your position · Purple ?: unexplored · Pink: medicine discovered. Tap a room to travel.","Синьо: посетена · Златно: позицията ти · Лилаво ?: неизследвана · Розово: открито лекарство. Натисни стая за придвижване.")}</p>
     <div style={{overflow:"auto",maxHeight:540,borderRadius:8,background:"radial-gradient(#1b2740,#080b16)"}}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{width:Math.max(320,width),height,display:"block"}} role="img" aria-label={t("Map of explored chambers and corridors","Карта на откритите зали и коридори")}>
-        {rooms.map(room=>{const a=positions[room.parent],b=positions[room.id];return a&&b?<line key={"line-"+room.id} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={room.visited?"#6a95ba":"#5b476f"} strokeWidth={room.visited?3:2} strokeDasharray={room.visited?"none":"5 5"}/>:null;})}
-        {rooms.map(room=>{const p=positions[room.id];if(!p)return null;const canMove=room.visited&&!room.current||accessible.has(room.id);const fill=room.current?"#d7aa4e":room.goal?"#ef85c9":room.visited?"#31658c":"#29213d";return <g key={room.id} onClick={()=>{if(busy||!canMove)return;if(room.visited)onBacktrack(room.id);else onMove(room.id);}} style={{cursor:canMove&&!busy?"pointer":"default"}} role={canMove?"button":undefined} aria-label={room.id}>
-          <circle cx={p.x} cy={p.y} r={room.current?23:19} fill={fill} stroke={canMove?"#e0c9ff":"#68718a"} strokeWidth={room.current?4:2}/>
-          <text x={p.x} y={p.y+4} textAnchor="middle" fill="#fff" fontSize="11" fontWeight="bold">{room.current?"🛡":room.goal?"🧪":room.visited?room.id.replace("room-",""):"?"}</text>
-          <text x={p.x} y={p.y+34} textAnchor="middle" fill="#bdc8e4" fontSize="10">{room.depth}/10</text>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{width:Math.max(320,width),height,display:"block"}} role="img" aria-label={t("Labyrinth map","Карта на лабиринта")}>
+        {rooms.map(room=>{const a=positions[room.id];return [["East",1,0],["South",0,1]].map(([dir,dx,dy])=>{const neighbor=byId["room-"+(room.x+dx)+"-"+(room.y+dy)];if(!neighbor)return null;const b=positions[neighbor.id];return <line key={room.id+dir} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={room.visited&&neighbor.visited?"#6a95ba":"#5b476f"} strokeWidth="3" strokeDasharray={room.visited&&neighbor.visited?"none":"5 5"}/>;});})}
+        {rooms.map(room=>{const p=positions[room.id],canMove=room.visited&&!room.current||accessible.has(room.id);return <g key={room.id} onClick={()=>{if(busy||!canMove)return;room.visited?onBacktrack(room.id):onMove(room.id);}} style={{cursor:canMove&&!busy?"pointer":"default"}} role={canMove?"button":undefined} aria-label={room.id}>
+          <circle cx={p.x} cy={p.y} r={room.current?23:19} fill={room.current?"#d7aa4e":room.goal?"#ef85c9":room.visited?"#31658c":"#29213d"} stroke={canMove?"#e0c9ff":"#68718a"} strokeWidth={room.current?4:2}/>
+          <text x={p.x} y={p.y+4} textAnchor="middle" fill="#fff" fontSize="11" fontWeight="bold">{room.current?"★":room.goal?"🧪":room.visited?room.x+","+room.y:"?"}</text>
         </g>;})}
       </svg>
     </div>
-    <p style={{fontSize:12,color:"#d6c9e8"}}>{t("You are here","Тук се намираш")}: <b>{current?.id||labyrinth.currentRoom}</b> · {t("Depth","Дълбочина")} {current?.depth??labyrinth.currentDepth}/10. {t("The goal is hidden until discovered; reaching depth 10 alone does not mean victory.","Целта е скрита, докато не я откриеш. Дълбочина 10 сама по себе си не означава победа.")}</p>
+    <p style={{fontSize:12,color:"#d6c9e8"}}>{t("Your coordinates","Твоите координати")}: <b>{byId[labyrinth.currentRoom]?.x??5}, {byId[labyrinth.currentRoom]?.y??5}</b> · {t("Depth","Дълбочина")} {labyrinth.currentDepth}/10. {t("The medicine location remains hidden until you discover it.","Местоположението на лекарството остава скрито, докато не го откриеш.")}</p>
   </div>;
 }
 
@@ -335,13 +319,13 @@ function EventsPanel() {
           <div style={{border:"2px solid #66517f",borderRadius:14,padding:"18px 12px",margin:"14px 0",background:"radial-gradient(ellipse at 50% 18%,#344057 0%,#171727 44%,#090b16 100%)",boxShadow:"inset 0 0 45px #03050c",textAlign:"center"}}>
             <div style={{fontSize:13,letterSpacing:3,color:"#bba7dc",fontWeight:700}}>{t("UNDERGROUND LABYRINTH · CHOOSE YOUR PATH","ПОДЗЕМЕН ЛАБИРИНТ · ИЗБЕРИ ПЪТЯ СИ")}</div>
             <div style={{fontSize:12,color:"#a8bbd4",marginTop:8}}>{t("Each passage hides a different route. You decide where the Cyber Knight goes.","Всеки проход крие различен път. Ти решаваш накъде да тръгне Киберрицарят.")}</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(3,minmax(0,1fr))",gap:8,margin:"18px auto 10px",maxWidth:700}}>
-              {["North","East","South"].map((direction,index)=>{
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,margin:"18px auto 10px",maxWidth:700}}>
+              {["North","East","South","West"].map((direction,index)=>{
                 const exit=(labyrinth.exits||[]).find(item=>item.direction===direction);
                 const enough=true;
-                const label=direction==="North"?t("NORTH","СЕВЕР"):direction==="East"?t("EAST","ИЗТОК"):t("SOUTH","ЮГ");
+                const label=direction==="North"?t("NORTH","СЕВЕР"):direction==="East"?t("EAST","ИЗТОК"):direction==="South"?t("SOUTH","ЮГ"):t("WEST","ЗАПАД");
                 return <button key={direction} type="button" disabled={labyrinthBusy||!exit} onClick={()=>exit&&labyrinthAction("/events/labyrinth/move",{roomId:exit.id},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} style={{minHeight:145,padding:"12px 5px",borderRadius:"45% 45% 8px 8px",border:exit?"2px solid #8c83bd":"2px solid #3b3b50",background:exit?"linear-gradient(180deg,#30304c,#101626 65%,#242036)":"linear-gradient(#262635,#101019)",color:exit?"#eee6ff":"#6e7085",cursor:exit&&!labyrinthBusy?"pointer":"not-allowed",opacity:exit?1:.55,boxShadow:exit?"inset 0 0 24px #08071a,0 0 14px #493b6a":"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-                  <span style={{fontSize:34}}>{!exit?"🪨":index===0?"⬆️":index===1?"➡️":"⬇️"}</span>
+                  <span style={{fontSize:34}}>{!exit?"🪨":index===0?"⬆️":index===1?"➡️":index===2?"⬇️":"⬅️"}</span>
                   <span style={{fontSize:13,fontWeight:800,letterSpacing:1}}>{label}</span>
                   <span style={{fontSize:11}}>{!exit?t("Blocked","Затворен"):t("ENTER PASSAGE","ВЛЕЗ В ПРОХОДА")}</span>
                 </button>;
@@ -352,7 +336,7 @@ function EventsPanel() {
               <strong>{t("CYBER KNIGHT · CURRENT CHAMBER","КИБЕРРИЦАР · ТЕКУЩА ЗАЛА")}</strong>
               <div style={{fontSize:13,color:"#c9b5eb",marginTop:5}}>{labyrinth.currentRoom==="room-0"?t("Entrance chamber","Входна зала"):t("Explored chamber","Открита зала")} · {labyrinth.currentDepth}/10</div>
             </div>
-            <div style={{fontSize:12,color:"#d6c9e8",marginTop:12}}>{t("All three passages are free. Crystals are rewards and remain in your inventory.","И трите прохода са безплатни. Кристалите са награди и остават в инвентара.")}</div>
+            <div style={{fontSize:12,color:"#d6c9e8",marginTop:12}}>{t("All passages are free. Crystals are rewards and remain in your inventory.","Всички проходи са безплатни. Кристалите са награди и остават в инвентара.")}</div>
           </div>
           <strong>{t("Explored chambers · click to return","Посетени зали · натисни, за да се върнеш")}</strong>
           <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"8px 0"}}>{(labyrinth.visitedRooms||[]).map(room=><button type="button" key={room.id} disabled={labyrinthBusy||room.current} onClick={()=>labyrinthAction("/events/labyrinth/backtrack",{roomId:room.id},t("Returned to a visited chamber.","Върна се в посетена зала."))} style={{background:room.current?"#8054a8":"#30283d",color:"white",border:"1px solid #9c78bd",borderRadius:6,padding:"6px 9px"}}>{room.goal?"🧪":"◈"} {room.id==="room-0"?t("Entrance","Вход"):room.id} · {room.depth}{room.current?" ✓":""}</button>)}</div>
