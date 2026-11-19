@@ -187,25 +187,29 @@ function HospitalPanel() {
 
 
 function LabyrinthMap({labyrinth,busy,onMove,onBacktrack,t}){
-  const rooms=labyrinth.mapRooms||[];
-  const byId=Object.fromEntries(rooms.map(room=>[room.id,room]));
-  const positions=Object.fromEntries(rooms.map(room=>[room.id,{x:room.x*68+42,y:room.y*68+42}]));
+  const rooms=labyrinth.mapRooms||[],byId=Object.fromEntries(rooms.map(room=>[room.id,room]));
+  const corridors=labyrinth.corridors||{},step=62,offset=43;
+  const position=room=>({x:offset+room.x*step,y:offset+room.y*step});
   const accessible=new Set((labyrinth.movesToday||0)>=(labyrinth.movesPerDay||10)?[]:(labyrinth.exits||[]).map(exit=>exit.id));
-  const width=11*68+16,height=11*68+16;
-  return <div style={{margin:"14px 0",padding:10,border:"1px solid #7963a5",borderRadius:12,background:"#0b1020"}}>
-    <strong>🗺️ {t("Shared Labyrinth · your discoveries","Общ Лабиринт · твоите открития")}</strong>
-    <p style={{fontSize:12,color:"#c8bbdf"}}>{t("All players share the same map, but only your explored rooms are shown. North is up, east is right, south is down, west is left.","Всички играчи имат една карта, но виждаш само собствените си открития. Север е нагоре, изток надясно, юг надолу, запад наляво.")}</p>
-    <p style={{fontSize:12,color:"#c8bbdf"}}>{t("Blue: visited · Gold: your position · Purple ?: unexplored · Pink: medicine discovered. Tap a room to travel.","Синьо: посетена · Златно: позицията ти · Лилаво ?: неизследвана · Розово: открито лекарство. Натисни стая за придвижване.")}</p>
-    <div style={{overflow:"auto",maxHeight:540,borderRadius:8,background:"radial-gradient(#1b2740,#080b16)"}}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={{width:Math.max(320,width),height,display:"block"}} role="img" aria-label={t("Labyrinth map","Карта на лабиринта")}>
-        {rooms.map(room=>{const a=positions[room.id];return [["East",1,0],["South",0,1]].map(([dir,dx,dy])=>{const neighbor=byId["room-"+(room.x+dx)+"-"+(room.y+dy)];if(!neighbor)return null;const b=positions[neighbor.id];return <line key={room.id+dir} x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={room.visited&&neighbor.visited?"#6a95ba":"#5b476f"} strokeWidth="3" strokeDasharray={room.visited&&neighbor.visited?"none":"5 5"}/>;});})}
-        {rooms.map(room=>{const p=positions[room.id],canMove=room.visited&&!room.current||accessible.has(room.id);return <g key={room.id} onClick={()=>{if(busy||!canMove)return;room.visited?onBacktrack(room.id):onMove(room.id);}} style={{cursor:canMove&&!busy?"pointer":"default"}} role={canMove?"button":undefined} aria-label={room.id}>
-          <circle cx={p.x} cy={p.y} r={room.current?23:19} fill={room.current?"#d7aa4e":room.goal?"#ef85c9":room.visited?"#31658c":"#29213d"} stroke={canMove?"#e0c9ff":"#68718a"} strokeWidth={room.current?4:2}/>
-          <text x={p.x} y={p.y+4} textAnchor="middle" fill="#fff" fontSize="11" fontWeight="bold">{room.current?"★":room.goal?"🧪":room.visited?room.x+","+room.y:"?"}</text>
+  const width=11*step+offset*2,height=11*step+offset*2;
+  return <div style={{margin:"14px 0",padding:12,border:"1px solid #8064a3",borderRadius:14,background:"linear-gradient(145deg,#101629,#1b1325)"}}>
+    <strong>🗺️ {t("Underground Labyrinth — your map","Подземен лабиринт — твоята карта")}</strong>
+    <p style={{fontSize:12,color:"#c9c0df",margin:"8px 0"}}>{t("Only your discovered chambers and connecting corridors are visible. Dark stone marks unexplored areas. North ↑ · East → · South ↓ · West ←.","Виждаш само своите открити зали и свързващите ги коридори. Тъмният камък скрива неизследваните части. Север ↑ · Изток → · Юг ↓ · Запад ←.")}</p>
+    <div style={{overflow:"auto",maxHeight:540,border:"2px solid #4c405b",borderRadius:9,background:"#090d17"}}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={{width:Math.max(320,width),height,display:"block"}} role="img" aria-label={t("Underground labyrinth","Подземен лабиринт")}>
+        <defs><pattern id="maze-stone" width="25" height="25" patternUnits="userSpaceOnUse"><rect width="25" height="25" fill="#111723"/><path d="M0 12H25M12 0V12M5 12V25" stroke="#1c2431" strokeWidth="1"/></pattern><radialGradient id="maze-floor"><stop stopColor="#334254"/><stop offset="1" stopColor="#202736"/></radialGradient></defs>
+        <rect width={width} height={height} fill="url(#maze-stone)"/>
+        {rooms.map(room=>{const p=position(room);return <rect key={"floor-"+room.id} x={p.x-22} y={p.y-22} width="44" height="44" rx="5" fill={room.visited?"url(#maze-floor)":"#171525"} stroke={room.visited?"#58657b":"#3a304e"} strokeWidth="3"/>;})}
+        {Object.entries(corridors).flatMap(([id,exits])=>{const a=byId[id];if(!a)return [];return exits.filter(otherId=>byId[otherId]&&id<otherId).map(otherId=>{const b=byId[otherId],p=position(a),q=position(b),both=a.visited&&b.visited;return <g key={id+"-"+otherId}><line x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke="#090d17" strokeWidth="26"/><line x1={p.x} y1={p.y} x2={q.x} y2={q.y} stroke={both?"#53677a":"#352b50"} strokeWidth="17" strokeDasharray={both?"none":"4 6"}/></g>;});})}
+        {rooms.map(room=>{const p=position(room),canMove=(room.visited&&!room.current)||accessible.has(room.id);return <g key={room.id} onClick={()=>{if(busy||!canMove)return;room.visited?onBacktrack(room.id):onMove(room.id);}} style={{cursor:canMove&&!busy?"pointer":"default"}} role={canMove?"button":undefined} aria-label={room.id}>
+          <rect x={p.x-19} y={p.y-19} width="38" height="38" rx="5" fill={room.current?"#8b692b":room.goal?"#913f76":room.visited?"#304a65":"#242037"} stroke={room.current?"#ffe3a1":room.goal?"#ff9ee2":canMove?"#bba3e9":"#556078"} strokeWidth={room.current?4:2}/>
+          <text x={p.x} y={p.y+5} textAnchor="middle" fill="#fff" fontSize="12" fontWeight="bold">{room.current?"♞":room.goal?"✚":room.visited?room.x+","+room.y:"?"}</text>
         </g>;})}
+        <text x="16" y="23" fill="#d6c3ff" fontSize="15" fontWeight="bold">↑ N</text>
       </svg>
     </div>
-    <p style={{fontSize:12,color:"#d6c9e8"}}>{t("Your coordinates","Твоите координати")}: <b>{byId[labyrinth.currentRoom]?.x??5}, {byId[labyrinth.currentRoom]?.y??5}</b> · {t("Depth","Дълбочина")} {labyrinth.currentDepth}/10. {t("The medicine location remains hidden until you discover it.","Местоположението на лекарството остава скрито, докато не го откриеш.")}</p>
+    <p style={{fontSize:12,color:"#d6c9e8",marginTop:8}}>🟨 {t("Cyber Knight","Киберрицар")} · 🟦 {t("Visited","Посетена")} · 🟪 {t("Unknown passage","Неизследван проход")} · 🩷 {t("Medicine, once discovered","Лекарство, след откриване")}</p>
+    <p style={{fontSize:12,color:"#d6c9e8"}}>{t("Current coordinates","Текущи координати")}: <b>{byId[labyrinth.currentRoom]?.x??5}, {byId[labyrinth.currentRoom]?.y??5}</b> · {t("Depth","Дълбочина")} {labyrinth.currentDepth}/10</p>
   </div>;
 }
 
