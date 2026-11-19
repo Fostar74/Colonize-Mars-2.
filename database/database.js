@@ -1689,7 +1689,7 @@ class DatabaseManager {
       for(const [unit,count] of Object.entries(selected)) current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       const now=Date.now();
-      const travelMs=armyTravelDuration(60000,selected,this.protocolBonus(userId,"Rapid Deployment"));
+      const travelMs=5000; // Alien Base missions: five seconds outbound (and five seconds to return).
       const origin={username:this.findUserById(userId)?.username||current.castle.username,x:current.castle.x,y:current.castle.y};
       const destination={username:target.username,x:target.x,y:target.y};
       const armyData={units:selected,formation:battleFormation,origin,target:destination};
