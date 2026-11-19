@@ -2386,26 +2386,72 @@ class DatabaseManager {
   }
 
   createLabyrinthMap(){
-    // One shared, coordinate-based maze. Each player keeps private exploration.
-    const rooms={},size=11,center=5,goalX=10,goalY=10;
-    const id=(x,y)=>"room-"+x+"-"+y;
+    // A shared underground maze with real cardinal directions and walls.
+    const rooms={},size=11,center=5,id=(x,y)=>"room-"+x+"-"+y;
     const directions=[["North",0,-1],["East",1,0],["South",0,1],["West",-1,0]];
-    for(let y=0;y<size;y++)for(let x=0;x<size;x++)rooms[id(x,y)]={id:id(x,y),x,y,depth:Math.abs(x-center)+Math.abs(y-center),parent:null,children:[],goal:x===goalX&&y===goalY};
-    // All rooms are reachable. Physical directions always mean the same thing.
-    for(let y=0;y<size;y++)for(let x=0;x<size;x++)for(const [direction,dx,dy] of directions){
-      if(x+dx>=0&&x+dx<size&&y+dy>=0&&y+dy<size)rooms[id(x,y)].children.push({id:id(x+dx,y+dy),direction});
+    for(let y=0;y<size;y++)for(let x=0;x<size;x++)rooms[id(x,y)]={id:id(x,y),x,y,depth:Math.abs(x-center)+Math.abs(y-center),parent:null,children:[],goal:x===10&&y===10};
+    const visited=new Set([id(center,center)]),stack=[rooms[id(center,center)]],crypto=require("crypto");
+    while(stack.length){
+      const room=stack[stack.length-1];
+      const choices=directions.map(([direction,dx,dy])=>({direction,x:room.x+dx,y:room.y+dy})).filter(n=>n.x>=0&&n.x<size&&n.y>=0&&n.y<size&&!visited.has(id(n.x,n.y)));
+      if(!choices.length){stack.pop();continue;}
+      const next=choices[crypto.randomInt(choices.length)],other=rooms[id(next.x,next.y)];
+      room.children.push({id:other.id,direction:next.direction});
+      const reverse={North:"South",South:"North",East:"West",West:"East"};
+      other.children.push({id:room.id,direction:reverse[next.direction]});
+      visited.add(other.id);stack.push(other);
     }
-    return {rooms,start:id(center,center),goal:id(goalX,goalY),version:2};
+    return {rooms,start:id(center,center),goal:id(10,10),version:3};
   }
 
   getSharedLabyrinth(){
     let world=db.prepare("SELECT maze FROM labyrinth_world WHERE id=1").get();
     if(!world){
-      const maze=JSON.stringify(this.createLabyrinthMap());
-      db.prepare("INSERT OR IGNORE INTO labyrinth_world(id,maze) VALUES (1,?)").run(maze);
+      db.prepare("INSERT OR IGNORE INTO labyrinth_world(id,maze) VALUES (1,?)").run(JSON.stringify(this.createLabyrinthMap()));
       world=db.prepare("SELECT maze FROM labyrinth_world WHERE id=1").get();
     }
-    return JSON.parse(world.maze);
+    const maze=JSON.parse(world.maze);
+    if(maze.version===3)return maze;
+    // Upgrade the existing common grid without resetting players or their rewards.
+    // Keep corridors between rooms already visited by any player.
+    const rooms=maze.rooms,allRooms=Object.keys(rooms),neighbors=[["North",0,-1],["East",1,0],["South",0,1],["West",-1,0]],reverse={North:"South",South:"North",East:"West",West:"East"};
+    const open=(a,b,direction)=>{
+      if(!a.children.some(exit=>exit.id===b.id))a.children.push({id:b.id,direction});
+      if(!b.children.some(exit=>exit.id===a.id))b.children.push({id:a.id,direction:reverse[direction]});
+    };
+    for(const room of Object.values(rooms))room.children=[];
+    const existing=db.prepare("SELECT visited FROM labyrinth_players").all();
+    for(const player of existing){
+      let seen;try{seen=new Set(JSON.parse(player.visited||"[]"));}catch(error){continue;}
+      for(const roomId of seen){
+        const room=rooms[roomId];if(!room)continue;
+        for(const [direction,dx,dy] of neighbors){
+          const other=rooms["room-"+(room.x+dx)+"-"+(room.y+dy)];
+          if(other&&seen.has(other.id))open(room,other,direction);
+        }
+      }
+    }
+    // Connect the remaining areas into the maze without opening every wall.
+    const reachable=new Set(),queue=[maze.start];
+    while(queue.length){const id=queue.shift();if(reachable.has(id))continue;reachable.add(id);for(const exit of rooms[id]?.children||[])queue.push(exit.id);}
+    const crypto=require("crypto");
+    while(reachable.size<allRooms.length){
+      const candidates=[];
+      for(const id of reachable){
+        const room=rooms[id];for(const [direction,dx,dy] of neighbors){
+          const other=rooms["room-"+(room.x+dx)+"-"+(room.y+dy)];
+          if(other&&!reachable.has(other.id))candidates.push({room,other,direction});
+        }
+      }
+      if(!candidates.length)break;
+      const choice=candidates[crypto.randomInt(candidates.length)];
+      open(choice.room,choice.other,choice.direction);
+      const pending=[choice.other.id];
+      while(pending.length){const id=pending.pop();if(reachable.has(id))continue;reachable.add(id);for(const exit of rooms[id].children)pending.push(exit.id);}
+    }
+    maze.version=3;
+    db.prepare("UPDATE labyrinth_world SET maze=? WHERE id=1").run(JSON.stringify(maze));
+    return maze;
   }
 
   getLabyrinthStatus(userId){
@@ -2422,7 +2468,7 @@ class DatabaseManager {
     if(row){
       let oldMaze=null;
       try{oldMaze=JSON.parse(row.maze);}catch(error){}
-      if(oldMaze?.version!==2){
+      if(oldMaze?.version!==2&&oldMaze?.version!==3){
         db.prepare("UPDATE labyrinth_players SET maze=?,current_room=?,visited=?,rooms_opened=1,deepest_depth=0,total_moves=0,medicine_found=0,completed_at=NULL WHERE user_id=?")
           .run(JSON.stringify(maze),maze.start,JSON.stringify([maze.start]),userId);
         row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
@@ -2444,9 +2490,10 @@ class DatabaseManager {
       const room=maze.rooms[id];
       return {id,x:room.x,y:room.y,depth:room.depth,visited:explored.has(id),current:id===current.id,goal:explored.has(id)&&room.goal};
     });
+    const corridors=Object.fromEntries([...visible].filter(id=>maze.rooms[id]).map(id=>[id,(maze.rooms[id].children||[]).filter(exit=>visible.has(exit.id)).map(exit=>exit.id)]));
     const exits=(current.children||[]).filter(exit=>!explored.has(exit.id));
     const visitedRooms=visited.map(id=>maze.rooms[id]).filter(Boolean).map(room=>({id:room.id,depth:room.depth,goal:room.goal,current:room.id===current.id}));
-    return {unlocked:true,mapRooms,movesToday:Number(row.moves_today||0),movesPerDay:10,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:current.id,currentDepth:current.depth,exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
+    return {unlocked:true,mapRooms,corridors,movesToday:Number(row.moves_today||0),movesPerDay:10,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:current.id,currentDepth:current.depth,exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
   }
 
   runLabyrinthMission(userId){
