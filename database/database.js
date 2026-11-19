@@ -2430,7 +2430,12 @@ class DatabaseManager {
     const current=maze.rooms[row.current_room];
     const visitedRooms=visited.map(id=>maze.rooms[id]).filter(Boolean).map(room=>({id:room.id,depth:room.depth,goal:room.goal,current:room.id===row.current_room}));
     const exits=(current?.children||[]).filter(exit=>!visited.includes(exit.id)).map(exit=>({id:exit.id,direction:exit.direction}));
-    return {unlocked:true,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:row.current_room,currentDepth:Number(current?.depth||0),exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
+    // Only reveal visited chambers and the immediately adjacent unexplored exits.
+    const explored=new Set(visited);
+    const visible=new Set(visited);
+    for(const id of visited)for(const exit of maze.rooms[id]?.children||[])visible.add(exit.id);
+    const mapRooms=[...visible].filter(id=>maze.rooms[id]).map(id=>({id,depth:maze.rooms[id].depth,parent:maze.rooms[id].parent,direction:maze.rooms[maze.rooms[id].parent]?.children?.find(exit=>exit.id===id)?.direction||null,visited:explored.has(id),current:id===row.current_room,goal:explored.has(id)&&!!maze.rooms[id].goal}));
+    return {unlocked:true,mapRooms,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:row.current_room,currentDepth:Number(current?.depth||0),exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
   }
 
   runLabyrinthMission(userId){
