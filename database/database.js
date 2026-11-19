@@ -2788,9 +2788,8 @@ class DatabaseManager {
 
   resolveAlienMissions(userId) {
     return db.transaction(()=>{
-      // Settle the mission only after the complete 5s outbound + 5s return journey.
-      // This prevents the client from showing Cyber Knight home while his troops are still away.
-      const due=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NULL AND arrives_at+5000<=? ORDER BY id").all(userId,Date.now());
+      // Resolve the battle at arrival (5 seconds outbound); troops return 5 seconds later.
+      const due=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(userId,Date.now());
       for(const mission of due){
         const armyData=JSON.parse(mission.army);
         const {fight}=require("../shared/combatEngine");
