@@ -190,7 +190,7 @@ function LabyrinthMap({labyrinth,busy,onMove,onBacktrack,t}){
   const rooms=labyrinth.mapRooms||[];
   const byId=Object.fromEntries(rooms.map(room=>[room.id,room]));
   const positions=Object.fromEntries(rooms.map(room=>[room.id,{x:room.x*68+42,y:room.y*68+42}]));
-  const accessible=new Set((labyrinth.exits||[]).map(exit=>exit.id));
+  const accessible=new Set((labyrinth.movesToday||0)>=(labyrinth.movesPerDay||10)?[]:(labyrinth.exits||[]).map(exit=>exit.id));
   const width=11*68+16,height=11*68+16;
   return <div style={{margin:"14px 0",padding:10,border:"1px solid #7963a5",borderRadius:12,background:"#0b1020"}}>
     <strong>🗺️ {t("Shared Labyrinth · your discoveries","Общ Лабиринт · твоите открития")}</strong>
@@ -304,13 +304,15 @@ function EventsPanel() {
     </div>}
     <section style={{border:"1px solid #896da9",borderRadius:10,padding:12,marginTop:18,background:"linear-gradient(145deg,#171321,#211b2c)",color:"#f5edff"}}>
       <h2 style={{color:"#e1bbff"}}>🧭 {t("The Labyrinth","Лабиринт")}</h2>
-      <p>{t("Enter the underground maze with your Cyber Knight. Find equipment, collect four crystal colors to open new squares, and reach Nova’s pink medicine vial at the far end.","Влез в подземния лабиринт с Киберрицаря. Откривай екипировка, събирай четирите цвята кристали, за да отваряш нови квадратчета, и стигни до розовото шишенце с лекарството за Nova.")}</p>
+      <p>{t("Enter the underground maze with your Cyber Knight. Find equipment, collect all four crystal colors to reach the medicine chamber, and reach Nova’s pink medicine vial at the far end.","Влез в подземния лабиринт с Киберрицаря. Откривай екипировка, събери четирите цвята кристали, за да достигнеш залата с лекарството, и стигни до розовото шишенце с лекарството за Nova.")}</p>
       {!labyrinth?<p>{t("Loading Labyrinth…","Зареждане на Лабиринта…")}</p>:!labyrinth.unlocked?<p>{t("Unlocks at Cyber Knight level 7.","Отключва се на ниво 7 на Киберрицаря.")} · {t("Your level","Твоето ниво")}: {labyrinth.knightLevel} / 7</p>:<>
         <p>{t("Daily missions","Дневни мисии")}: {labyrinth.missionsToday} / {labyrinth.missionsPerDay} · {t("Each mission takes one second and grants random equipment. One of the 10 missions each day also gives one random-colored crystal.","Всяка мисия трае една секунда и дава случайна екипировка. Една от десетте мисии за деня дава и един кристал със случаен цвят.")}</p>
         <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"10px 0"}}>
           {[["yellow","🟡",t("Yellow","Жълт")],["blue","🔵",t("Blue","Син")],["orange","🟠",t("Orange","Оранжев")],["purple","🟣",t("Purple","Лилав")]].map(([key,icon,label])=><span key={key} style={{padding:"5px 9px",background:"#30283d",borderRadius:7}}>{icon} {label}: {Number(labyrinth.crystals?.[key]||0)}</span>)}
         </div>
         {labyrinth.missionsToday<labyrinth.missionsPerDay&&<button type="button" disabled={labyrinthBusy||Number(labyrinth.nextMissionAt||0)>labyrinthTick} onClick={runLabyrinthMission}>{labyrinthBusy?t("Working…","Изпълнява се…"):t("Run next mission","Изпълни следващата мисия")} · {labyrinth.missionsToday+1}/10</button>}
+        <p style={{color:"#f4d69c"}}>🧭 {t("New rooms explored today","Нови зали, открити днес")}: {labyrinth.movesToday||0} / {labyrinth.movesPerDay||10} · {t("Resets at 00:00 UTC. Returning to visited rooms is free.","Нулира се в 00:00 UTC. Връщането в посетени зали е безплатно.")}</p>
+        <p style={{color:"#e6c9ff"}}>🧪 {t("To enter the medicine chamber you must collect at least one crystal of each of the four colors. Crystals are not spent.","За да влезеш в залата с лекарството, трябва да събереш поне по един кристал от четирите цвята. Кристалите не се изразходват.")}</p>
         {labyrinth.missionsToday>=labyrinth.missionsPerDay&&<p>{t("Your Labyrinth missions reset at 00:00 UTC.","Мисиите в Лабиринта се обновяват в 00:00 UTC.")}</p>}
         {labyrinth.medicineFound?<p style={{color:"#ffb6e6",fontWeight:"bold"}}>🧪 {t("Medicine found! Nova can be revived.","Лекарството е намерено! Nova може да бъде съживена.")}</p>:<div style={{border:"1px solid #564567",borderRadius:8,padding:10,marginTop:12}}>
           <strong>{t("Dark underground map","Затъмнена подземна карта")}</strong> · {t("Current square","Текущо квадратче")}: {labyrinth.currentRoom} · {t("Depth","Дълбочина")}: {labyrinth.currentDepth}/10
@@ -324,7 +326,7 @@ function EventsPanel() {
                 const exit=(labyrinth.exits||[]).find(item=>item.direction===direction);
                 const enough=true;
                 const label=direction==="North"?t("NORTH","СЕВЕР"):direction==="East"?t("EAST","ИЗТОК"):direction==="South"?t("SOUTH","ЮГ"):t("WEST","ЗАПАД");
-                return <button key={direction} type="button" disabled={labyrinthBusy||!exit} onClick={()=>exit&&labyrinthAction("/events/labyrinth/move",{roomId:exit.id},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} style={{minHeight:145,padding:"12px 5px",borderRadius:"45% 45% 8px 8px",border:exit?"2px solid #8c83bd":"2px solid #3b3b50",background:exit?"linear-gradient(180deg,#30304c,#101626 65%,#242036)":"linear-gradient(#262635,#101019)",color:exit?"#eee6ff":"#6e7085",cursor:exit&&!labyrinthBusy?"pointer":"not-allowed",opacity:exit?1:.55,boxShadow:exit?"inset 0 0 24px #08071a,0 0 14px #493b6a":"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
+                return <button key={direction} type="button" disabled={labyrinthBusy||!exit||(labyrinth.movesToday||0)>=(labyrinth.movesPerDay||10)} onClick={()=>exit&&labyrinthAction("/events/labyrinth/move",{roomId:exit.id},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} style={{minHeight:145,padding:"12px 5px",borderRadius:"45% 45% 8px 8px",border:exit?"2px solid #8c83bd":"2px solid #3b3b50",background:exit?"linear-gradient(180deg,#30304c,#101626 65%,#242036)":"linear-gradient(#262635,#101019)",color:exit?"#eee6ff":"#6e7085",cursor:exit&&!labyrinthBusy?"pointer":"not-allowed",opacity:exit?1:.55,boxShadow:exit?"inset 0 0 24px #08071a,0 0 14px #493b6a":"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
                   <span style={{fontSize:34}}>{!exit?"🪨":index===0?"⬆️":index===1?"➡️":index===2?"⬇️":"⬅️"}</span>
                   <span style={{fontSize:13,fontWeight:800,letterSpacing:1}}>{label}</span>
                   <span style={{fontSize:11}}>{!exit?t("Blocked","Затворен"):t("ENTER PASSAGE","ВЛЕЗ В ПРОХОДА")}</span>
