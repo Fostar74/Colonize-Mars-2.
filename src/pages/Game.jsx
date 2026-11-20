@@ -15,6 +15,9 @@ import InformationPanel from "./InformationPanel";
 
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
+import labyrinthKnightArt from "../images/labyrinth-knight.svg";
+import labyrinthMonsterArt from "../images/labyrinth-monster.svg";
+import labyrinthCavernArt from "../images/labyrinth-cavern.svg";
 import AVATARS from "../shared/avatarCatalog";
 // Restore the original Mars aircraft artwork on both desktop and mobile.
 const desktopColonyBackground = marsBackground;
@@ -219,6 +222,8 @@ function EventsPanel() {
   const [data,setData]=useState(null);
   const [motherShip,setMotherShip]=useState(null);
   const [labyrinth,setLabyrinth]=useState(null);
+  const [labyrinthBattle,setLabyrinthBattle]=useState(null);
+  const [labyrinthImpact,setLabyrinthImpact]=useState(0);
   const [labyrinthBusy,setLabyrinthBusy]=useState(false);
   const [labyrinthNotice,setLabyrinthNotice]=useState("");
   const [labyrinthTick,setLabyrinthTick]=useState(Date.now());
@@ -234,6 +239,8 @@ function EventsPanel() {
     setData(result.saturdayInvasion);
     setMotherShip(result.motherShip||null);
     setLabyrinth(result.labyrinth||null);
+    const battleResponse=await fetch(api+"/events/labyrinth/battle",{method:"POST",headers,body:JSON.stringify({userId:Number(userId),action:"status"})});
+    if(battleResponse.ok){const battleResult=await battleResponse.json();setLabyrinthBattle(battleResult.battle||null);}
   };
   useEffect(()=>{refresh().catch(error=>setNotice(error.message));const timer=setInterval(()=>refresh().catch(()=>{}),10000);const tick=setInterval(()=>setLabyrinthTick(Date.now()),1000);return()=>{clearInterval(timer);clearInterval(tick);};},[]);
   const start=async()=>{
@@ -259,6 +266,19 @@ function EventsPanel() {
       if(!response.ok)throw Error(result.message||"Labyrinth battle failed.");
       setLabyrinth(result.status);
       setLabyrinthNotice((result.victory?t("VICTORY","ПОБЕДА"):t("DEFEAT","ЗАГУБА"))+" · "+result.monster.name+" · "+(result.victory?"+ "+result.gainedHp+" HP":"0 HP")+(result.greenCrystal?" · 💚 "+t("Daily green crystal","Дневен зелен кристал"):"")+(result.medicineFound?" · 🧪 NOVA!":""));
+    }catch(error){setLabyrinthNotice(error.message);}
+    finally{setLabyrinthBusy(false);}
+  };
+  const labyrinthCombat=async(action,room)=>{
+    setLabyrinthBusy(true);setLabyrinthNotice("");
+    try{
+      const response=await fetch(api+"/events/labyrinth/battle",{method:"POST",headers,body:JSON.stringify({userId:Number(userId),action,room})});
+      const result=await response.json();
+      if(!response.ok)throw Error(result.message||"Battle action failed.");
+      setLabyrinthBattle(result.battle||null);setLabyrinth(result.status);
+      if(action==="strike")setLabyrinthImpact(n=>n+1);
+      if(result.victory)setLabyrinthNotice(t("VICTORY!","ПОБЕДА!")+" +"+result.gainedHp+" HP");
+      if(result.defeat)setLabyrinthNotice(t("DEFEAT","ЗАГУБА"));
     }catch(error){setLabyrinthNotice(error.message);}
     finally{setLabyrinthBusy(false);}
   };
@@ -323,35 +343,38 @@ function EventsPanel() {
         <div style={{display:"flex",gap:5,marginBottom:14}}>
           {Array.from({length:10},(_,i)=><div key={i} title={String(i+1)} style={{flex:1,textAlign:"center",borderRadius:5,padding:"7px 0",fontSize:12,fontWeight:700,background:i+1<labyrinth.chamber?"#286b59":i+1===labyrinth.chamber?"#7952a8":"#262334",border:"1px solid #5e5275"}}>{i===9?"👑":i+1}</div>)}
         </div>
-        <div style={{border:"2px solid #5a4d78",borderRadius:14,padding:16,background:"radial-gradient(ellipse at center,#343148,#0b0b15 75%)",overflow:"hidden"}}>
-          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,textAlign:"center",alignItems:"end"}}>
-            <div>
-              <div style={{fontSize:"clamp(65px,11vw,130px)",filter:"drop-shadow(0 0 18px #5bc8fa)",animation:labyrinthBusy?"labyrinthClash .5s ease-in-out infinite alternate":"none"}}>🛡️</div>
+        <div style={{border:"2px solid #5477aa",borderRadius:14,padding:16,background:"linear-gradient(#08122355,#05091599),url("+labyrinthCavernArt+") center/cover",overflow:"hidden",minHeight:330}}>
+          <div style={{textAlign:"center",fontWeight:900,color:"#ffe2a3",marginBottom:8}}>{labyrinthBattle?t("ROUND","РУНД")+" "+(labyrinthBattle.round+1):t("UNDERGROUND CHAMBER","ПОДЗЕМНА ЗАЛА")+" "+labyrinth.stage+"-"+labyrinth.chamber}</div>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"end"}}>
+            <div style={{textAlign:"center"}}>
               <strong>Cyber Knight</strong>
-              <p style={{margin:"6px 0",color:"#98edcf"}}>❤️ {Number(labyrinth.knight?.maxHp||10000).toLocaleString()} HP</p>
-              <p style={{margin:"6px 0"}}>⚔️ {Number(labyrinth.knight?.attack||1000).toLocaleString()} DMG</p>
-              <p style={{margin:"6px 0",fontSize:12}}>💚 +{labyrinth.knight?.bonusHp||0} HP · 👢 {labyrinth.knight?.healing||0}%</p>
+              <div style={{background:"#162136",border:"1px solid #3bb3e6",borderRadius:8,overflow:"hidden",margin:"8px auto",maxWidth:320,height:20}}><div style={{width:Math.max(0,100*(labyrinthBattle?.knightHp??labyrinth.knight?.maxHp??1)/(labyrinthBattle?.knight?.maxHp||labyrinth.knight?.maxHp||1))+"%",height:"100%",background:"linear-gradient(90deg,#15934b,#53ef91)",transition:"width .5s"}}/></div>
+              <div>{Number(labyrinthBattle?.knightHp??labyrinth.knight?.maxHp??0).toLocaleString()} / {Number(labyrinthBattle?.knight?.maxHp||labyrinth.knight?.maxHp||0).toLocaleString()} HP</div>
+              <img src={labyrinthKnightArt} alt="Cyber Knight in plasma armor with blaster" style={{width:"min(100%,230px)",height:260,objectFit:"contain",filter:"drop-shadow(0 0 18px #13b5fc)",animation:labyrinthImpact?"labyrinthHeroStrike .65s ease-out":"none"}} key={"knight"+labyrinthImpact}/>
             </div>
-            <div>
-              <div style={{fontSize:"clamp(65px,11vw,130px)",filter:"drop-shadow(0 0 18px #f45b66)",animation:labyrinthBusy?"labyrinthClash .6s ease-in-out infinite alternate-reverse":"none"}}>{labyrinth.monster?.boss?"👹":labyrinth.monster?.chamber%3===0?"👾":"👽"}</div>
-              <strong>{labyrinth.monster?.boss?"👑 BOSS · ":""}{labyrinth.monster?.name||"Nova"}</strong>
-              <p style={{margin:"6px 0",color:"#ff9d9d"}}>❤️ {Number(labyrinth.monster?.hp||0).toLocaleString()} HP</p>
-              <p style={{margin:"6px 0"}}>⚔️ {Number(labyrinth.monster?.damage||0).toLocaleString()} DMG</p>
-              <p style={{margin:"6px 0",fontSize:12}}>💚 {labyrinth.monster?.heal||0}% {t("healing","лечение")}</p>
+            <div style={{textAlign:"center"}}>
+              <strong>{labyrinthBattle?.monster?.name||labyrinth.monster?.name}</strong>
+              <div style={{background:"#261322",border:"1px solid #e45c78",borderRadius:8,overflow:"hidden",margin:"8px auto",maxWidth:320,height:20}}><div style={{width:Math.max(0,100*(labyrinthBattle?.monsterHp??labyrinth.monster?.hp??1)/(labyrinthBattle?.monsterMaxHp||labyrinth.monster?.hp||1))+"%",height:"100%",background:"linear-gradient(90deg,#b3203e,#ff6c61)",transition:"width .5s"}}/></div>
+              <div>{Number(labyrinthBattle?.monsterHp??labyrinth.monster?.hp??0).toLocaleString()} / {Number(labyrinthBattle?.monsterMaxHp||labyrinth.monster?.hp||0).toLocaleString()} HP</div>
+              <img src={labyrinthMonsterArt} alt="Armored alien monster with glowing eyes and claws" style={{width:"min(100%,230px)",height:260,objectFit:"contain",filter:"drop-shadow(0 0 18px #fa4769)",animation:labyrinthImpact?"labyrinthMonsterHit .65s ease-out":"none"}} key={"monster"+labyrinthImpact}/>
             </div>
           </div>
+          <style>{`@keyframes labyrinthHeroStrike{0%{transform:translateX(0)}35%{transform:translateX(25px) scale(1.05)}100%{transform:translateX(0)}}@keyframes labyrinthMonsterHit{0%{transform:translateX(0);filter:brightness(1)}40%{transform:translateX(12px);filter:brightness(2.5)}70%{transform:translateX(-12px)}100%{transform:translateX(0);filter:brightness(1)}}`}</style>
+          {labyrinthBattle?.log?.length>0&&<p style={{background:"#060c1dcc",padding:10,borderRadius:8,textAlign:"center"}}>{t("Last round","Последен рунд")}: ⚔️ −{labyrinthBattle.log[labyrinthBattle.log.length-2]?.damage||labyrinthBattle.log[labyrinthBattle.log.length-1]?.damage} · {t("Monster counterattack","Контраатака на чудовището")}: −{labyrinthBattle.log[labyrinthBattle.log.length-1]?.actor==="monster"?labyrinthBattle.log[labyrinthBattle.log.length-1].damage:0}</p>}
         </div>
-        <style>{`@keyframes labyrinthClash{from{transform:translateX(-6px) scale(1)}to{transform:translateX(8px) scale(1.06)}}`}</style>
         <p style={{color:"#cfbde9"}}>{t("Every victory permanently adds 1% of the defeated monster's original HP to Cyber Knight. All battles start at full health.","Всяка победа добавя постоянно 1% от първоначалния живот на чудовището към Cyber Knight. Всяка битка започва с пълен живот.")}</p>
         {labyrinth.medicineFound?<p style={{color:"#f8b7d8",fontWeight:800}}>🧪 {t("You found Nova's medicine!","Откри лекарството за Nova!")}</p>:<>
-          <button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10||labyrinth.levelCompletedToday||Number(labyrinth.nextMissionAt||0)>labyrinthTick} onClick={()=>runLabyrinthMission()} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{labyrinthBusy?t("Fighting…","Битка…"):t("Fight next monster","Атакувай следващото чудовище")}</button>
+          {labyrinthBattle?<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
+            <button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("strike")} style={{padding:"14px 28px",fontWeight:900,fontSize:18,background:"#b65b18",color:"white",borderRadius:10}}>⚔️ {t("ATTACK","АТАКУВАЙ")} · {t("Round","Рунд")} {labyrinthBattle.round+1}</button>
+            <button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("retreat")} style={{padding:"12px 20px"}}>{t("Retreat","Отстъпи")}</button>
+          </div>:<button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10||labyrinth.levelCompletedToday} onClick={()=>labyrinthCombat("start")} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{t("Enter chamber and face monster","Влез в залата и се изправи срещу чудовището")}</button>}
           {labyrinth.levelCompletedToday&&<p>{t("You cleared one stage today. You can repeat cleared battles for rewards.","Днес премина едно ниво. Можеш да повтаряш вече спечелени битки за награди.")}</p>}
           {labyrinth.room>1&&<div style={{marginTop:12}}>
             <label htmlFor="labyrinth-replay-room">{t("Repeat a cleared room (automatic battle)","Повтори спечелена стая (автоматична битка)")}: </label>
             <select id="labyrinth-replay-room" defaultValue={Math.max(1,labyrinth.room-1)} onChange={e=>{e.currentTarget.dataset.room=e.target.value;}} style={{padding:7,background:"#28213b",color:"white"}}>
               {Array.from({length:Math.min(300,labyrinth.room-1)},(_,i)=><option key={i+1} value={i+1}>{Math.ceil((i+1)/10)}-{i%10+1}</option>)}
             </select>
-            <button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10||Number(labyrinth.nextMissionAt||0)>labyrinthTick} onClick={()=>runLabyrinthMission(Number(document.getElementById("labyrinth-replay-room")?.value)||1)} style={{marginLeft:8,padding:"8px 14px"}}>{t("Auto battle","Автоматична битка")}</button>
+            <button type="button" disabled={labyrinthBusy||!!labyrinthBattle||labyrinth.missionsToday>=10} onClick={()=>runLabyrinthMission(Number(document.getElementById("labyrinth-replay-room")?.value)||1)} style={{marginLeft:8,padding:"8px 14px"}}>{t("Auto battle","Автоматична битка")}</button>
           </div>}
         </>}
         <p>💚 {labyrinth.dailyRewardClaimed?t("Today's green crystal collected.","Днешният зелен кристал е получен."):t("Your first battle today awards a green crystal.","Първата битка за деня носи зелен кристал.")}</p>
