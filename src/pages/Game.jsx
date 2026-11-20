@@ -1,3 +1,4 @@
+import { createPortal } from "react-dom";
 import { useLanguage } from "../language";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -224,6 +225,8 @@ function EventsPanel() {
   const [labyrinth,setLabyrinth]=useState(null);
   const [labyrinthBattle,setLabyrinthBattle]=useState(null);
   const [labyrinthImpact,setLabyrinthImpact]=useState(0);
+  const [labyrinthOpen,setLabyrinthOpen]=useState(false);
+  const [labyrinthInside,setLabyrinthInside]=useState(false);
   const [labyrinthBusy,setLabyrinthBusy]=useState(false);
   const [labyrinthNotice,setLabyrinthNotice]=useState("");
   const [labyrinthTick,setLabyrinthTick]=useState(Date.now());
@@ -331,7 +334,15 @@ function EventsPanel() {
       {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString()}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
       <button type="button" onClick={()=>navigate("/map?campaign=1")}>{t("Open campaigns","Отвори кампаниите")}</button>
     </div>}
-    <section style={{border:"1px solid #896da9",borderRadius:14,padding:16,marginTop:18,background:"linear-gradient(145deg,#11101b,#282035)",color:"#f5edff"}}>
+    <div style={{marginTop:18,padding:20,border:"1px solid #6576b3",borderRadius:14,background:"linear-gradient(120deg,#111729,#39243c)",textAlign:"center"}}>
+      <h2>⚔️ {t("Underground Labyrinth","Подземен Лабиринт")}</h2>
+      <p>{t("30 floors · 10 chambers per floor · Player-controlled combat","30 нива · 10 зали на ниво · Битки, управлявани от играча")}</p>
+      <button type="button" onClick={()=>{setLabyrinthOpen(true);setLabyrinthInside(Boolean(labyrinthBattle));}} style={{padding:"15px 32px",fontSize:18,fontWeight:900,background:"#ae6b27",color:"white",borderRadius:10}}>🚪 {labyrinthBattle?t("Continue battle","Продължи битката"):t("ENTER THE LABYRINTH","ВЛЕЗ В ЛАБИРИНТА")}</button>
+    </div>
+    {labyrinthOpen&&createPortal(<div role="dialog" aria-modal="true" aria-label={t("Cyber Knight Labyrinth","Лабиринтът на Cyber Knight")} style={{position:"fixed",inset:0,zIndex:99999,background:"#02050df2",overflowY:"auto",padding:"clamp(8px,2vw,28px)"}}>
+      <div style={{maxWidth:1400,margin:"auto",minHeight:"100%"}}>
+          <section style={{position:"relative",border:"1px solid #896da9",borderRadius:14,padding:16,background:"linear-gradient(145deg,#11101b,#282035)",color:"#f5edff",minHeight:"100%"}}>
+      <button type="button" onClick={()=>{setLabyrinthOpen(false);setLabyrinthInside(false);}} style={{position:"sticky",top:0,float:"right",zIndex:15,padding:"9px 16px",background:"#a52e41",color:"white",borderRadius:8,fontWeight:900}}>✕ {t("Leave labyrinth","Изход")}</button>
       <h2 style={{color:"#e1bbff"}}>⚔️ {t("The Labyrinth · Cyber Knight","Лабиринтът · Cyber Knight")}</h2>
       <p>{t("Thirty underground stages, ten battles per stage. The medicine for Nova awaits behind the final boss in 30-10.","30 подземни нива с по 10 битки. Лекарството за Nova е зад последния Boss в 30-10.")}</p>
       {!labyrinth?<p>{t("Loading…","Зареждане…")}</p>:!labyrinth.unlocked?<p>{t("Unlocks at Cyber Knight level 7.","Отключва се на ниво 7 на Cyber Knight.")} · {labyrinth.knightLevel}/7</p>:<>
@@ -343,6 +354,15 @@ function EventsPanel() {
         <div style={{display:"flex",gap:5,marginBottom:14}}>
           {Array.from({length:10},(_,i)=><div key={i} title={String(i+1)} style={{flex:1,textAlign:"center",borderRadius:5,padding:"7px 0",fontSize:12,fontWeight:700,background:i+1<labyrinth.chamber?"#286b59":i+1===labyrinth.chamber?"#7952a8":"#262334",border:"1px solid #5e5275"}}>{i===9?"👑":i+1}</div>)}
         </div>
+        {!labyrinthInside?<div style={{minHeight:"min(65vh,680px)",display:"grid",placeItems:"center",border:"2px solid #826147",borderRadius:16,background:"linear-gradient(#0008,#0009),url("+labyrinthCavernArt+") center/cover",textAlign:"center",padding:24}}>
+          <div>
+            <div style={{fontSize:75,textShadow:"0 0 25px #f59e45",animation:"labyrinthPortalPulse 2s ease-in-out infinite alternate"}}>🚪</div>
+            <h2 style={{fontSize:"clamp(24px,4vw,42px)",color:"#ffe5b5"}}>{t("The entrance to the underground chamber","Вход към подземната зала")} {labyrinth.stage}-{labyrinth.chamber}</h2>
+            <p>{t("Behind the gate awaits","Зад портата те очаква")} <strong>{labyrinth.monster?.name}</strong>. {t("Enter to face it.","Влез, за да се изправиш срещу него.")}</p>
+            <button type="button" onClick={()=>setLabyrinthInside(true)} style={{background:"linear-gradient(90deg,#a94a18,#e29c39)",color:"white",padding:"17px 36px",borderRadius:10,fontWeight:900,fontSize:20}}>{t("OPEN GATE AND ENTER","ОТВОРИ ПОРТАТА И ВЛЕЗ")}</button>
+          </div>
+          <style>{`@keyframes labyrinthPortalPulse{from{transform:scale(.94);filter:brightness(.7)}to{transform:scale(1.06);filter:brightness(1.4)}}`}</style>
+        </div>:<>
         <div style={{border:"2px solid #5477aa",borderRadius:14,padding:16,background:"linear-gradient(#08122355,#05091599),url("+labyrinthCavernArt+") center/cover",overflow:"hidden",minHeight:330}}>
           <div style={{textAlign:"center",fontWeight:900,color:"#ffe2a3",marginBottom:8}}>{labyrinthBattle?t("ROUND","РУНД")+" "+(labyrinthBattle.round+1):t("UNDERGROUND CHAMBER","ПОДЗЕМНА ЗАЛА")+" "+labyrinth.stage+"-"+labyrinth.chamber}</div>
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"end"}}>
@@ -362,6 +382,9 @@ function EventsPanel() {
           <style>{`@keyframes labyrinthHeroStrike{0%{transform:translateX(0)}35%{transform:translateX(25px) scale(1.05)}100%{transform:translateX(0)}}@keyframes labyrinthMonsterHit{0%{transform:translateX(0);filter:brightness(1)}40%{transform:translateX(12px);filter:brightness(2.5)}70%{transform:translateX(-12px)}100%{transform:translateX(0);filter:brightness(1)}}`}</style>
           {labyrinthBattle?.log?.length>0&&<p style={{background:"#060c1dcc",padding:10,borderRadius:8,textAlign:"center"}}>{t("Last round","Последен рунд")}: ⚔️ −{labyrinthBattle.log[labyrinthBattle.log.length-2]?.damage||labyrinthBattle.log[labyrinthBattle.log.length-1]?.damage} · {t("Monster counterattack","Контраатака на чудовището")}: −{labyrinthBattle.log[labyrinthBattle.log.length-1]?.actor==="monster"?labyrinthBattle.log[labyrinthBattle.log.length-1].damage:0}</p>}
         </div>
+
+        </>}
+        {labyrinthInside&&<>
         <p style={{color:"#cfbde9"}}>{t("Every victory permanently adds 1% of the defeated monster's original HP to Cyber Knight. All battles start at full health.","Всяка победа добавя постоянно 1% от първоначалния живот на чудовището към Cyber Knight. Всяка битка започва с пълен живот.")}</p>
         {labyrinth.medicineFound?<p style={{color:"#f8b7d8",fontWeight:800}}>🧪 {t("You found Nova's medicine!","Откри лекарството за Nova!")}</p>:<>
           {labyrinthBattle?<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
@@ -381,9 +404,13 @@ function EventsPanel() {
         {labyrinthNotice&&<p role="status" style={{fontWeight:700,color:"#f2d58f"}}>{labyrinthNotice}</p>}
         {(labyrinth.combatLog||[]).length>0&&<details><summary>{t("Last battle · turn-by-turn report","Последна битка · доклад по рундове")}</summary><div style={{maxHeight:260,overflowY:"auto"}}>{labyrinth.combatLog.map((entry,i)=><p key={i} style={{margin:"4px 0",fontSize:12}}>{entry.turn}. {entry.actor==="knight"?"Cyber Knight":"Monster"}: −{entry.damage} · 🛡️ {entry.knightHp} HP · 👾 {entry.monsterHp} HP</p>)}</div></details>}
       </>}
+        </>}
       <h3>{t("Labyrinth standings","Класиране в Лабиринта")}</h3>
       {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Room","Стая")}</th><th>{t("Permanent HP","Постоянен HP")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{Math.min(30,Math.ceil(row.combat_room/10))}-{(row.combat_room-1)%10+1}</td><td>+{row.combat_hp_bonus}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights yet.","Все още няма Киберрицари.")}</p>}
     </section>
+
+      </div>
+    </div>,document.body)}
         {notice&&<p role="status">{notice}</p>}
     <h3>{t("Alliance standings","Класиране на алиансите")}</h3>
     {data.alliances.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.alliances.map(row=><tr key={row.id}><td>{row.rank}</td><td>{row.name}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.status==="active"?t("Active","Активен"):t("Complete","Приключил")}</td></tr>)}</tbody></table></div>:<p>{t("No alliances have started yet.","Все още няма стартирали алианси.")}</p>}
