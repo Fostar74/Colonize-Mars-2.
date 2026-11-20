@@ -396,15 +396,15 @@ router.get("/events/:userId",requireSession,(req,res)=>{
   catch(error){console.error("Events:",error);res.status(500).json({message:"Events unavailable."});}
 });
 router.post("/events/labyrinth/mission",requireSession,(req,res)=>{
-  try{const result=db.runLabyrinthMission(Number(req.body.userId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}
+  try{const result=db.runLabyrinthMission(Number(req.body.userId),{room:Number(req.body.room)});if(result.error)return res.status(400).json({message:result.error});res.json(result);}
   catch(error){console.error("Labyrinth mission:",error);res.status(500).json({message:"Labyrinth mission failed."});}
 });
 router.post("/events/labyrinth/move",requireSession,(req,res)=>{
-  try{const result=db.moveLabyrinth(Number(req.body.userId),String(req.body.roomId||""));if(result.error)return res.status(400).json({message:result.error});res.json(result);}
+  try{return res.status(410).json({message:"The old directional labyrinth has been retired."});}
   catch(error){console.error("Labyrinth move:",error);res.status(500).json({message:"Could not open the next square."});}
 });
 router.post("/events/labyrinth/backtrack",requireSession,(req,res)=>{
-  try{const result=db.backtrackLabyrinth(Number(req.body.userId),String(req.body.roomId||""));if(result.error)return res.status(400).json({message:result.error});res.json(result);}
+  try{return res.status(410).json({message:"The old directional labyrinth has been retired."});}
   catch(error){console.error("Labyrinth return:",error);res.status(500).json({message:"Could not return to that square."});}
 });
 router.post("/events/saturday-invasion/start",requireSession,(req,res)=>{
