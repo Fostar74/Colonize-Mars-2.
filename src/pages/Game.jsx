@@ -279,7 +279,11 @@ function EventsPanel() {
       const result=await response.json();
       if(!response.ok)throw Error(result.message||"Battle action failed.");
       setLabyrinthBattle(result.battle||null);setLabyrinth(result.status);
-      if(action==="strike")setLabyrinthImpact(n=>n+1);
+      if(action==="strike"){
+        setLabyrinthImpact(n=>n+1);
+        await new Promise(resolve=>setTimeout(resolve,1700));
+      }
+      if(result.testReset)setLabyrinthNotice(t("Test battles reset. Earned HP and progress preserved.","Опитите за тест са възстановени. HP и напредъкът са запазени."));
       if(result.victory)setLabyrinthNotice(t("VICTORY!","ПОБЕДА!")+" +"+result.gainedHp+" HP");
       if(result.defeat)setLabyrinthNotice(t("DEFEAT","ЗАГУБА"));
     }catch(error){setLabyrinthNotice(error.message);}
@@ -363,8 +367,12 @@ function EventsPanel() {
           </div>
           <style>{`@keyframes labyrinthPortalPulse{from{transform:scale(.94);filter:brightness(.7)}to{transform:scale(1.06);filter:brightness(1.4)}}`}</style>
         </div>:<>
-        <div style={{border:"2px solid #5477aa",borderRadius:14,padding:16,background:"linear-gradient(#08122355,#05091599),url("+labyrinthCavernArt+") center/cover",overflow:"hidden",minHeight:330}}>
+        <div style={{border:"2px solid #5477aa",borderRadius:14,padding:16,background:"linear-gradient(#08122355,#05091599),url("+labyrinthCavernArt+") center/cover",overflow:"hidden",position:"relative",minHeight:330}}>
           <div style={{textAlign:"center",fontWeight:900,color:"#ffe2a3",marginBottom:8}}>{labyrinthBattle?t("ROUND","РУНД")+" "+(labyrinthBattle.round+1):t("UNDERGROUND CHAMBER","ПОДЗЕМНА ЗАЛА")+" "+labyrinth.stage+"-"+labyrinth.chamber}</div>
+          {labyrinthImpact>0&&labyrinthBusy&&<div key={"blast"+labyrinthImpact} aria-hidden="true" style={{position:"absolute",left:"12%",right:"12%",top:"56%",height:15,pointerEvents:"none",zIndex:7}}>
+            <span style={{position:"absolute",left:0,top:0,width:55,height:12,borderRadius:"50%",background:"linear-gradient(90deg,#05a7ff,#b5ffff,#fff)",boxShadow:"0 0 16px 7px #00c9ff,0 0 35px 14px #007fff",animation:"labyrinthBolt .8s ease-in forwards"}}/>
+            <span style={{position:"absolute",right:0,top:0,width:65,height:15,borderRadius:"50%",background:"linear-gradient(90deg,#fff,#ff5d5d,#b90038)",boxShadow:"0 0 15px 6px #ff334f",animation:"labyrinthCounter .8s ease-in .8s both"}}/>
+          </div>}
           <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:12,alignItems:"end"}}>
             <div style={{textAlign:"center"}}>
               <strong>Cyber Knight</strong>
@@ -379,7 +387,7 @@ function EventsPanel() {
               <img src={labyrinthMonsterArt} alt="Armored alien monster with glowing eyes and claws" style={{width:"min(100%,230px)",height:260,objectFit:"contain",filter:"drop-shadow(0 0 18px #fa4769)",animation:labyrinthImpact?"labyrinthMonsterHit .65s ease-out":"none"}} key={"monster"+labyrinthImpact}/>
             </div>
           </div>
-          <style>{`@keyframes labyrinthHeroStrike{0%{transform:translateX(0)}35%{transform:translateX(25px) scale(1.05)}100%{transform:translateX(0)}}@keyframes labyrinthMonsterHit{0%{transform:translateX(0);filter:brightness(1)}40%{transform:translateX(12px);filter:brightness(2.5)}70%{transform:translateX(-12px)}100%{transform:translateX(0);filter:brightness(1)}}`}</style>
+          <style>{`@keyframes labyrinthBolt{0%{left:0;opacity:0;transform:scale(.5)}15%{opacity:1}85%{opacity:1}100%{left:95%;opacity:0;transform:scale(1.6)}}@keyframes labyrinthCounter{0%{right:0;opacity:0;transform:scale(.5)}15%{opacity:1}85%{opacity:1}100%{right:95%;opacity:0;transform:scale(1.6)}}@keyframes labyrinthHeroStrike{0%{transform:translateX(0)}35%{transform:translateX(25px) scale(1.05)}100%{transform:translateX(0)}}@keyframes labyrinthMonsterHit{0%{transform:translateX(0);filter:brightness(1)}40%{transform:translateX(12px);filter:brightness(2.5)}70%{transform:translateX(-12px)}100%{transform:translateX(0);filter:brightness(1)}}`}</style>
           {labyrinthBattle?.log?.length>0&&<p style={{background:"#060c1dcc",padding:10,borderRadius:8,textAlign:"center"}}>{t("Last round","Последен рунд")}: ⚔️ −{labyrinthBattle.log[labyrinthBattle.log.length-2]?.damage||labyrinthBattle.log[labyrinthBattle.log.length-1]?.damage} · {t("Monster counterattack","Контраатака на чудовището")}: −{labyrinthBattle.log[labyrinthBattle.log.length-1]?.actor==="monster"?labyrinthBattle.log[labyrinthBattle.log.length-1].damage:0}</p>}
         </div>
 
@@ -405,6 +413,7 @@ function EventsPanel() {
         {(labyrinth.combatLog||[]).length>0&&<details><summary>{t("Last battle · turn-by-turn report","Последна битка · доклад по рундове")}</summary><div style={{maxHeight:260,overflowY:"auto"}}>{labyrinth.combatLog.map((entry,i)=><p key={i} style={{margin:"4px 0",fontSize:12}}>{entry.turn}. {entry.actor==="knight"?"Cyber Knight":"Monster"}: −{entry.damage} · 🛡️ {entry.knightHp} HP · 👾 {entry.monsterHp} HP</p>)}</div></details>}
       </>}
         </>}
+      {labyrinth?.unlocked&&sessionStorage.getItem("username")==="MazeRunner"&&<button type="button" disabled={labyrinthBusy||labyrinth.missionsToday===0} onClick={()=>labyrinthCombat("resetTest")} style={{padding:"9px 15px",background:"#44334c",color:"#ffdfb7",borderRadius:8,marginTop:10}}>🔄 {t("Reset today's test attempts (once per day)","Възстанови тестовите опити (веднъж дневно)")}</button>}
       <h3>{t("Labyrinth standings","Класиране в Лабиринта")}</h3>
       {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Room","Стая")}</th><th>{t("Permanent HP","Постоянен HP")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{Math.min(30,Math.ceil(row.combat_room/10))}-{(row.combat_room-1)%10+1}</td><td>+{row.combat_hp_bonus}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights yet.","Все още няма Киберрицари.")}</p>}
     </section>
