@@ -273,6 +273,7 @@ function initializeDatabase() {
       combat_level_day:"TEXT NOT NULL DEFAULT ''",
       combat_log:"TEXT NOT NULL DEFAULT '[]'",
       combat_active:"TEXT NOT NULL DEFAULT ''",
+      combat_one_time_reset:"INTEGER NOT NULL DEFAULT 0",
     })){
       if(!labyrinthColumns.includes(name))db.exec("ALTER TABLE labyrinth_players ADD COLUMN "+name+" "+definition);
     }
@@ -2508,6 +2509,11 @@ class DatabaseManager {
     if(knightLevel<7)return {unlocked:false,knightLevel,requiredLevel:7,rankings};
     if(row.mission_day!==today){
       db.prepare("UPDATE labyrinth_players SET mission_day=?,missions_today=0,last_mission_at=0 WHERE user_id=?").run(today,userId);
+      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+    }
+    // One-time test recovery for MazeRunner only; does not alter earned HP, crystals or progress.
+    if(!Number(row.combat_one_time_reset||0)&&db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"){
+      db.prepare("UPDATE labyrinth_players SET missions_today=0,combat_active='',combat_one_time_reset=1 WHERE user_id=?").run(userId);
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
     // Daily participation reward is granted on entry, even without a battle.
