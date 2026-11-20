@@ -16,7 +16,7 @@ import InformationPanel from "./InformationPanel";
 
 import "./Game.css";
 import marsBackground from "../images/mars-background.jpg";
-import labyrinthKnightArt from "../images/labyrinth-knight.svg";
+import labyrinthKnightArt from "../images/cyber-knight-expanded.jpg";
 import labyrinthMonsterArt from "../images/labyrinth-monster.svg";
 import labyrinthCavernArt from "../images/labyrinth-cavern.svg";
 import AVATARS from "../shared/avatarCatalog";
@@ -378,7 +378,7 @@ function EventsPanel() {
               <strong>Cyber Knight</strong>
               <div style={{background:"#162136",border:"1px solid #3bb3e6",borderRadius:8,overflow:"hidden",margin:"8px auto",maxWidth:320,height:20}}><div style={{width:Math.max(0,100*(labyrinthBattle?.knightHp??labyrinth.knight?.maxHp??1)/(labyrinthBattle?.knight?.maxHp||labyrinth.knight?.maxHp||1))+"%",height:"100%",background:"linear-gradient(90deg,#15934b,#53ef91)",transition:"width .5s"}}/></div>
               <div>{Number(labyrinthBattle?.knightHp??labyrinth.knight?.maxHp??0).toLocaleString()} / {Number(labyrinthBattle?.knight?.maxHp||labyrinth.knight?.maxHp||0).toLocaleString()} HP</div>
-              <img src={labyrinthKnightArt} alt="Cyber Knight in plasma armor with blaster" style={{width:"min(100%,230px)",height:260,objectFit:"contain",filter:"drop-shadow(0 0 18px #13b5fc)",animation:labyrinthImpact?"labyrinthHeroStrike .65s ease-out":"none"}} key={"knight"+labyrinthImpact}/>
+              <img src={labyrinthKnightArt} alt="Cyber Knight in plasma armor with blaster" style={{width:"min(100%,320px)",height:300,objectFit:"contain",objectPosition:"center",borderRadius:12,maskImage:"linear-gradient(to bottom,#000 70%,transparent 100%)",filter:"drop-shadow(0 0 18px #13b5fc)",animation:labyrinthImpact?"labyrinthHeroStrike .65s ease-out":"none"}} key={"knight"+labyrinthImpact}/>
             </div>
             <div style={{textAlign:"center"}}>
               <strong>{labyrinthBattle?.monster?.name||labyrinth.monster?.name}</strong>
