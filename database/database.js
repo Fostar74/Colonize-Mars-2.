@@ -2520,7 +2520,7 @@ class DatabaseManager {
     }
     const crystals=JSON.parse(row.crystals||"{}");
     const room=Math.max(1,Math.min(301,Number(row.combat_room)||1));
-    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
+    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,testResetAvailable:db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"&&row.combat_test_reset_day!==today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
   }
 
   labyrinthBattle(userId,action="status",options={}){
