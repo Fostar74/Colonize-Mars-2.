@@ -272,7 +272,8 @@ function initializeDatabase() {
       combat_reward_day:"TEXT NOT NULL DEFAULT ''",
       combat_level_day:"TEXT NOT NULL DEFAULT ''",
       combat_log:"TEXT NOT NULL DEFAULT '[]'",
-      combat_active:"TEXT NOT NULL DEFAULT ''"
+      combat_active:"TEXT NOT NULL DEFAULT ''",
+      combat_test_reset_day:"TEXT NOT NULL DEFAULT ''"
     })){
       if(!labyrinthColumns.includes(name))db.exec("ALTER TABLE labyrinth_players ADD COLUMN "+name+" "+definition);
     }
@@ -2530,6 +2531,13 @@ class DatabaseManager {
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
       let active;try{active=JSON.parse(row.combat_active||"null");}catch(e){active=null;}
       if(action==="status")return {battle:active,status};
+      if(action==="resetTest"){
+        const player=db.prepare("SELECT username FROM users WHERE id=?").get(userId);
+        if(player?.username!=="MazeRunner")return {error:"Only the project tester can reset attempts."};
+        if(row.combat_test_reset_day===today)return {error:"Test attempts have already been reset once today."};
+        db.prepare("UPDATE labyrinth_players SET missions_today=0,combat_active='',combat_test_reset_day=? WHERE user_id=?").run(today,userId);
+        return {battle:null,testReset:true,status:this.getLabyrinthStatus(userId)};
+      }
       if(action==="retreat"){
         if(active)db.prepare("UPDATE labyrinth_players SET combat_active='' WHERE user_id=?").run(userId);
         return {battle:null,status:this.getLabyrinthStatus(userId)};
