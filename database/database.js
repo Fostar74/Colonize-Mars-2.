@@ -2485,10 +2485,7 @@ class DatabaseManager {
     const power=name=>{
       const item=slot(name);
       if(!item)return 0;
-      const rarityLevel={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1;
-      const forgeLevel=Math.max(1,Math.min(50,Number(item.level)||1));
-      if(level<rarityLevel||level<forgeLevel)return 0;
-      return forgeLevel;
+      return Math.max(1,Math.min(50,Number(item.level)||1));
     };
     const armor=power("ARMOR"),helmet=power("HELMET"),boots=power("BOOTS"),weapon=power("WEAPON"),shield=power("SHIELD"),gloves=power("GLOVES");
     const bonus=Math.max(0,Number(row?.combat_hp_bonus)||0);
