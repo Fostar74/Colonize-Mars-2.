@@ -265,9 +265,16 @@ function initializeDatabase() {
     const labyrinthColumns=db.prepare("PRAGMA table_info(labyrinth_players)").all().map(column=>column.name);
     if(!labyrinthColumns.includes("moves_day"))db.exec("ALTER TABLE labyrinth_players ADD COLUMN moves_day TEXT NOT NULL DEFAULT ''");
     if(!labyrinthColumns.includes("moves_today"))db.exec("ALTER TABLE labyrinth_players ADD COLUMN moves_today INTEGER NOT NULL DEFAULT 0");
-    // The medicine cannot be claimed before collecting all four crystal colors.
-    db.prepare("UPDATE labyrinth_players SET medicine_found=0,completed_at=NULL WHERE medicine_found=1 AND (CAST(json_extract(crystals,'$.yellow') AS INTEGER)<1 OR CAST(json_extract(crystals,'$.blue') AS INTEGER)<1 OR CAST(json_extract(crystals,'$.orange') AS INTEGER)<1 OR CAST(json_extract(crystals,'$.purple') AS INTEGER)<1)").run();
-
+    // Combat labyrinth v4: preserve legacy records but use independent battle progress.
+    for(const [name,definition] of Object.entries({
+      combat_room:"INTEGER NOT NULL DEFAULT 1",
+      combat_hp_bonus:"INTEGER NOT NULL DEFAULT 0",
+      combat_reward_day:"TEXT NOT NULL DEFAULT ''",
+      combat_level_day:"TEXT NOT NULL DEFAULT ''",
+      combat_log:"TEXT NOT NULL DEFAULT '[]'"
+    })){
+      if(!labyrinthColumns.includes(name))db.exec("ALTER TABLE labyrinth_players ADD COLUMN "+name+" "+definition);
+    }
 
     db.exec("CREATE TABLE IF NOT EXISTS alien_side_quests (user_id INTEGER NOT NULL REFERENCES users(id), milestone INTEGER NOT NULL, PRIMARY KEY(user_id,milestone))");
     db.exec(`CREATE TABLE IF NOT EXISTS scout_missions (
@@ -2454,62 +2461,99 @@ class DatabaseManager {
     return maze;
   }
 
-  getLabyrinthStatus(userId){
-    const knight=Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1);
-    const today=new Date().toISOString().slice(0,10);
-    const maze=this.getSharedLabyrinth();
-    let row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId)||null;
-    if(knight>=7&&!row){
-      db.prepare("INSERT OR IGNORE INTO labyrinth_players(user_id,mission_day,crystal_mission,crystals,maze,current_room,visited) VALUES (?,?,?,?,?,?,?)")
-        .run(userId,today,require("crypto").randomInt(1,11),JSON.stringify({yellow:0,blue:0,orange:0,purple:0}),JSON.stringify(maze),maze.start,JSON.stringify([maze.start]));
-      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-    }
-    // One-time migration of old individual mazes; keep crystals, gear and mission counters.
-    if(row){
-      let oldMaze=null;
-      try{oldMaze=JSON.parse(row.maze);}catch(error){}
-      if(oldMaze?.version!==2&&oldMaze?.version!==3){
-        db.prepare("UPDATE labyrinth_players SET maze=?,current_room=?,visited=?,rooms_opened=1,deepest_depth=0,total_moves=0,medicine_found=0,completed_at=NULL WHERE user_id=?")
-          .run(JSON.stringify(maze),maze.start,JSON.stringify([maze.start]),userId);
-        row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-      }
-      if(row.mission_day!==today){
-        db.prepare("UPDATE labyrinth_players SET mission_day=?,missions_today=0,crystal_mission=?,last_mission_at=0 WHERE user_id=?")
-          .run(today,require("crypto").randomInt(1,11),userId);
-        row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-      }
-    }
-    const rankings=db.prepare("SELECT l.user_id,u.username,l.medicine_found,l.deepest_depth,l.rooms_opened,l.total_moves,l.completed_at FROM labyrinth_players l JOIN users u ON u.id=l.user_id ORDER BY l.medicine_found DESC,CASE WHEN l.medicine_found=1 THEN l.completed_at END ASC,l.deepest_depth DESC,l.rooms_opened DESC,l.total_moves ASC,u.username COLLATE NOCASE LIMIT 50").all().map((entry,index)=>({...entry,rank:index+1}));
-    if(knight<7)return {unlocked:false,knightLevel:knight,requiredLevel:7,rankings};
-    if(row.moves_day!==today){db.prepare("UPDATE labyrinth_players SET moves_day=?,moves_today=0 WHERE user_id=?").run(today,userId);row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);}
-    const visited=JSON.parse(row.visited||"[]"),explored=new Set(visited);
-    const current=maze.rooms[row.current_room]||maze.rooms[maze.start];
-    const visible=new Set(visited);
-    for(const id of visited)for(const exit of maze.rooms[id]?.children||[])visible.add(exit.id);
-    const mapRooms=[...visible].filter(id=>maze.rooms[id]).map(id=>{
-      const room=maze.rooms[id];
-      return {id,x:room.x,y:room.y,depth:room.depth,visited:explored.has(id),current:id===current.id,goal:explored.has(id)&&room.goal};
-    });
-    const corridors=Object.fromEntries([...visible].filter(id=>maze.rooms[id]).map(id=>[id,(maze.rooms[id].children||[]).filter(exit=>visible.has(exit.id)).map(exit=>exit.id)]));
-    const exits=(current.children||[]).filter(exit=>!explored.has(exit.id));
-    const visitedRooms=visited.map(id=>maze.rooms[id]).filter(Boolean).map(room=>({id:room.id,depth:room.depth,goal:room.goal,current:room.id===current.id}));
-    return {unlocked:true,mapRooms,corridors,movesToday:Number(row.moves_today||0),movesPerDay:10,knightLevel:knight,missionsToday:Number(row.missions_today||0),missionsPerDay:10,crystalMission:Number(row.crystal_mission||0),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals:JSON.parse(row.crystals||"{}"),currentRoom:current.id,currentDepth:current.depth,exits,visitedRooms,roomsOpened:Number(row.rooms_opened||1),deepestDepth:Number(row.deepest_depth||0),totalMoves:Number(row.total_moves||0),medicineFound:!!row.medicine_found,completedAt:row.completed_at||null,rankings};
+  labyrinthMonster(room){
+    const stage=Math.max(1,Math.min(30,Math.ceil(room/10)));
+    const chamber=((room-1)%10)+1;
+    const boss=chamber===10;
+    const base=1000+(chamber-1)*500+(boss?4500:0);
+    const hp=Math.round((base+(stage-1)*100)*Math.pow(1.34,stage-1));
+    const damage=Math.round((65+chamber*17)*Math.pow(1.29,stage-1));
+    const heal=stage<4?0:Math.min(15,2+Math.floor((stage-4)/3)*2+(boss?1:0));
+    const names=["Spore Mutant","Xeno Stalker","Plasma Beast","Cave Reaper","Void Sentinel","Alien Warden","Abyss Predator","Crystal Devourer","Nightmare Guardian","Alien Overlord"];
+    return {room,stage,chamber,boss,name:names[chamber-1],hp,damage,heal};
   }
 
-  runLabyrinthMission(userId){
-    const status=this.getLabyrinthStatus(userId);if(!status.unlocked)return {error:"Reach Cyber Knight level 7 to enter the Labyrinth."};
+  labyrinthKnight(userId){
+    const level=Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1);
+    const row=db.prepare("SELECT combat_hp_bonus FROM labyrinth_players WHERE user_id=?").get(userId);
+    const equipped=this.getUserEquipment(userId)?.equippedItems||{};
+    const slot=name=>Object.entries(equipped).find(([key,item])=>String(item?.slot||key).toUpperCase()===name)?.[1];
+    const usable=item=>{
+      if(!item)return null;
+      const rarityLevel={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1;
+      return level>=rarityLevel&&level>=Math.max(1,Number(item.level)||1)?item:null;
+    };
+    const power=name=>{
+      const item=usable(slot(name));if(!item)return 0;
+      const effects=Array.isArray(item.effects)?item.effects:[];
+      return Math.min(50,Math.max(0,effects.reduce((sum,effect)=>sum+(Number(effect.value)||0),0)));
+    };
+    const armor=power("ARMOR"),helmet=power("HELMET"),boots=power("BOOTS"),weapon=power("WEAPON"),shield=power("SHIELD"),gloves=power("GLOVES");
+    const bonus=Math.max(0,Number(row?.combat_hp_bonus)||0);
+    return {level,bonusHp:bonus,maxHp:Math.round((10000+bonus)*(1+armor/100)),attack:Math.round(1000*(1+helmet/100)),healing:Math.min(15,boots),enemyAttackReduction:weapon,enemyHpReduction:shield,enemyHealingReduction:gloves,gear:{armor,helmet,boots,weapon,shield,gloves}};
+  }
+
+  getLabyrinthStatus(userId){
+    const knightLevel=Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1);
+    const today=new Date().toISOString().slice(0,10);
+    let row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+    if(knightLevel>=7&&!row){
+      const maze=this.getSharedLabyrinth();
+      db.prepare("INSERT OR IGNORE INTO labyrinth_players(user_id,mission_day,crystal_mission,crystals,maze,current_room,visited) VALUES (?,?,?,?,?,?,?)")
+        .run(userId,today,1,JSON.stringify({yellow:0,blue:0,orange:0,purple:0,green:0}),JSON.stringify(maze),maze.start,JSON.stringify([maze.start]));
+      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+    }
+    const rankings=db.prepare("SELECT l.user_id,u.username,l.combat_room,l.combat_hp_bonus,l.medicine_found FROM labyrinth_players l JOIN users u ON u.id=l.user_id ORDER BY l.combat_room DESC,l.combat_hp_bonus DESC LIMIT 50").all().map((entry,index)=>({...entry,rank:index+1}));
+    if(knightLevel<7)return {unlocked:false,knightLevel,requiredLevel:7,rankings};
+    if(row.mission_day!==today){
+      db.prepare("UPDATE labyrinth_players SET mission_day=?,missions_today=0,last_mission_at=0 WHERE user_id=?").run(today,userId);
+      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+    }
+    const crystals=JSON.parse(row.crystals||"{}");
+    const room=Math.max(1,Math.min(301,Number(row.combat_room)||1));
+    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
+  }
+
+  runLabyrinthMission(userId,options={}){
+    const status=this.getLabyrinthStatus(userId);
+    if(!status.unlocked)return {error:"Reach Cyber Knight level 7 to enter the Labyrinth."};
     return db.transaction(()=>{
-      const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);if(!row)return {error:"Labyrinth state is unavailable."};
-      if(Number(row.missions_today)>=10)return {error:"You have completed all 10 Labyrinth missions for today."};
-      const now=Date.now();if(Number(row.last_mission_at||0)+1000>now)return {error:"The next mission will be ready in one second."};
-      const missionNo=Number(row.missions_today)+1,crystals=JSON.parse(row.crystals||"{}");let crystal=null;
-      if(missionNo===Number(row.crystal_mission)){const colors=["yellow","blue","orange","purple"];crystal=colors[require("crypto").randomInt(colors.length)];crystals[crystal]=(Number(crystals[crystal])||0)+1;}
-      const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"],slot=slots[require("crypto").randomInt(slots.length)];
-      const roll=require("crypto").randomInt(100),rarity=roll<55?"Common":roll<80?"Uncommon":roll<95?"Rare":"Epic";
-      const item={id:"labyrinth-"+userId+"-"+now+"-"+missionNo,name:"Labyrinth "+slot,slot,rarity,level:Math.max(1,status.knightLevel),stats:[],bonusSlots:rarity==="Epic"?4:rarity==="Rare"?3:rarity==="Uncommon"?2:1,obtainedFrom:"Labyrinth"};
-      const gear=this.getUserEquipment(userId);this.saveUserEquipment(userId,gear?.equippedItems||{},[...(gear?.gearInventory||[]),item],gear?.craftingPoints||{});
-      db.prepare("UPDATE labyrinth_players SET missions_today=?,last_mission_at=?,crystals=? WHERE user_id=?").run(missionNo,now,JSON.stringify(crystals),userId);
-      return {success:true,mission:missionNo,item,crystal,status:this.getLabyrinthStatus(userId)};
+      const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+      const today=new Date().toISOString().slice(0,10);
+      if(Number(row.missions_today)>=10)return {error:"All 10 daily battles have been used."};
+      const now=Date.now();
+      if(Number(row.last_mission_at||0)+1000>now)return {error:"Next battle is available in one second."};
+      const progress=Math.max(1,Math.min(301,Number(row.combat_room)||1));
+      if(progress>300)return {error:"Nova's medicine has already been recovered."};
+      const requested=Number(options.room);
+      const room=Number.isInteger(requested)&&requested>=1&&requested<progress?requested:progress;
+      if(room===progress&&row.combat_level_day===today)return {error:"You completed a new Labyrinth level today. Repeat an earlier cleared room instead."};
+      const monster=this.labyrinthMonster(room),knight=this.labyrinthKnight(userId);
+      const maxMonsterHp=Math.max(1,Math.round(monster.hp*(1-knight.enemyHpReduction/100)));
+      const monsterAttack=Math.max(1,Math.round(monster.damage*(1-knight.enemyAttackReduction/100)));
+      const monsterHeal=Math.max(0,monster.heal*(1-knight.enemyHealingReduction/100));
+      let knightHp=knight.maxHp,monsterHp=maxMonsterHp;
+      const log=[];
+      for(let turn=1;turn<=150&&knightHp>0&&monsterHp>0;turn++){
+        monsterHp=Math.max(0,monsterHp-knight.attack);
+        if(monsterHp>0&&monsterHeal>0)monsterHp=Math.min(maxMonsterHp,monsterHp+Math.floor((maxMonsterHp-monsterHp)*monsterHeal/100));
+        log.push({turn,actor:"knight",damage:knight.attack,knightHp,monsterHp});
+        if(monsterHp<=0)break;
+        knightHp=Math.max(0,knightHp-monsterAttack);
+        if(knightHp>0&&knight.healing>0)knightHp=Math.min(knight.maxHp,knightHp+Math.floor((knight.maxHp-knightHp)*knight.healing/100));
+        log.push({turn,actor:"monster",damage:monsterAttack,knightHp,monsterHp});
+      }
+      const victory=monsterHp<=0;
+      const gainedHp=victory?Math.max(1,Math.floor(monster.hp/100)):0;
+      const nextRoom=victory&&room===progress?Math.min(301,progress+1):progress;
+      const completedLevel=victory&&room===progress&&monster.chamber===10;
+      const crystals=JSON.parse(row.crystals||"{}");
+      const firstDaily=row.combat_reward_day!==today;
+      if(firstDaily)crystals.green=(Number(crystals.green)||0)+1;
+      const finished=nextRoom>300;
+      db.prepare("UPDATE labyrinth_players SET missions_today=missions_today+1,last_mission_at=?,combat_room=?,combat_hp_bonus=combat_hp_bonus+?,combat_level_day=?,combat_reward_day=?,combat_log=?,crystals=?,medicine_found=?,completed_at=? WHERE user_id=?")
+        .run(now,nextRoom,gainedHp,completedLevel?today:row.combat_level_day,firstDaily?today:row.combat_reward_day,JSON.stringify(log),JSON.stringify(crystals),finished?1:0,finished?now:row.completed_at,userId);
+      return {success:true,victory,monster,room,knight,knightHp,monsterHp,log,gainedHp,greenCrystal:firstDaily,completedLevel,medicineFound:finished,status:this.getLabyrinthStatus(userId)};
     })();
   }
 
