@@ -271,7 +271,8 @@ function initializeDatabase() {
       combat_hp_bonus:"INTEGER NOT NULL DEFAULT 0",
       combat_reward_day:"TEXT NOT NULL DEFAULT ''",
       combat_level_day:"TEXT NOT NULL DEFAULT ''",
-      combat_log:"TEXT NOT NULL DEFAULT '[]'"
+      combat_log:"TEXT NOT NULL DEFAULT '[]'",
+      combat_active:"TEXT NOT NULL DEFAULT ''"
     })){
       if(!labyrinthColumns.includes(name))db.exec("ALTER TABLE labyrinth_players ADD COLUMN "+name+" "+definition);
     }
@@ -2521,47 +2522,71 @@ class DatabaseManager {
     return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
   }
 
-  runLabyrinthMission(userId,options={}){
+  labyrinthBattle(userId,action="status",options={}){
     const status=this.getLabyrinthStatus(userId);
-    if(!status.unlocked)return {error:"Reach Cyber Knight level 7 to enter the Labyrinth."};
+    if(!status.unlocked)return {error:"Labyrinth is locked."};
     return db.transaction(()=>{
-      const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
       const today=new Date().toISOString().slice(0,10);
-      if(Number(row.missions_today)>=10)return {error:"All 10 daily battles have been used."};
-      const now=Date.now();
-      if(Number(row.last_mission_at||0)+1000>now)return {error:"Next battle is available in one second."};
-      const progress=Math.max(1,Math.min(301,Number(row.combat_room)||1));
-      if(progress>300)return {error:"Nova's medicine has already been recovered."};
-      const requested=Number(options.room);
-      const room=Number.isInteger(requested)&&requested>=1&&requested<progress?requested:progress;
-      if(room===progress&&row.combat_level_day===today)return {error:"You completed a new Labyrinth level today. Repeat an earlier cleared room instead."};
-      const monster=this.labyrinthMonster(room),knight=this.labyrinthKnight(userId);
-      const maxMonsterHp=Math.max(1,Math.round(monster.hp*(1-knight.enemyHpReduction/100)));
-      const monsterAttack=Math.max(1,Math.round(monster.damage*(1-knight.enemyAttackReduction/100)));
-      const monsterHeal=Math.max(0,monster.heal*(1-knight.enemyHealingReduction/100));
-      let knightHp=knight.maxHp,monsterHp=maxMonsterHp;
-      const log=[];
-      for(let turn=1;turn<=150&&knightHp>0&&monsterHp>0;turn++){
-        monsterHp=Math.max(0,monsterHp-knight.attack);
-        if(monsterHp>0&&monsterHeal>0)monsterHp=Math.min(maxMonsterHp,monsterHp+Math.floor((maxMonsterHp-monsterHp)*monsterHeal/100));
-        log.push({turn,actor:"knight",damage:knight.attack,knightHp,monsterHp});
-        if(monsterHp<=0)break;
-        knightHp=Math.max(0,knightHp-monsterAttack);
-        if(knightHp>0&&knight.healing>0)knightHp=Math.min(knight.maxHp,knightHp+Math.floor((knight.maxHp-knightHp)*knight.healing/100));
-        log.push({turn,actor:"monster",damage:monsterAttack,knightHp,monsterHp});
+      const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+      let active;try{active=JSON.parse(row.combat_active||"null");}catch(e){active=null;}
+      if(action==="status")return {battle:active,status};
+      if(action==="retreat"){
+        if(active)db.prepare("UPDATE labyrinth_players SET combat_active='' WHERE user_id=?").run(userId);
+        return {battle:null,status:this.getLabyrinthStatus(userId)};
       }
-      const victory=monsterHp<=0;
+      if(action==="start"){
+        if(active)return {error:"Finish or retreat from the current battle."};
+        if(Number(row.missions_today)>=10)return {error:"All 10 daily battles have been used."};
+        const progress=Math.max(1,Math.min(301,Number(row.combat_room)||1));
+        if(progress>300)return {error:"The final medicine has already been found."};
+        const requested=Number(options.room);
+        const room=Number.isInteger(requested)&&requested>=1&&requested<progress?requested:progress;
+        if(room===progress&&row.combat_level_day===today)return {error:"You already cleared one floor today. Repeat a previous battle."};
+        const monster=this.labyrinthMonster(room),knight=this.labyrinthKnight(userId);
+        const monsterMaxHp=Math.max(1,Math.round(monster.hp*(1-knight.enemyHpReduction/100)));
+        active={room,monster,knight,knightHp:knight.maxHp,monsterHp:monsterMaxHp,monsterMaxHp,round:0,log:[],startedAt:Date.now()};
+        db.prepare("UPDATE labyrinth_players SET combat_active=?,missions_today=missions_today+1 WHERE user_id=?").run(JSON.stringify(active),userId);
+        return {battle:active,status:this.getLabyrinthStatus(userId)};
+      }
+      if(action!=="strike"||!active)return {error:"Start a battle first."};
+      if(active.round>=150)return {error:"Battle turn limit reached. Retreat."};
+      active.round++;
+      const {knight,monster}=active;
+      const damage=knight.attack;
+      active.monsterHp=Math.max(0,active.monsterHp-damage);
+      active.log.push({round:active.round,actor:"knight",damage,knightHp:active.knightHp,monsterHp:active.monsterHp});
+      if(active.monsterHp>0){
+        const monsterDamage=Math.max(1,Math.round(monster.damage*(1-knight.enemyAttackReduction/100)));
+        active.knightHp=Math.max(0,active.knightHp-monsterDamage);
+        if(active.knightHp>0&&knight.healing>0)active.knightHp=Math.min(knight.maxHp,active.knightHp+Math.floor((knight.maxHp-active.knightHp)*knight.healing/100));
+        active.log.push({round:active.round,actor:"monster",damage:monsterDamage,knightHp:active.knightHp,monsterHp:active.monsterHp});
+        if(active.knightHp>0&&monster.heal>0){
+          const heal=Math.max(0,monster.heal*(1-knight.enemyHealingReduction/100));
+          active.monsterHp=Math.min(active.monsterMaxHp,active.monsterHp+Math.floor((active.monsterMaxHp-active.monsterHp)*heal/100));
+        }
+      }
+      const victory=active.monsterHp<=0,defeat=active.knightHp<=0;
+      if(!victory&&!defeat){
+        db.prepare("UPDATE labyrinth_players SET combat_active=? WHERE user_id=?").run(JSON.stringify(active),userId);
+        return {battle:active,status:this.getLabyrinthStatus(userId)};
+      }
+      const progress=Math.max(1,Math.min(301,Number(row.combat_room)||1));
+      const nextRoom=victory&&active.room===progress?Math.min(301,progress+1):progress;
       const gainedHp=victory?Math.max(1,Math.floor(monster.hp/100)):0;
-      const nextRoom=victory&&room===progress?Math.min(301,progress+1):progress;
-      const completedLevel=victory&&room===progress&&monster.chamber===10;
-      const crystals=JSON.parse(row.crystals||"{}");
-      const firstDaily=row.combat_reward_day!==today;
-      if(firstDaily)crystals.green=(Number(crystals.green)||0)+1;
+      const completedLevel=victory&&active.room===progress&&monster.chamber===10;
       const finished=nextRoom>300;
-      db.prepare("UPDATE labyrinth_players SET missions_today=missions_today+1,last_mission_at=?,combat_room=?,combat_hp_bonus=combat_hp_bonus+?,combat_level_day=?,combat_reward_day=?,combat_log=?,crystals=?,medicine_found=?,completed_at=? WHERE user_id=?")
-        .run(now,nextRoom,gainedHp,completedLevel?today:row.combat_level_day,firstDaily?today:row.combat_reward_day,JSON.stringify(log),JSON.stringify(crystals),finished?1:0,finished?now:row.completed_at,userId);
-      return {success:true,victory,monster,room,knight,knightHp,monsterHp,log,gainedHp,greenCrystal:firstDaily,completedLevel,medicineFound:finished,status:this.getLabyrinthStatus(userId)};
+      db.prepare("UPDATE labyrinth_players SET combat_active='',combat_room=?,combat_hp_bonus=combat_hp_bonus+?,combat_level_day=?,combat_log=?,medicine_found=?,completed_at=? WHERE user_id=?")
+        .run(nextRoom,gainedHp,completedLevel?today:row.combat_level_day,JSON.stringify(active.log),finished?1:row.medicine_found,finished?Date.now():row.completed_at,userId);
+      return {battle:null,victory,defeat,gainedHp,monster,log:active.log,medicineFound:finished,status:this.getLabyrinthStatus(userId)};
     })();
+  }
+
+  runLabyrinthMission(userId,options={}){
+    const start=this.labyrinthBattle(userId,"start",options);
+    if(start.error)return start;
+    let result=start;
+    for(let i=0;i<150&&result.battle;i++)result=this.labyrinthBattle(userId,"strike");
+    return {...result,success:!result.error,room:start.battle?.room};
   }
 
   moveLabyrinth(userId,roomId){
