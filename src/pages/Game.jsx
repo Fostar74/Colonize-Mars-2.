@@ -397,7 +397,7 @@ function EventsPanel() {
         {labyrinth.medicineFound?<p style={{color:"#f8b7d8",fontWeight:800}}>🧪 {t("You found Nova's medicine!","Откри лекарството за Nova!")}</p>:<>
           {labyrinthBattle?<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
             <button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("strike")} style={{padding:"14px 28px",fontWeight:900,fontSize:18,background:"#b65b18",color:"white",borderRadius:10}}>⚔️ {t("ATTACK","АТАКУВАЙ")} · {t("Round","Рунд")} {labyrinthBattle.round+1}</button>
-            <button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("retreat")} style={{padding:"12px 20px"}}>{t("Retreat","Отстъпи")}</button>
+
           </div>:<button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10||labyrinth.levelCompletedToday} onClick={()=>labyrinthCombat("start")} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{t("Enter chamber and face monster","Влез в залата и се изправи срещу чудовището")}</button>}
           {labyrinth.levelCompletedToday&&<p>{t("You cleared one stage today. You can repeat cleared battles for rewards.","Днес премина едно ниво. Можеш да повтаряш вече спечелени битки за награди.")}</p>}
           {labyrinth.room>1&&<div style={{marginTop:12}}>
@@ -413,7 +413,7 @@ function EventsPanel() {
         {(labyrinth.combatLog||[]).length>0&&<details><summary>{t("Last battle · turn-by-turn report","Последна битка · доклад по рундове")}</summary><div style={{maxHeight:260,overflowY:"auto"}}>{labyrinth.combatLog.map((entry,i)=><p key={i} style={{margin:"4px 0",fontSize:12}}>{entry.turn}. {entry.actor==="knight"?"Cyber Knight":"Monster"}: −{entry.damage} · 🛡️ {entry.knightHp} HP · 👾 {entry.monsterHp} HP</p>)}</div></details>}
       </>}
         </>}
-      {labyrinth?.testResetAvailable&&<button type="button" disabled={labyrinthBusy||labyrinth.missionsToday===0} onClick={()=>labyrinthCombat("resetTest")} style={{padding:"9px 15px",background:"#44334c",color:"#ffdfb7",borderRadius:8,marginTop:10}}>🔄 {t("Reset today's test attempts (once per day)","Възстанови тестовите опити (веднъж дневно)")}</button>}
+
       <h3>{t("Labyrinth standings","Класиране в Лабиринта")}</h3>
       {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Room","Стая")}</th><th>{t("Permanent HP","Постоянен HP")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{Math.min(30,Math.ceil(row.combat_room/10))}-{(row.combat_room-1)%10+1}</td><td>+{row.combat_hp_bonus}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights yet.","Все още няма Киберрицари.")}</p>}
     </section>
