@@ -2512,8 +2512,8 @@ class DatabaseManager {
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
     // One-time test recovery for MazeRunner only; does not alter earned HP, crystals or progress.
-    if(!Number(row.combat_one_time_reset||0)&&db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"){
-      db.prepare("UPDATE labyrinth_players SET missions_today=0,combat_active='',combat_one_time_reset=1 WHERE user_id=?").run(userId);
+    if(Number(row.combat_one_time_reset||0)<2&&db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"){
+      db.prepare("UPDATE labyrinth_players SET missions_today=0,combat_active='',combat_one_time_reset=2 WHERE user_id=?").run(userId);
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
     // Daily participation reward is granted on entry, even without a battle.
