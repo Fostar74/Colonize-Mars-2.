@@ -395,6 +395,15 @@ router.get("/events/:userId",requireSession,(req,res)=>{
   try{const userId=Number(req.params.userId);res.json({saturdayInvasion:db.getSaturdayAllianceInvasion(userId),motherShip:db.getMothershipEvent(userId),labyrinth:db.getLabyrinthStatus(userId)});}
   catch(error){console.error("Events:",error);res.status(500).json({message:"Events unavailable."});}
 });
+router.post("/events/labyrinth/battle",requireSession,(req,res)=>{
+  try{
+    const action=String(req.body.action||"status");
+    if(!["status","start","strike","retreat"].includes(action))return res.status(400).json({message:"Invalid battle action."});
+    const result=db.labyrinthBattle(Number(req.body.userId),action,{room:req.body.room});
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Labyrinth combat:",error);res.status(500).json({message:"Labyrinth combat unavailable."});}
+});
 router.post("/events/labyrinth/mission",requireSession,(req,res)=>{
   try{const result=db.runLabyrinthMission(Number(req.body.userId),{room:Number(req.body.room)});if(result.error)return res.status(400).json({message:result.error});res.json(result);}
   catch(error){console.error("Labyrinth mission:",error);res.status(500).json({message:"Labyrinth mission failed."});}
