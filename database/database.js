@@ -2480,19 +2480,19 @@ class DatabaseManager {
     const row=db.prepare("SELECT combat_hp_bonus FROM labyrinth_players WHERE user_id=?").get(userId);
     const equipped=this.getUserEquipment(userId)?.equippedItems||{};
     const slot=name=>Object.entries(equipped).find(([key,item])=>String(item?.slot||key).toUpperCase()===name)?.[1];
-    const usable=item=>{
-      if(!item)return null;
-      const rarityLevel={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1;
-      return level>=rarityLevel&&level>=Math.max(1,Number(item.level)||1)?item:null;
-    };
+    // In the Labyrinth, forge level alone determines the item's bonus (1 level = 1%).
+    // The army-specific equipment effects remain unchanged outside the Labyrinth.
     const power=name=>{
-      const item=usable(slot(name));if(!item)return 0;
-      const effects=Array.isArray(item.effects)?item.effects:[];
-      return Math.min(50,Math.max(0,effects.reduce((sum,effect)=>sum+(Number(effect.value)||0),0)));
+      const item=slot(name);
+      if(!item)return 0;
+      const rarityLevel={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1;
+      const forgeLevel=Math.max(1,Math.min(50,Number(item.level)||1));
+      if(level<rarityLevel||level<forgeLevel)return 0;
+      return forgeLevel;
     };
     const armor=power("ARMOR"),helmet=power("HELMET"),boots=power("BOOTS"),weapon=power("WEAPON"),shield=power("SHIELD"),gloves=power("GLOVES");
     const bonus=Math.max(0,Number(row?.combat_hp_bonus)||0);
-    return {level,bonusHp:bonus,maxHp:Math.round((10000+bonus)*(1+armor/100)),attack:Math.round(1000*(1+helmet/100)),healing:Math.min(15,boots),enemyAttackReduction:weapon,enemyHpReduction:shield,enemyHealingReduction:gloves,gear:{armor,helmet,boots,weapon,shield,gloves}};
+    return {level,bonusHp:bonus,maxHp:Math.round((10000+bonus)*(1+armor/100)),attack:Math.round(1000*(1+helmet/100)),healing:boots,enemyAttackReduction:weapon,enemyHpReduction:shield,enemyHealingReduction:gloves,gear:{armor,helmet,boots,weapon,shield,gloves}};
   }
 
   getLabyrinthStatus(userId){
