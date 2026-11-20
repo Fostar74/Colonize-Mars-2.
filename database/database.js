@@ -2466,8 +2466,8 @@ class DatabaseManager {
     const chamber=((room-1)%10)+1;
     const boss=chamber===10;
     const base=1000+(chamber-1)*500+(boss?4500:0);
-    const hp=Math.round((base+(stage-1)*100)*Math.pow(1.34,stage-1));
-    const damage=Math.round((65+chamber*17)*Math.pow(1.29,stage-1));
+    const hp=base+(stage-1)*100;
+    const damage=Math.round((65+chamber*17)*(stage===1?1:8*Math.pow(1.22,stage-2)));
     const heal=stage<4?0:Math.min(15,2+Math.floor((stage-4)/3)*2+(boss?1:0));
     const names=["Spore Mutant","Xeno Stalker","Plasma Beast","Cave Reaper","Void Sentinel","Alien Warden","Abyss Predator","Crystal Devourer","Nightmare Guardian","Alien Overlord"];
     return {room,stage,chamber,boss,name:names[chamber-1],hp,damage,heal};
@@ -2507,6 +2507,13 @@ class DatabaseManager {
     if(knightLevel<7)return {unlocked:false,knightLevel,requiredLevel:7,rankings};
     if(row.mission_day!==today){
       db.prepare("UPDATE labyrinth_players SET mission_day=?,missions_today=0,last_mission_at=0 WHERE user_id=?").run(today,userId);
+      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+    }
+    // Daily participation reward is granted on entry, even without a battle.
+    if(row.combat_reward_day!==today){
+      const daily=JSON.parse(row.crystals||"{}");
+      daily.green=(Number(daily.green)||0)+1;
+      db.prepare("UPDATE labyrinth_players SET combat_reward_day=?,crystals=? WHERE user_id=?").run(today,JSON.stringify(daily),userId);
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
     const crystals=JSON.parse(row.crystals||"{}");
