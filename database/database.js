@@ -273,7 +273,6 @@ function initializeDatabase() {
       combat_level_day:"TEXT NOT NULL DEFAULT ''",
       combat_log:"TEXT NOT NULL DEFAULT '[]'",
       combat_active:"TEXT NOT NULL DEFAULT ''",
-      combat_test_reset_day:"TEXT NOT NULL DEFAULT ''"
     })){
       if(!labyrinthColumns.includes(name))db.exec("ALTER TABLE labyrinth_players ADD COLUMN "+name+" "+definition);
     }
@@ -2520,7 +2519,7 @@ class DatabaseManager {
     }
     const crystals=JSON.parse(row.crystals||"{}");
     const room=Math.max(1,Math.min(301,Number(row.combat_room)||1));
-    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,testResetAvailable:db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"&&row.combat_test_reset_day!==today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
+    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
   }
 
   labyrinthBattle(userId,action="status",options={}){
@@ -2531,19 +2530,8 @@ class DatabaseManager {
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
       let active;try{active=JSON.parse(row.combat_active||"null");}catch(e){active=null;}
       if(action==="status")return {battle:active,status};
-      if(action==="resetTest"){
-        const player=db.prepare("SELECT username FROM users WHERE id=?").get(userId);
-        if(player?.username!=="MazeRunner")return {error:"Only the project tester can reset attempts."};
-        if(row.combat_test_reset_day===today)return {error:"Test attempts have already been reset once today."};
-        db.prepare("UPDATE labyrinth_players SET missions_today=0,combat_active='',combat_test_reset_day=? WHERE user_id=?").run(today,userId);
-        return {battle:null,testReset:true,status:this.getLabyrinthStatus(userId)};
-      }
-      if(action==="retreat"){
-        if(active)db.prepare("UPDATE labyrinth_players SET combat_active='' WHERE user_id=?").run(userId);
-        return {battle:null,status:this.getLabyrinthStatus(userId)};
-      }
       if(action==="start"){
-        if(active)return {error:"Finish or retreat from the current battle."};
+        if(active)return {error:"Finish the current battle before starting another."};
         if(Number(row.missions_today)>=10)return {error:"All 10 daily battles have been used."};
         const progress=Math.max(1,Math.min(301,Number(row.combat_room)||1));
         if(progress>300)return {error:"The final medicine has already been found."};
@@ -2557,7 +2545,7 @@ class DatabaseManager {
         return {battle:active,status:this.getLabyrinthStatus(userId)};
       }
       if(action!=="strike"||!active)return {error:"Start a battle first."};
-      if(active.round>=150)return {error:"Battle turn limit reached. Retreat."};
+      if(active.round>=150){active.knightHp=0;}
       active.round++;
       const {knight,monster}=active;
       const damage=knight.attack;
