@@ -251,10 +251,15 @@ function EventsPanel() {
   };
   const date=value=>value?new Date(value).toLocaleString(language==="bg"?"bg-BG":"en-US",{dateStyle:"medium",timeStyle:"short",timeZone:"UTC"})+" UTC":"—";
   const crystalLabel={yellow:t("yellow","жълт"),blue:t("blue","син"),orange:t("orange","оранжев"),purple:t("purple","лилав")};
-  const runLabyrinthMission=async()=>{
+  const runLabyrinthMission=async(room)=>{
     setLabyrinthBusy(true);setLabyrinthNotice("");
-    try{const response=await fetch(api+"/events/labyrinth/mission",{method:"POST",headers,body:JSON.stringify({userId:Number(userId)})});const result=await response.json();if(!response.ok)throw Error(result.message||"Labyrinth mission failed.");setLabyrinth(result.status);setLabyrinthNotice(result.crystal?t("You found "+crystalLabel[result.crystal]+" crystal and "+result.item.name+".","Намери "+crystalLabel[result.crystal]+" кристал и "+result.item.name+"."):t("Equipment found: "+result.item.name+".","Намерена екипировка: "+result.item.name+"."));}
-    catch(error){setLabyrinthNotice(error.message);}
+    try{
+      const response=await fetch(api+"/events/labyrinth/mission",{method:"POST",headers,body:JSON.stringify({userId:Number(userId),room})});
+      const result=await response.json();
+      if(!response.ok)throw Error(result.message||"Labyrinth battle failed.");
+      setLabyrinth(result.status);
+      setLabyrinthNotice((result.victory?t("VICTORY","ПОБЕДА"):t("DEFEAT","ЗАГУБА"))+" · "+result.monster.name+" · "+(result.victory?"+ "+result.gainedHp+" HP":"0 HP")+(result.greenCrystal?" · 💚 "+t("Daily green crystal","Дневен зелен кристал"):"")+(result.medicineFound?" · 🧪 NOVA!":""));
+    }catch(error){setLabyrinthNotice(error.message);}
     finally{setLabyrinthBusy(false);}
   };
   const labyrinthAction=async(path,payload,successText)=>{
@@ -306,52 +311,55 @@ function EventsPanel() {
       {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString()}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
       <button type="button" onClick={()=>navigate("/map?campaign=1")}>{t("Open campaigns","Отвори кампаниите")}</button>
     </div>}
-    <section style={{border:"1px solid #896da9",borderRadius:10,padding:12,marginTop:18,background:"linear-gradient(145deg,#171321,#211b2c)",color:"#f5edff"}}>
-      <h2 style={{color:"#e1bbff"}}>🧭 {t("The Labyrinth","Лабиринт")}</h2>
-      <p>{t("Enter the underground maze with your Cyber Knight. Find equipment, collect all four crystal colors to reach the medicine chamber, and reach Nova’s pink medicine vial at the far end.","Влез в подземния лабиринт с Киберрицаря. Откривай екипировка, събери четирите цвята кристали, за да достигнеш залата с лекарството, и стигни до розовото шишенце с лекарството за Nova.")}</p>
-      {!labyrinth?<p>{t("Loading Labyrinth…","Зареждане на Лабиринта…")}</p>:!labyrinth.unlocked?<p>{t("Unlocks at Cyber Knight level 7.","Отключва се на ниво 7 на Киберрицаря.")} · {t("Your level","Твоето ниво")}: {labyrinth.knightLevel} / 7</p>:<>
-        <p>{t("Daily missions","Дневни мисии")}: {labyrinth.missionsToday} / {labyrinth.missionsPerDay} · {t("Each mission takes one second and grants random equipment. One of the 10 missions each day also gives one random-colored crystal.","Всяка мисия трае една секунда и дава случайна екипировка. Една от десетте мисии за деня дава и един кристал със случаен цвят.")}</p>
-        <div style={{display:"flex",gap:8,flexWrap:"wrap",margin:"10px 0"}}>
-          {[["yellow","🟡",t("Yellow","Жълт")],["blue","🔵",t("Blue","Син")],["orange","🟠",t("Orange","Оранжев")],["purple","🟣",t("Purple","Лилав")]].map(([key,icon,label])=><span key={key} style={{padding:"5px 9px",background:"#30283d",borderRadius:7}}>{icon} {label}: {Number(labyrinth.crystals?.[key]||0)}</span>)}
+    <section style={{border:"1px solid #896da9",borderRadius:14,padding:16,marginTop:18,background:"linear-gradient(145deg,#11101b,#282035)",color:"#f5edff"}}>
+      <h2 style={{color:"#e1bbff"}}>⚔️ {t("The Labyrinth · Cyber Knight","Лабиринтът · Cyber Knight")}</h2>
+      <p>{t("Thirty underground stages, ten battles per stage. The medicine for Nova awaits behind the final boss in 30-10.","30 подземни нива с по 10 битки. Лекарството за Nova е зад последния Boss в 30-10.")}</p>
+      {!labyrinth?<p>{t("Loading…","Зареждане…")}</p>:!labyrinth.unlocked?<p>{t("Unlocks at Cyber Knight level 7.","Отключва се на ниво 7 на Cyber Knight.")} · {labyrinth.knightLevel}/7</p>:<>
+        <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:14}}>
+          <strong>🛡️ {t("Stage","Ниво")} {labyrinth.stage} / 30 · {t("Room","Стая")} {labyrinth.chamber} / 10</strong>
+          <strong>⚔️ {t("Daily battles","Дневни битки")}: {labyrinth.missionsToday} / 10</strong>
+          <span>💚 {t("Green crystals","Зелени кристали")}: {labyrinth.crystals?.green||0}</span>
         </div>
-        {labyrinth.missionsToday<labyrinth.missionsPerDay&&<button type="button" disabled={labyrinthBusy||Number(labyrinth.nextMissionAt||0)>labyrinthTick} onClick={runLabyrinthMission}>{labyrinthBusy?t("Working…","Изпълнява се…"):t("Run next mission","Изпълни следващата мисия")} · {labyrinth.missionsToday+1}/10</button>}
-        <p style={{color:"#f4d69c"}}>🧭 {t("New rooms explored today","Нови зали, открити днес")}: {labyrinth.movesToday||0} / {labyrinth.movesPerDay||10} · {t("Resets at 00:00 UTC. Returning to visited rooms is free.","Нулира се в 00:00 UTC. Връщането в посетени зали е безплатно.")}</p>
-        <p style={{color:"#e6c9ff"}}>🧪 {t("To enter the medicine chamber you must collect at least one crystal of each of the four colors. Crystals are not spent.","За да влезеш в залата с лекарството, трябва да събереш поне по един кристал от четирите цвята. Кристалите не се изразходват.")}</p>
-        {labyrinth.missionsToday>=labyrinth.missionsPerDay&&<p>{t("Your Labyrinth missions reset at 00:00 UTC.","Мисиите в Лабиринта се обновяват в 00:00 UTC.")}</p>}
-        {labyrinth.medicineFound?<p style={{color:"#ffb6e6",fontWeight:"bold"}}>🧪 {t("Medicine found! Nova can be revived.","Лекарството е намерено! Nova може да бъде съживена.")}</p>:<div style={{border:"1px solid #564567",borderRadius:8,padding:10,marginTop:12}}>
-          <strong>{t("Dark underground map","Затъмнена подземна карта")}</strong> · {t("Current square","Текущо квадратче")}: {labyrinth.currentRoom} · {t("Depth","Дълбочина")}: {labyrinth.currentDepth}/10
-          <p>{t("Squares you have explored","Посетени квадратчета")}: {labyrinth.roomsOpened} · {t("Furthest depth","Най-голяма дълбочина")}: {labyrinth.deepestDepth}/10</p>
-          <LabyrinthMap labyrinth={labyrinth} busy={labyrinthBusy} t={t} onMove={roomId=>labyrinthAction("/events/labyrinth/move",{roomId},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} onBacktrack={roomId=>labyrinthAction("/events/labyrinth/backtrack",{roomId},t("Returned to a visited chamber.","Върна се в посетена зала."))}/>
-          <div style={{border:"2px solid #66517f",borderRadius:14,padding:"18px 12px",margin:"14px 0",background:"radial-gradient(ellipse at 50% 18%,#344057 0%,#171727 44%,#090b16 100%)",boxShadow:"inset 0 0 45px #03050c",textAlign:"center"}}>
-            <div style={{fontSize:13,letterSpacing:3,color:"#bba7dc",fontWeight:700}}>{t("UNDERGROUND LABYRINTH · CHOOSE YOUR PATH","ПОДЗЕМЕН ЛАБИРИНТ · ИЗБЕРИ ПЪТЯ СИ")}</div>
-            <div style={{fontSize:12,color:"#a8bbd4",marginTop:8}}>{t("Each passage hides a different route. You decide where the Cyber Knight goes.","Всеки проход крие различен път. Ти решаваш накъде да тръгне Киберрицарят.")}</div>
-            <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(0,1fr))",gap:8,margin:"18px auto 10px",maxWidth:700}}>
-              {["North","East","South","West"].map((direction,index)=>{
-                const exit=(labyrinth.exits||[]).find(item=>item.direction===direction);
-                const enough=true;
-                const label=direction==="North"?t("NORTH","СЕВЕР"):direction==="East"?t("EAST","ИЗТОК"):direction==="South"?t("SOUTH","ЮГ"):t("WEST","ЗАПАД");
-                return <button key={direction} type="button" disabled={labyrinthBusy||!exit||(labyrinth.movesToday||0)>=(labyrinth.movesPerDay||10)} onClick={()=>exit&&labyrinthAction("/events/labyrinth/move",{roomId:exit.id},t("The Cyber Knight entered a new chamber.","Киберрицарят влезе в нова зала."))} style={{minHeight:145,padding:"12px 5px",borderRadius:"45% 45% 8px 8px",border:exit?"2px solid #8c83bd":"2px solid #3b3b50",background:exit?"linear-gradient(180deg,#30304c,#101626 65%,#242036)":"linear-gradient(#262635,#101019)",color:exit?"#eee6ff":"#6e7085",cursor:exit&&!labyrinthBusy?"pointer":"not-allowed",opacity:exit?1:.55,boxShadow:exit?"inset 0 0 24px #08071a,0 0 14px #493b6a":"none",display:"flex",flexDirection:"column",alignItems:"center",justifyContent:"center",gap:8}}>
-                  <span style={{fontSize:34}}>{!exit?"🪨":index===0?"⬆️":index===1?"➡️":index===2?"⬇️":"⬅️"}</span>
-                  <span style={{fontSize:13,fontWeight:800,letterSpacing:1}}>{label}</span>
-                  <span style={{fontSize:11}}>{!exit?t("Blocked","Затворен"):t("ENTER PASSAGE","ВЛЕЗ В ПРОХОДА")}</span>
-                </button>;
-              })}
+        <div style={{display:"flex",gap:5,marginBottom:14}}>
+          {Array.from({length:10},(_,i)=><div key={i} title={String(i+1)} style={{flex:1,textAlign:"center",borderRadius:5,padding:"7px 0",fontSize:12,fontWeight:700,background:i+1<labyrinth.chamber?"#286b59":i+1===labyrinth.chamber?"#7952a8":"#262334",border:"1px solid #5e5275"}}>{i===9?"👑":i+1}</div>)}
+        </div>
+        <div style={{border:"2px solid #5a4d78",borderRadius:14,padding:16,background:"radial-gradient(ellipse at center,#343148,#0b0b15 75%)",overflow:"hidden"}}>
+          <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:14,textAlign:"center",alignItems:"end"}}>
+            <div>
+              <div style={{fontSize:"clamp(65px,11vw,130px)",filter:"drop-shadow(0 0 18px #5bc8fa)",animation:labyrinthBusy?"labyrinthClash .5s ease-in-out infinite alternate":"none"}}>🛡️</div>
+              <strong>Cyber Knight</strong>
+              <p style={{margin:"6px 0",color:"#98edcf"}}>❤️ {Number(labyrinth.knight?.maxHp||10000).toLocaleString()} HP</p>
+              <p style={{margin:"6px 0"}}>⚔️ {Number(labyrinth.knight?.attack||1000).toLocaleString()} DMG</p>
+              <p style={{margin:"6px 0",fontSize:12}}>💚 +{labyrinth.knight?.bonusHp||0} HP · 👢 {labyrinth.knight?.healing||0}%</p>
             </div>
-            <div style={{maxWidth:300,margin:"12px auto",padding:15,border:"1px solid #6d5d9a",borderRadius:12,background:"linear-gradient(#2a2540,#16152a)",boxShadow:"0 0 24px #32265b"}}>
-              <div style={{fontSize:36}}>🛡️</div>
-              <strong>{t("CYBER KNIGHT · CURRENT CHAMBER","КИБЕРРИЦАР · ТЕКУЩА ЗАЛА")}</strong>
-              <div style={{fontSize:13,color:"#c9b5eb",marginTop:5}}>{labyrinth.currentRoom==="room-0"?t("Entrance chamber","Входна зала"):t("Explored chamber","Открита зала")} · {labyrinth.currentDepth}/10</div>
+            <div>
+              <div style={{fontSize:"clamp(65px,11vw,130px)",filter:"drop-shadow(0 0 18px #f45b66)",animation:labyrinthBusy?"labyrinthClash .6s ease-in-out infinite alternate-reverse":"none"}}>{labyrinth.monster?.boss?"👹":labyrinth.monster?.chamber%3===0?"👾":"👽"}</div>
+              <strong>{labyrinth.monster?.boss?"👑 BOSS · ":""}{labyrinth.monster?.name||"Nova"}</strong>
+              <p style={{margin:"6px 0",color:"#ff9d9d"}}>❤️ {Number(labyrinth.monster?.hp||0).toLocaleString()} HP</p>
+              <p style={{margin:"6px 0"}}>⚔️ {Number(labyrinth.monster?.damage||0).toLocaleString()} DMG</p>
+              <p style={{margin:"6px 0",fontSize:12}}>💚 {labyrinth.monster?.heal||0}% {t("healing","лечение")}</p>
             </div>
-            <div style={{fontSize:12,color:"#d6c9e8",marginTop:12}}>{t("All passages are free. Crystals are rewards and remain in your inventory.","Всички проходи са безплатни. Кристалите са награди и остават в инвентара.")}</div>
           </div>
-          <strong>{t("Explored chambers · click to return","Посетени зали · натисни, за да се върнеш")}</strong>
-          <div style={{display:"flex",gap:6,flexWrap:"wrap",margin:"8px 0"}}>{(labyrinth.visitedRooms||[]).map(room=><button type="button" key={room.id} disabled={labyrinthBusy||room.current} onClick={()=>labyrinthAction("/events/labyrinth/backtrack",{roomId:room.id},t("Returned to a visited chamber.","Върна се в посетена зала."))} style={{background:room.current?"#8054a8":"#30283d",color:"white",border:"1px solid #9c78bd",borderRadius:6,padding:"6px 9px"}}>{room.goal?"🧪":"◈"} {room.id==="room-0"?t("Entrance","Вход"):room.id} · {room.depth}{room.current?" ✓":""}</button>)}</div>
-          <p style={{color:"#cdb8dd"}}>{t("Crystals are rewards and are never spent on movement. Your explored path is saved.","Кристалите са награди и не се изразходват при движение. Посетеният път се запазва.")}</p>
-        </div>}
-        {labyrinthNotice&&<p role="status">{labyrinthNotice}</p>}
+        </div>
+        <style>{`@keyframes labyrinthClash{from{transform:translateX(-6px) scale(1)}to{transform:translateX(8px) scale(1.06)}}`}</style>
+        <p style={{color:"#cfbde9"}}>{t("Every victory permanently adds 1% of the defeated monster's original HP to Cyber Knight. All battles start at full health.","Всяка победа добавя постоянно 1% от първоначалния живот на чудовището към Cyber Knight. Всяка битка започва с пълен живот.")}</p>
+        {labyrinth.medicineFound?<p style={{color:"#f8b7d8",fontWeight:800}}>🧪 {t("You found Nova's medicine!","Откри лекарството за Nova!")}</p>:<>
+          <button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10||labyrinth.levelCompletedToday||Number(labyrinth.nextMissionAt||0)>labyrinthTick} onClick={()=>runLabyrinthMission()} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{labyrinthBusy?t("Fighting…","Битка…"):t("Fight next monster","Атакувай следващото чудовище")}</button>
+          {labyrinth.levelCompletedToday&&<p>{t("You cleared one stage today. You can repeat cleared battles for rewards.","Днес премина едно ниво. Можеш да повтаряш вече спечелени битки за награди.")}</p>}
+          {labyrinth.room>1&&<div style={{marginTop:12}}>
+            <label htmlFor="labyrinth-replay-room">{t("Repeat a cleared room (automatic battle)","Повтори спечелена стая (автоматична битка)")}: </label>
+            <select id="labyrinth-replay-room" defaultValue={Math.max(1,labyrinth.room-1)} onChange={e=>{e.currentTarget.dataset.room=e.target.value;}} style={{padding:7,background:"#28213b",color:"white"}}>
+              {Array.from({length:Math.min(300,labyrinth.room-1)},(_,i)=><option key={i+1} value={i+1}>{Math.ceil((i+1)/10)}-{i%10+1}</option>)}
+            </select>
+            <button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10||Number(labyrinth.nextMissionAt||0)>labyrinthTick} onClick={()=>runLabyrinthMission(Number(document.getElementById("labyrinth-replay-room")?.value)||1)} style={{marginLeft:8,padding:"8px 14px"}}>{t("Auto battle","Автоматична битка")}</button>
+          </div>}
+        </>}
+        <p>💚 {labyrinth.dailyRewardClaimed?t("Today's green crystal collected.","Днешният зелен кристал е получен."):t("Your first battle today awards a green crystal.","Първата битка за деня носи зелен кристал.")}</p>
+        {labyrinthNotice&&<p role="status" style={{fontWeight:700,color:"#f2d58f"}}>{labyrinthNotice}</p>}
+        {(labyrinth.combatLog||[]).length>0&&<details><summary>{t("Last battle · turn-by-turn report","Последна битка · доклад по рундове")}</summary><div style={{maxHeight:260,overflowY:"auto"}}>{labyrinth.combatLog.map((entry,i)=><p key={i} style={{margin:"4px 0",fontSize:12}}>{entry.turn}. {entry.actor==="knight"?"Cyber Knight":"Monster"}: −{entry.damage} · 🛡️ {entry.knightHp} HP · 👾 {entry.monsterHp} HP</p>)}</div></details>}
       </>}
       <h3>{t("Labyrinth standings","Класиране в Лабиринта")}</h3>
-      {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Furthest depth","Най-голяма дълбочина")}</th><th>{t("Squares","Квадратчета")}</th><th>{t("Medicine","Лекарство")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{row.deepest_depth}/10</td><td>{row.rooms_opened}</td><td>{row.medicine_found?t("Found","Намерено"):"—"}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights have entered yet.","Все още няма влезли Киберрицари.")}</p>}
+      {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Room","Стая")}</th><th>{t("Permanent HP","Постоянен HP")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{Math.min(30,Math.ceil(row.combat_room/10))}-{(row.combat_room-1)%10+1}</td><td>+{row.combat_hp_bonus}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights yet.","Все още няма Киберрицари.")}</p>}
     </section>
         {notice&&<p role="status">{notice}</p>}
     <h3>{t("Alliance standings","Класиране на алиансите")}</h3>
