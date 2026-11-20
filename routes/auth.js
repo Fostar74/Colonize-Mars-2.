@@ -398,7 +398,7 @@ router.get("/events/:userId",requireSession,(req,res)=>{
 router.post("/events/labyrinth/battle",requireSession,(req,res)=>{
   try{
     const action=String(req.body.action||"status");
-    if(!["status","start","strike","retreat","resetTest"].includes(action))return res.status(400).json({message:"Invalid battle action."});
+    if(!["status","start","strike"].includes(action))return res.status(400).json({message:"Invalid battle action."});
     const result=db.labyrinthBattle(Number(req.body.userId),action,{room:req.body.room});
     if(result.error)return res.status(400).json({message:result.error});
     res.json(result);
