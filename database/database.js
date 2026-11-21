@@ -2313,6 +2313,52 @@ class DatabaseManager {
           for(const resource of ["Gold","Iron","Water","Solar"])this.addInventoryReward(user_id,"resources",resource,prize);
         }
       });
+      // Send each participant a persistent system inbox message with final alliance
+      // and individual standings, plus the prize credited to their Inventory.
+      // This runs in the same transaction as the reward ledger and season settlement.
+      const playerRanking=db.prepare(`SELECT m.user_id,u.username,a.name AS alliance,m.score,m.waves,m.eliminated
+        FROM saturday_invasion_members m
+        JOIN saturday_invasion_runs r ON r.id=m.run_id
+        JOIN alliances a ON a.id=r.alliance_id
+        JOIN users u ON u.id=m.user_id
+        WHERE r.week_start=?
+        ORDER BY m.score DESC,u.username COLLATE NOCASE`).all(weekStart);
+      const allianceBoard=ranking.map((row,index)=>`${index+1}. ${row.name} — ${Number(row.score||0).toLocaleString("en-US")} points / точки`).join("\\n");
+      const playerBoard=playerRanking.map((row,index)=>`${index+1}. ${row.username} (${row.alliance}) — ${Number(row.score||0).toLocaleString("en-US")} points / точки`).join("\\n");
+      const insertSystem=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,NULL,?,?, 'system')");
+      const insertNotification=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'game_message', '', ?)");
+      const eventDate=new Date(weekStart).toISOString().slice(0,10);
+      for(const player of playerRanking){
+        const allianceRank=ranking.findIndex(row=>row.name===player.alliance)+1;
+        const playerRank=playerRanking.findIndex(row=>row.user_id===player.user_id)+1;
+        const award=db.prepare("SELECT amount_each,rank FROM saturday_invasion_reward_ledger WHERE week_start=? AND user_id=?").get(weekStart,player.user_id);
+        const prizeText=award
+          ? `${Number(award.amount_each).toLocaleString("en-US")} Gold + ${Number(award.amount_each).toLocaleString("en-US")} Iron + ${Number(award.amount_each).toLocaleString("en-US")} Water + ${Number(award.amount_each).toLocaleString("en-US")} Solar / По ${Number(award.amount_each).toLocaleString("bg-BG")} злато, желязо, вода и слънчева енергия. Added to Inventory / Добавени в Инвентара.`
+          : "No resource prize (alliance outside top 3). / Няма ресурсна награда (алиансът е извън топ 3).";
+        const body=`ALIEN INVASION · FINAL RESULTS / ОКОНЧАТЕЛНО КЛАСИРАНЕ
+Event / Събитие: ${eventDate} (UTC)
+
+ALLIANCE RANKING / КЛАСИРАНЕ НА АЛИАНСИТЕ:
+${allianceBoard}
+
+INDIVIDUAL RANKING / ИНДИВИДУАЛНО КЛАСИРАНЕ:
+${playerBoard}
+
+YOUR RESULTS / ТВОИТЕ РЕЗУЛТАТИ:
+Player / Играч: ${player.username}
+Individual rank / Лично място: #${playerRank}
+Personal points / Лични точки: ${Number(player.score||0).toLocaleString("en-US")}
+Waves / Вълни: ${player.waves}/20
+Alliance / Алианс: ${player.alliance}
+Alliance rank / Място на алианса: #${allianceRank}
+Alliance points / Точки на алианса: ${Number(ranking[allianceRank-1]?.score||0).toLocaleString("en-US")}
+
+YOUR ALLIANCE REWARD / ТВОЯТА НАГРАДА ОТ АЛИАНСА:
+${prizeText}
+Rewards are distributed per participating player, not once per alliance. / Наградите се дават на всеки участвал играч, а не еднократно на алианса.`;
+        insertSystem.run(player.user_id,player.user_id,body,Date.now());
+        insertNotification.run(player.user_id,Date.now());
+      }
       const completedAt=Date.now();
       db.prepare("UPDATE saturday_invasion_runs SET status='completed',completed_at=COALESCE(completed_at,?) WHERE week_start=? AND status='active'").run(completedAt,weekStart);
       for(const run of db.prepare("SELECT id FROM saturday_invasion_runs WHERE week_start=?").all(weekStart))this.recoverEventHospital("saturday-invasion",run.id,completedAt);
