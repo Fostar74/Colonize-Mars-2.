@@ -2323,8 +2323,8 @@ class DatabaseManager {
         JOIN users u ON u.id=m.user_id
         WHERE r.week_start=?
         ORDER BY m.score DESC,u.username COLLATE NOCASE`).all(weekStart);
-      const allianceBoard=ranking.map((row,index)=>`${index+1}. ${row.name} — ${Number(row.score||0).toLocaleString("en-US")} points / точки`).join("\\n");
-      const playerBoard=playerRanking.map((row,index)=>`${index+1}. ${row.username} (${row.alliance}) — ${Number(row.score||0).toLocaleString("en-US")} points / точки`).join("\\n");
+      const allianceBoard=ranking.map((row,index)=>`${index+1}. ${row.name} — ${Number(row.score||0).toLocaleString("en-US")} points / точки`).join("\n");
+      const playerBoard=playerRanking.map((row,index)=>`${index+1}. ${row.username} (${row.alliance}) — ${Number(row.score||0).toLocaleString("en-US")} points / точки`).join("\n");
       const insertSystem=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,NULL,?,?, 'system')");
       const insertNotification=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'game_message', '', ?)");
       const eventDate=new Date(weekStart).toISOString().slice(0,10);
