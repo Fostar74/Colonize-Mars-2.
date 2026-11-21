@@ -2533,6 +2533,11 @@ class DatabaseManager {
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
       let active;try{active=JSON.parse(row.combat_active||"null");}catch(e){active=null;}
       if(action==="status")return {battle:active,status};
+      if(action==="retreat"){
+        if(!active)return {error:"No active battle to leave."};
+        db.prepare("UPDATE labyrinth_players SET combat_active='' WHERE user_id=?").run(userId);
+        return {battle:null,retreated:true,status:this.getLabyrinthStatus(userId)};
+      }
       if(action==="start"){
         if(active)return {error:"Finish the current battle before starting another."};
         if(Number(row.missions_today)>=10)return {error:"All 10 daily battles have been used."};
@@ -3205,6 +3210,7 @@ class DatabaseManager {
       if(!saved)continue;
       const required=rarityUnlockLevel[saved.rarity]||1;
       if(knightLevel<required)return {error:`${saved.rarity} equipment unlocks at Cyber Knight level ${required}.`};
+      if(Number(saved.level??saved.levelRequirement??1)>knightLevel)return {error:`Equipment level ${saved.level} requires Cyber Knight level ${saved.level}.`};
     }
     if (gearInventory === undefined && craftingPoints === undefined) {
       const equipped = Object.fromEntries(Object.entries(equippedItems).flatMap(([slot, item]) => {
@@ -3250,9 +3256,11 @@ class DatabaseManager {
       };
       const gearInventory=(Array.isArray(originalInventory)?originalInventory:[]).filter(item=>!isLostAlienReward(item)).map(normalizeEquipmentItem);
       const inventoryById=new Map(gearInventory.filter(item=>item?.id).map(item=>[item.id,item]));
+      const knightLevel=Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1);
       const equippedItems=Object.fromEntries(Object.entries(originalEquipped||{}).flatMap(([slot,item])=>{
         if(!item||isLostAlienReward(item))return [];
         const normalized=inventoryById.get(item.id)||normalizeEquipmentItem(item);
+        if(Number(normalized.level??normalized.levelRequirement??1)>knightLevel||knightLevel<(rarityUnlockLevel[normalized.rarity]||1))return [];
         return [[slot,normalized]];
       }));
       if(JSON.stringify(equippedItems)!==JSON.stringify(originalEquipped)||JSON.stringify(gearInventory)!==JSON.stringify(originalInventory)){
