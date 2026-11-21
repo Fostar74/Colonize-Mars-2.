@@ -2217,7 +2217,7 @@ class DatabaseManager {
             cancelPendingAttacks(event.id,attack.user_id,now);
             continue;
           }
-          const level=attack.level,aliens=this.getAlienArmy(level);
+          const level=attack.level,aliens=Object.fromEntries(Object.entries(this.getAlienArmy(level)).map(([unit,count])=>[unit,Math.ceil(Number(count)*1.5)]));
           const formations=require("../src/shared/formations"),combat=require("../shared/combatEngine");
           const defaultRows=formations.defaultFormation();
           const defense=this.getFormations(attack.user_id),preset=defense.defensePresets?.[String(defense.defenseSlot)]||{};
@@ -2330,7 +2330,7 @@ class DatabaseManager {
     const mine=alliance?players.find(row=>row.userId===userId&&row.alliance_id===alliance.id)||null:null;
     const season=db.prepare("SELECT settled FROM saturday_invasion_seasons WHERE week_start=?").get(window.startsAt);
     const myAttacks=myRun?db.prepare("SELECT id,level,launched_at AS launchedAt,arrives_at AS arrivesAt,resolved_at AS resolvedAt,result FROM saturday_invasion_attacks WHERE run_id=? AND user_id=? ORDER BY id DESC LIMIT 20").all(myRun.id,userId).map(attack=>({...attack,result:attack.result?JSON.parse(attack.result):null})):[];
-    return {name:"Saturday Alien Invasion",startsAt:window.startsAt,endsAt:window.endsAt,active:isOpen,settled:!!season?.settled,alliance:alliance?{...alliance,run:myRun||null,canStart:isOpen&&["Leader","Co-Leader"].includes(alliance.role)&&!myRun}:null,myResult:mine,myAttacks,alliances,players,rewards:[50000,30000,15000].map((amount,index)=>({rank:index+1,resources:amount})),nextStartsAt:window.startsAt};
+    return {name:"Alien Invasion",startsAt:window.startsAt,endsAt:window.endsAt,active:isOpen,settled:!!season?.settled,alliance:alliance?{...alliance,run:myRun||null,canStart:isOpen&&["Leader","Co-Leader"].includes(alliance.role)&&!myRun}:null,myResult:mine,myAttacks,alliances,players,rewards:[50000,30000,15000].map((amount,index)=>({rank:index+1,resources:amount})),nextStartsAt:window.startsAt};
   }
 
   getMothershipReports(userId) {
@@ -2558,13 +2558,21 @@ class DatabaseManager {
       })();
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
-    // Daily participation reward is granted on entry, even without a battle.
-    if(row.combat_reward_day!==today){
+    // Credit Labyrinth green crystals to the same wallet used by alliance donations.
+    // Reconcile previously earned Labyrinth crystals once per player, without touching donations.
+    db.exec("CREATE TABLE IF NOT EXISTS labyrinth_green_wallet_sync (user_id INTEGER PRIMARY KEY, synced_at INTEGER NOT NULL)");
+    const alreadySynced=!!db.prepare("SELECT 1 FROM labyrinth_green_wallet_sync WHERE user_id=?").get(userId);
+    const rewardToday=row.combat_reward_day!==today;
+    if(rewardToday){
       const daily=JSON.parse(row.crystals||"{}");
       daily.green=(Number(daily.green)||0)+1;
       db.prepare("UPDATE labyrinth_players SET combat_reward_day=?,crystals=? WHERE user_id=?").run(today,JSON.stringify(daily),userId);
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
+    const previouslyUncredited=alreadySynced?0:Math.max(0,Number(JSON.parse(row.crystals||"{}").green||0)-(rewardToday?1:0));
+    const walletCredit=previouslyUncredited+(rewardToday?1:0);
+    if(walletCredit>0)db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,walletCredit,walletCredit);
+    if(!alreadySynced)db.prepare("INSERT OR IGNORE INTO labyrinth_green_wallet_sync(user_id,synced_at) VALUES (?,?)").run(userId,Date.now());
     const crystals=JSON.parse(row.crystals||"{}");
     const room=Math.max(1,Math.min(301,Number(row.combat_room)||1));
     return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
@@ -3018,7 +3026,7 @@ class DatabaseManager {
           const old=this.getUserEquipment(userId);
           this.saveUserEquipment(userId,old?.equippedItems||{},[...(old?.gearInventory||[]),item],old?.craftingPoints||{});
           result.equipmentReward=item;
-        const greenCrystals=mission.level>=9&&mission.level<=19?Math.max(100,100+(mission.level-11)*50):0;
+        const greenCrystals=mission.level>=9&&mission.level<=19?1:0;
           const redCrystals=mission.level===20?1:0;
           if(greenCrystals){
             db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,greenCrystals,greenCrystals);
@@ -3532,7 +3540,7 @@ class DatabaseManager {
 
   getPublicBases() {
     return db.prepare(`
-      SELECT u.username, b.x, b.y, m.alliance_id,
+      SELECT u.id AS user_id, u.username, b.x, b.y, m.alliance_id,
         (SELECT MAX(expires_at) FROM alliance_market_buffs shield
          WHERE shield.user_id=u.id AND shield.kind='protection' AND shield.expires_at>?) AS protected_until
       FROM base_positions b JOIN users u ON u.id = b.user_id
