@@ -153,7 +153,7 @@ function HospitalPanel() {
   const active=entries.find(entry=>entry.status==="healing");
   const total=entries.reduce((sum,entry)=>sum+Object.values(entry.wounded||{}).reduce((subtotal,count)=>subtotal+Number(count||0),0),0);
   const fmt=army=>Object.entries(army||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>Number(count).toLocaleString()+" "+label(unit)).join(" · ")||"0";
-  const sourceName=source=>source==="player-defense"?t("Base Defense","Защита на базата"):source==="player-attack"?t("Player Attack","Атака срещу играч"):source==="alien-base"?t("Alien Base Mission","Мисия срещу извънземна база"):source==="mothership"?t("Attack the Alien Command Ship","Атакувай Командния кораб на извънземните"):t("Saturday Alien Invasion","Съботна извънземна инвазия");
+  const sourceName=source=>source==="player-defense"?t("Base Defense","Защита на базата"):source==="player-attack"?t("Player Attack","Атака срещу играч"):source==="alien-base"?t("Alien Base Mission","Мисия срещу извънземна база"):source==="mothership"?t("Attack the Alien Command Ship","Атакувай Командния кораб на извънземните"):t("Alien Invasion","Alien Invasion");
   const frame={color:"#38251c",padding:14,borderRadius:12,border:"3px solid #ab7149",background:"linear-gradient(145deg,#f3e4c8 0%,#e7c79d 48%,#d99463 100%)",boxShadow:"inset 0 0 0 2px rgba(255,255,255,.4)"};
   const card={margin:"10px 0",padding:12,background:"rgba(255,248,230,.84)",border:"1px solid #bb8b61",borderRadius:8};
   return <div style={frame}>
@@ -317,7 +317,7 @@ function EventsPanel() {
   };
   if(!data)return <div><p>{notice||t("Loading events…","Зареждане на събитията…")}</p></div>;
   return <div style={{color:"#eef6ff",padding:12,minWidth:320}}>
-    <h2>{t("Saturday Alien Invasion","Съботна извънземна инвазия")}</h2>
+    <h2>{t("Alien Invasion","Alien Invasion")}</h2>
     <p>{data.active?t("Event is active","Събитието е активно"):data.settled?t("Event results are final","Класирането е окончателно"):t("Scheduled for","Насрочено за")} {date(data.startsAt)} – {date(data.endsAt)}</p>
     <p>{t("The first alien wave launches immediately from an alien base and reaches each participating alliance member after one minute. A stronger wave launches every minute. Alliance reinforcements sent to an active participant arrive in 30 seconds. The event ends when all participants are eliminated or wave 20 is completed.","Първата извънземна вълна потегля веднага от извънземна база и достига всеки участващ член на алианса след една минута. По-силна вълна потегля всяка минута. Подкрепленията към участник пристигат за 30 секунди. Събитието приключва, когато всички участници бъдат елиминирани или бъде завършена вълна 20.")}</p>
     {data.alliance&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
