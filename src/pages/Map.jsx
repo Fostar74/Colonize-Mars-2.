@@ -553,9 +553,8 @@ function Map() {
   const ownUsername=sessionStorage.getItem("username");
   const targetIsOwn=selectedTarget?.type==="castle"&&selectedTarget.username===ownUsername;
   const sameAllianceTarget=selectedTarget?.type==="castle"&&campaign.stations?.allianceId&&selectedTarget.alliance_id&&String(campaign.stations.allianceId)===String(selectedTarget.alliance_id);
-  // Clan diplomacy is not yet backed by a server-side alliance system.
-  // Never offer support to an unverified player.
-  const canSupport=false;
+  // Reinforcements are available only to verified members of the same alliance.
+  const canSupport=Boolean(sameAllianceTarget);
   const openMarch = async (type, target, origin) => {
     setMarchNotice("");
     setMarchLoading(true);
@@ -596,31 +595,39 @@ function Map() {
     const isAlienAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="alien";
     const isMothershipAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="mothership";
     const isPlayerAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="castle"&&!targetIsOwn;
+    const isSupport=marchDraft?.type==="Support"&&marchDraft?.target?.type==="castle"&&sameAllianceTarget;
     const isStationDefense=marchDraft?.type==="Defend"&&marchDraft?.target?.type==="station";
     const isGathering=marchDraft?.type==="Gather"&&marchDraft?.target?.type==="mine";
     if(selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
     if((isAlienAttack||isMothershipAttack)&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
-    if(!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isStationDefense&&!isGathering){setMarchNotice("Choose an attackable target.");return;}
+    if(!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isSupport&&!isStationDefense&&!isGathering){setMarchNotice("Choose an attackable target.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
     try{
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
-      const payload=isGathering
+      const payload=isSupport
+        ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected}
+        : isGathering
         ? {userId:sessionStorage.getItem("userId"),mineId:marchDraft.target.id,units:selected}
         : isAlienAttack
         ? {userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}}
         : isMothershipAttack ? {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded}
         : isStationDefense ? {userId:sessionStorage.getItem("userId"),stationId:marchDraft.target.stationId,army:selected}
         : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
-      const endpoint=isGathering?"/map/gathering":isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack";
+      const endpoint=isSupport?"/alliance/reinforce":isGathering?"/map/gathering":isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack";
       const response=await fetch(base+endpoint,{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
       });
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      if(isGathering){
+      if(isSupport){
+        const latest=await fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
+        if(latest.ok)setCampaign(await latest.json());
+        setMarchSuccess(t("Reinforcements dispatched to your ally.","Подкрепленията са изпратени към съюзника.")+" "+t("Arrival in","Пристигат след")+" "+Math.max(0,Math.ceil((Number(data.arrivesAt)-Date.now())/1000))+" "+t("seconds","секунди")+".");
+        window.dispatchEvent(new Event("game-progress-updated"));
+      }else if(isGathering){
         setMapMines(data.mines||[]);
         setMyMineCount(Number(data.activeMineCount)||0);
         setMineCapacity(Number(data.gatheringCapacity)||mineCapacity);
@@ -994,7 +1001,7 @@ function Map() {
           {!marchDraft && selectedTarget?.type!=="station" && <div>
             <p>{t("Choose mission type:","Избери вид мисия:")}</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
-              {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:selectedTarget?.type==="mine"?["Gather"]:["Attack","Support","Espionage","Patrol","Gather","Trade","Relocation"]).map(type=>{
+              {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:selectedTarget?.type==="mine"?["Gather"]:["Attack","Support","Espionage","Gather","Trade"]).map(type=>{
                 const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
                 const mothership=selectedTarget?.type==="mothership";
                 const shielded=Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now();
@@ -1074,7 +1081,7 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
               {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
-              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
+              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):marchDraft.type==="Support"?t("Send reinforcements","Изпрати подкрепление"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
@@ -1198,6 +1205,20 @@ function Map() {
           </section> : <>
           {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !myGatheringMines.length && !myMothershipMarches.length &&
             <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
+          {campaignTab==="active"&&(campaign.invasionRoutes||[]).length>0&&<section style={{margin:"14px 0",padding:12,border:"1px solid #9c5353",borderRadius:9,background:"rgba(78,25,30,.3)"}}>
+            <h3>⚔️ Alien Invasion — {t("Incoming attacks against alliance members","Атаки срещу членовете на алианса")}</h3>
+            {(campaign.invasionRoutes||[]).map(attack=><div key={attack.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",padding:"9px 0",borderBottom:"1px solid #70545a"}}>
+              <span>{t("Alien wave","Извънземна вълна")} {attack.level} · {t("Arrival in","Пристига след")} {formatDuration(Math.max(0,Number(attack.arrivesAt)-clock))}</span>
+              <button type="button" onClick={()=>{
+                const target=castles.find(base=>base.username===attack.targetName);
+                centerMapOn(Number(attack.targetX),Number(attack.targetY));
+                setMarchHistoryOpen(false);
+                setMarchDraft(null);
+                if(target)setSelectedTarget({type:"castle",...target});
+                else setMapError(t("Ally base is not available on the map.","Базата на съюзника не е открита на картата."));
+              }}>{attack.targetName} · {attack.targetX}:{attack.targetY} · 🛡 {t("Open base","Към базата")}</button>
+            </div>)}
+          </section>}
           {campaignTab==="active" && myMothershipMarches.length>0 && <section>
             <h3>{t("Alien Command Ship attacks","Атаки срещу командния кораб на извънземните")}</h3>
             {myMothershipMarches.map(march => <div key={march.id}>
