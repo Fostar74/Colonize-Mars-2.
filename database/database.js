@@ -3243,6 +3243,32 @@ class DatabaseManager {
 
   getUserEquipment(userId) {
     try {
+      // One-time, player-specific correction of an overleveled armor item.
+      // The original split between slot and Universal points is not recorded;
+      // refund the five upgrade costs as Universal points (usable for armor).
+      if(db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="KakaMarianka"){
+        db.exec("CREATE TABLE IF NOT EXISTS equipment_repair_log (repair_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
+        db.transaction(()=>{
+          const key="kakamarianka-armor-15-to-10-2026-11";
+          if(db.prepare("SELECT 1 FROM equipment_repair_log WHERE repair_key=?").get(key))return;
+          const row=this.equipmentQueries.getEquipment.get(userId);
+          if(!row)return;
+          const inventory=JSON.parse(row.gear_inventory||"[]");
+          const matches=inventory.filter(item=>String(item.slot||item.type||"").toUpperCase()==="ARMOR"&&Number(item.level??item.levelRequirement??0)===15);
+          if(matches.length!==1)return;
+          const item=matches[0],cost=craftingCosts[String(item.rarity).toLowerCase()];
+          if(!Number.isInteger(cost))return;
+          item.level=10;
+          const equipped=JSON.parse(row.equipped_items||"{}");
+          for(const [slot,gear] of Object.entries(equipped)){
+            if(gear?.id===item.id)equipped[slot]={...gear,level:10};
+          }
+          const points=JSON.parse(row.crafting_points||"{}");
+          points.Universal=(Number(points.Universal)||0)+5*cost;
+          this.equipmentQueries.updateEquipment.run(JSON.stringify(equipped),JSON.stringify(inventory),JSON.stringify(points),userId);
+          db.prepare("INSERT INTO equipment_repair_log(repair_key) VALUES (?)").run(key);
+        })();
+      }
       const equipment = this.equipmentQueries.getEquipment.get(userId);
       if (!equipment) return null;
       const originalEquipped=JSON.parse(equipment.equipped_items||"{}");
