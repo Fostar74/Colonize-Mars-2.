@@ -251,6 +251,8 @@ function initializeDatabase() {
     db.exec("CREATE INDEX IF NOT EXISTS hospital_entries_user_status ON hospital_entries(user_id,status,created_at)");
     db.exec("CREATE INDEX IF NOT EXISTS hospital_entries_event ON hospital_entries(source,source_id,status)");
     db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_seasons (week_start INTEGER PRIMARY KEY, ends_at INTEGER NOT NULL, settled INTEGER NOT NULL DEFAULT 0)");
+    db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_reward_ledger (week_start INTEGER NOT NULL, alliance_id INTEGER NOT NULL, user_id INTEGER NOT NULL, rank INTEGER NOT NULL, amount_each INTEGER NOT NULL, credited_at INTEGER NOT NULL, PRIMARY KEY(week_start,user_id))");
+    db.exec("CREATE INDEX IF NOT EXISTS saturday_invasion_reward_player ON saturday_invasion_reward_ledger(user_id,week_start)");
     db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_runs (id INTEGER PRIMARY KEY AUTOINCREMENT, week_start INTEGER NOT NULL REFERENCES saturday_invasion_seasons(week_start), alliance_id INTEGER NOT NULL REFERENCES alliances(id), started_by INTEGER NOT NULL REFERENCES users(id), status TEXT NOT NULL DEFAULT 'active', started_at INTEGER NOT NULL, completed_at INTEGER, UNIQUE(week_start,alliance_id))");
     db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_members (run_id INTEGER NOT NULL REFERENCES saturday_invasion_runs(id), user_id INTEGER NOT NULL REFERENCES users(id), score INTEGER NOT NULL DEFAULT 0, waves INTEGER NOT NULL DEFAULT 0, eliminated INTEGER NOT NULL DEFAULT 0, next_attack_at INTEGER NOT NULL, last_battle TEXT, PRIMARY KEY(run_id,user_id))");
     db.exec("CREATE TABLE IF NOT EXISTS saturday_invasion_attacks (id INTEGER PRIMARY KEY AUTOINCREMENT,run_id INTEGER NOT NULL REFERENCES saturday_invasion_runs(id),user_id INTEGER NOT NULL REFERENCES users(id),level INTEGER NOT NULL,origin_x INTEGER NOT NULL,origin_y INTEGER NOT NULL,launched_at INTEGER NOT NULL,arrives_at INTEGER NOT NULL,resolved_at INTEGER,result TEXT)");
@@ -2303,10 +2305,12 @@ class DatabaseManager {
         if(!prize||!rank.score)return;
         const participants=db.prepare("SELECT user_id FROM saturday_invasion_members m JOIN saturday_invasion_runs r ON r.id=m.run_id WHERE r.week_start=? AND r.alliance_id=?").all(weekStart,rank.alliance_id);
         for(const {user_id} of participants){
-          const progress=this.progressQueries.getProgress.get(user_id);if(!progress)continue;
-          const resources=JSON.parse(progress.resources);
-          for(const key of ["Gold","Iron","Water","Solar"])resources[key]=(Number(resources[key])||0)+prize;
-          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE id=?").run(JSON.stringify(resources),progress.id);
+          // Persistent idempotency ledger: one prize per player per weekly event.
+          // At the Sunday 00:00 UTC reset the prize is deposited into Inventory,
+          // so the player can withdraw it whenever they next log in.
+          const credited=db.prepare("INSERT OR IGNORE INTO saturday_invasion_reward_ledger (week_start,alliance_id,user_id,rank,amount_each,credited_at) VALUES (?,?,?,?,?,?)").run(weekStart,rank.alliance_id,user_id,index+1,prize,Date.now());
+          if(!credited.changes)continue;
+          for(const resource of ["Gold","Iron","Water","Solar"])this.addInventoryReward(user_id,"resources",resource,prize);
         }
       });
       const completedAt=Date.now();
@@ -2329,8 +2333,9 @@ class DatabaseManager {
     const players=db.prepare("SELECT u.id AS userId,u.username,m.score,m.waves,m.eliminated,m.next_attack_at AS nextAttackAt,m.last_battle AS lastBattleJson,r.status AS runStatus,r.alliance_id,a.name AS alliance FROM saturday_invasion_members m JOIN users u ON u.id=m.user_id JOIN saturday_invasion_runs r ON r.id=m.run_id JOIN alliances a ON a.id=r.alliance_id WHERE r.week_start=? ORDER BY m.score DESC,u.username COLLATE NOCASE").all(window.startsAt).map((row,index)=>({...row,lastBattle:row.lastBattleJson?JSON.parse(row.lastBattleJson):null,rank:index+1}));
     const mine=alliance?players.find(row=>row.userId===userId&&row.alliance_id===alliance.id)||null:null;
     const season=db.prepare("SELECT settled FROM saturday_invasion_seasons WHERE week_start=?").get(window.startsAt);
+    const reward=db.prepare("SELECT rank,amount_each AS amountEach,credited_at AS creditedAt FROM saturday_invasion_reward_ledger WHERE week_start=? AND user_id=?").get(window.startsAt,userId)||null;
     const myAttacks=myRun?db.prepare("SELECT id,level,launched_at AS launchedAt,arrives_at AS arrivesAt,resolved_at AS resolvedAt,result FROM saturday_invasion_attacks WHERE run_id=? AND user_id=? ORDER BY id DESC LIMIT 20").all(myRun.id,userId).map(attack=>({...attack,result:attack.result?JSON.parse(attack.result):null})):[];
-    return {name:"Alien Invasion",startsAt:window.startsAt,endsAt:window.endsAt,active:isOpen,settled:!!season?.settled,alliance:alliance?{...alliance,run:myRun||null,canStart:isOpen&&["Leader","Co-Leader"].includes(alliance.role)&&!myRun}:null,myResult:mine,myAttacks,alliances,players,rewards:[50000,30000,15000].map((amount,index)=>({rank:index+1,resources:amount})),nextStartsAt:window.startsAt};
+    return {name:"Alien Invasion",startsAt:window.startsAt,endsAt:window.endsAt,active:isOpen,settled:!!season?.settled,reward,alliance:alliance?{...alliance,run:myRun||null,canStart:isOpen&&["Leader","Co-Leader"].includes(alliance.role)&&!myRun}:null,myResult:mine,myAttacks,alliances,players,rewards:[50000,30000,15000].map((amount,index)=>({rank:index+1,resources:amount})),nextStartsAt:window.startsAt};
   }
 
   getMothershipReports(userId) {
