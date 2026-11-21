@@ -647,11 +647,27 @@ class DatabaseManager {
           }
           previousEnd = Number(job.endsAt) || previousEnd;
         }
-        // Process every completed job, including when the player was offline.
-        while(queue.length&&queue[0].endsAt<=now){
-          const done=queue.shift();
-          barracksReserve[done.unit]=(Number(barracksReserve[done.unit])||0)+done.quantity;
-          changed=true;
+        // Transfer trained soldiers incrementally to the barracks reserve.
+        // Keep the original finish time for the remainder of the group.
+        while(queue.length){
+          const job=queue[0];
+          if(Number(job.endsAt)<=now){
+            queue.shift();
+            barracksReserve[job.unit]=(Number(barracksReserve[job.unit])||0)+Number(job.quantity||0);
+            changed=true;
+            continue;
+          }
+          const start=Number(job.startsAt),end=Number(job.endsAt),quantity=Number(job.quantity);
+          if(start<=now&&end>start&&Number.isSafeInteger(quantity)&&quantity>1){
+            const trained=Math.min(quantity-1,Math.floor(quantity*(now-start)/(end-start)));
+            if(trained>0){
+              barracksReserve[job.unit]=(Number(barracksReserve[job.unit])||0)+trained;
+              job.quantity=quantity-trained;
+              job.startsAt=start+(end-start)*trained/quantity;
+              changed=true;
+            }
+          }
+          break;
         }
         trainingQueues[category]=queue;
       }
