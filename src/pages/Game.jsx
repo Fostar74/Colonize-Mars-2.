@@ -272,6 +272,25 @@ function EventsPanel() {
     }catch(error){setLabyrinthNotice(error.message);}
     finally{setLabyrinthBusy(false);}
   };
+  const replayClearedLabyrinthRoom=async(room)=>{
+    setLabyrinthBusy(true);setLabyrinthNotice("");
+    try{
+      if(labyrinthBattle){
+        const leave=await fetch(api+"/events/labyrinth/battle",{method:"POST",headers,body:JSON.stringify({userId:Number(userId),action:"retreat"})});
+        const left=await leave.json();
+        if(!leave.ok||left.error)throw Error(left.message||left.error||"Could not leave current battle.");
+        setLabyrinthBattle(null);
+        if(left.status)setLabyrinth(left.status);
+      }
+      const response=await fetch(api+"/events/labyrinth/mission",{method:"POST",headers,body:JSON.stringify({userId:Number(userId),room})});
+      const result=await response.json();
+      if(!response.ok||result.error)throw Error(result.message||result.error||"Automatic battle failed.");
+      if(result.status)setLabyrinth(result.status);
+      setLabyrinthBattle(result.battle||null);
+      setLabyrinthNotice((result.victory?t("VICTORY","ПОБЕДА"):t("DEFEAT","ЗАГУБА"))+" · "+(result.monster?.name||"")+" · "+(result.victory?"+ "+result.gainedHp+" HP":"0 HP"));
+    }catch(error){setLabyrinthNotice(error.message);}
+    finally{setLabyrinthBusy(false);}
+  };
   const labyrinthCombat=async(action,room)=>{
     setLabyrinthBusy(true);setLabyrinthNotice("");
     try{
@@ -406,7 +425,7 @@ function EventsPanel() {
             <select id="labyrinth-replay-room" defaultValue={Math.max(1,labyrinth.room-1)} onChange={e=>{e.currentTarget.dataset.room=e.target.value;}} style={{padding:7,background:"#28213b",color:"white"}}>
               {Array.from({length:Math.min(300,labyrinth.room-1)},(_,i)=><option key={i+1} value={i+1}>{Math.ceil((i+1)/10)}-{i%10+1}</option>)}
             </select>
-            <button type="button" disabled={labyrinthBusy||!!labyrinthBattle||labyrinth.missionsToday>=10} onClick={()=>runLabyrinthMission(Number(document.getElementById("labyrinth-replay-room")?.value)||1)} style={{marginLeft:8,padding:"8px 14px"}}>{t("Auto battle","Автоматична битка")}</button>
+            <button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10} onClick={()=>replayClearedLabyrinthRoom(Number(document.getElementById("labyrinth-replay-room")?.value)||1)} style={{marginLeft:8,padding:"8px 14px"}}>{t("Auto battle","Автоматична битка")}</button>
           </div>}
         </>}
         <p>💚 {labyrinth.dailyRewardClaimed?t("Today's green crystal collected.","Днешният зелен кристал е получен."):t("Your first battle today awards a green crystal.","Първата битка за деня носи зелен кристал.")}</p>
