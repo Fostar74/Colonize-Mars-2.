@@ -356,7 +356,7 @@ function EventsPanel() {
           <span>💚 {t("Green crystals","Зелени кристали")}: {labyrinth.crystals?.green||0}</span>
         </div>
         <div style={{display:"flex",gap:5,marginBottom:14}}>
-          {Array.from({length:10},(_,i)=><div key={i} title={String(i+1)} style={{flex:1,textAlign:"center",borderRadius:5,padding:"7px 0",fontSize:12,fontWeight:700,background:i+1<labyrinth.chamber?"#286b59":i+1===labyrinth.chamber?"#7952a8":"#262334",border:"1px solid #5e5275"}}>{i===9?"👑":i+1}</div>)}
+          {Array.from({length:10},(_,i)=><div key={i} title={String(i+1)} style={{flex:1,textAlign:"center",borderRadius:5,padding:"7px 0",fontSize:12,fontWeight:700,background:i+1<labyrinth.chamber?"#286b59":i+1===labyrinth.chamber?"#7952a8":"#262334",border:"1px solid #5e5275"}}>{i+1}</div>)}
         </div>
         {!labyrinthInside?<div style={{minHeight:"min(65vh,680px)",display:"grid",placeItems:"center",border:"2px solid #826147",borderRadius:16,background:"linear-gradient(#0008,#0009),url("+labyrinthCavernArt+") center/cover",textAlign:"center",padding:24}}>
           <div>
@@ -368,7 +368,7 @@ function EventsPanel() {
           <style>{`@keyframes labyrinthPortalPulse{from{transform:scale(.94);filter:brightness(.7)}to{transform:scale(1.06);filter:brightness(1.4)}}`}</style>
         </div>:<>
         <div style={{border:"2px solid #5477aa",borderRadius:14,padding:16,background:"linear-gradient(#08122355,#05091599),url("+labyrinthCavernArt+") center/cover",overflow:"hidden",position:"relative",minHeight:330}}>
-          <div style={{textAlign:"center",fontWeight:900,color:"#ffe2a3",marginBottom:8}}>{labyrinthBattle?t("ROUND","РУНД")+" "+(labyrinthBattle.round+1):t("UNDERGROUND CHAMBER","ПОДЗЕМНА ЗАЛА")+" "+labyrinth.stage+"-"+labyrinth.chamber}</div>
+          <div style={{textAlign:"center",fontWeight:900,color:"#ffe2a3",marginBottom:8}}>{labyrinthBattle?t("UNDERGROUND CHAMBER","ПОДЗЕМНА ЗАЛА")+" "+Math.ceil(labyrinthBattle.room/10)+"-"+(((labyrinthBattle.room-1)%10)+1)+" · "+t("ROUND","РУНД")+" "+(labyrinthBattle.round+1):t("UNDERGROUND CHAMBER","ПОДЗЕМНА ЗАЛА")+" "+labyrinth.stage+"-"+labyrinth.chamber}</div>
           {labyrinthImpact>0&&labyrinthBusy&&<div key={"blast"+labyrinthImpact} aria-hidden="true" style={{position:"absolute",left:"12%",right:"12%",top:"56%",height:15,pointerEvents:"none",zIndex:7}}>
             <span style={{position:"absolute",left:0,top:0,width:55,height:12,borderRadius:"50%",background:"linear-gradient(90deg,#05a7ff,#b5ffff,#fff)",boxShadow:"0 0 16px 7px #00c9ff,0 0 35px 14px #007fff",animation:"labyrinthBolt .8s ease-in forwards"}}/>
             <span style={{position:"absolute",right:0,top:0,width:65,height:15,borderRadius:"50%",background:"linear-gradient(90deg,#fff,#ff5d5d,#b90038)",boxShadow:"0 0 15px 6px #ff334f",animation:"labyrinthCounter .8s ease-in .8s both"}}/>
@@ -399,6 +399,7 @@ function EventsPanel() {
             <button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("strike")} style={{padding:"14px 28px",fontWeight:900,fontSize:18,background:"#b65b18",color:"white",borderRadius:10}}>⚔️ {t("ATTACK","АТАКУВАЙ")} · {t("Round","Рунд")} {labyrinthBattle.round+1}</button>
 
           </div>:<button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10} onClick={()=>labyrinthCombat("start")} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{t("Enter chamber and face monster","Влез в залата и се изправи срещу чудовището")}</button>}
+          {labyrinthBattle&&<p style={{color:"#e6cda7"}}>{t("Finish the current battle before starting an automatic replay. A defeat does not advance your chamber.","Завърши текущата битка, преди да започнеш автоматично повторение. Загубата не те премества в следваща стая.")}</p>}
           {labyrinth.room>1&&<div style={{marginTop:12}}>
             <label htmlFor="labyrinth-replay-room">{t("Repeat a cleared room (automatic battle)","Повтори спечелена стая (автоматична битка)")}: </label>
             <select id="labyrinth-replay-room" defaultValue={Math.max(1,labyrinth.room-1)} onChange={e=>{e.currentTarget.dataset.room=e.target.value;}} style={{padding:7,background:"#28213b",color:"white"}}>
