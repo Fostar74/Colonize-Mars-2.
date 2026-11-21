@@ -398,8 +398,7 @@ function EventsPanel() {
           {labyrinthBattle?<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
             <button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("strike")} style={{padding:"14px 28px",fontWeight:900,fontSize:18,background:"#b65b18",color:"white",borderRadius:10}}>⚔️ {t("ATTACK","АТАКУВАЙ")} · {t("Round","Рунд")} {labyrinthBattle.round+1}</button>
 
-          </div>:<button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10||labyrinth.levelCompletedToday} onClick={()=>labyrinthCombat("start")} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{t("Enter chamber and face monster","Влез в залата и се изправи срещу чудовището")}</button>}
-          {labyrinth.levelCompletedToday&&<p>{t("You cleared one stage today. You can repeat cleared battles for rewards.","Днес премина едно ниво. Можеш да повтаряш вече спечелени битки за награди.")}</p>}
+          </div>:<button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10} onClick={()=>labyrinthCombat("start")} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{t("Enter chamber and face monster","Влез в залата и се изправи срещу чудовището")}</button>}
           {labyrinth.room>1&&<div style={{marginTop:12}}>
             <label htmlFor="labyrinth-replay-room">{t("Repeat a cleared room (automatic battle)","Повтори спечелена стая (автоматична битка)")}: </label>
             <select id="labyrinth-replay-room" defaultValue={Math.max(1,labyrinth.room-1)} onChange={e=>{e.currentTarget.dataset.room=e.target.value;}} style={{padding:7,background:"#28213b",color:"white"}}>
