@@ -147,6 +147,66 @@
   background: #8dd9ff;
   box-shadow: 0 0 12px rgba(91, 198, 255, .8);
 }
+.landing-soundtrack {
+  width: min(100%, 430px);
+  box-sizing: border-box;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 15px;
+  padding: 11px 12px;
+  border: 1px solid rgba(144, 205, 240, .3);
+  border-radius: 12px;
+  background: rgba(4, 13, 24, .76);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, .24);
+  text-align: left;
+}
+.soundtrack-note {
+  flex: 0 0 auto;
+  color: #8bdcff;
+  font-size: 24px;
+  text-shadow: 0 0 14px rgba(56, 184, 255, .8);
+}
+.soundtrack-label {
+  min-width: 0;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+}
+.soundtrack-label span {
+  color: #9ab5ca;
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: .13em;
+}
+.soundtrack-label strong {
+  overflow: hidden;
+  color: #f1f8ff;
+  font-size: 13px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.soundtrack-controls {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+.soundtrack-controls button {
+  min-height: 34px;
+  padding: 6px 10px;
+  border: 1px solid rgba(136, 205, 244, .45);
+  border-radius: 7px;
+  background: rgba(36, 117, 160, .28);
+  color: #edf8ff;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.soundtrack-controls button:hover {
+  background: rgba(47, 153, 205, .5);
+}
 .login-panel {
   width: 100%;
   max-width: 410px;
@@ -300,6 +360,10 @@
     width: 100%;
     margin-bottom: 3px;
   }
+  .landing-soundtrack {
+    margin-left: auto;
+    margin-right: auto;
+  }
   .login-panel {
     max-width: 520px;
     justify-self: center;
@@ -323,6 +387,17 @@
   .reset-footer {
     gap: 6px;
     font-size: 11px;
+  }
+  .landing-soundtrack {
+    gap: 8px;
+    padding: 9px;
+  }
+  .soundtrack-controls {
+    gap: 4px;
+  }
+  .soundtrack-controls button {
+    padding-left: 7px;
+    padding-right: 7px;
   }
 }
 @media (prefers-reduced-motion: reduce) {
