@@ -2529,6 +2529,21 @@ class DatabaseManager {
       db.prepare("UPDATE labyrinth_players SET missions_today=0,combat_active='',combat_one_time_reset=2 WHERE user_id=?").run(userId);
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
+    // One-time recovery for MazeRunner after the Labyrinth balance change.
+    // Preserve historical progress, earned HP and crystals; restart at floor 2,
+    // room 1 with fresh attempts for the recovery day.
+    if(db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"){
+      db.exec("CREATE TABLE IF NOT EXISTS labyrinth_recovery_log (user_id INTEGER NOT NULL, recovery_key TEXT NOT NULL, previous_room INTEGER NOT NULL, previous_missions INTEGER NOT NULL, recovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,recovery_key))");
+      const recoveryKey="mazerunner-floor-2-recovery-2026-11-21";
+      db.transaction(()=>{
+        if(db.prepare("SELECT 1 FROM labyrinth_recovery_log WHERE user_id=? AND recovery_key=?").get(userId,recoveryKey))return;
+        const previous=db.prepare("SELECT combat_room,missions_today FROM labyrinth_players WHERE user_id=?").get(userId);
+        if(!previous||Number(previous.combat_room)<11)return;
+        db.prepare("INSERT INTO labyrinth_recovery_log(user_id,recovery_key,previous_room,previous_missions) VALUES (?,?,?,?)").run(userId,recoveryKey,previous.combat_room,previous.missions_today);
+        db.prepare("UPDATE labyrinth_players SET combat_room=11,missions_today=0,combat_active='',combat_log='[]' WHERE user_id=?").run(userId);
+      })();
+      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
+    }
     // Daily participation reward is granted on entry, even without a battle.
     if(row.combat_reward_day!==today){
       const daily=JSON.parse(row.crystals||"{}");
