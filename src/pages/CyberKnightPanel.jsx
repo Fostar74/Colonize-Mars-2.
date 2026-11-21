@@ -96,6 +96,7 @@ function CyberKnightPanel({ onClose }) {
 
   const handleEquip = async (slot, item) => {
     if ((item.slot || item.type || "").toUpperCase() !== slot) return;
+    if(Number(item.level??item.levelRequirement??1)>knightLevel){setEquipmentNotice(t("Item level exceeds Cyber Knight level.","Нивото на предмета надвишава нивото на Cyber Knight."));return;}
     const nextEquipped = {...equippedItems,[slot]:item};
     progressManager.setUserInfo(sessionStorage.getItem("userId"), sessionStorage.getItem("username"));
     const saved=await progressManager.saveEquipment(nextEquipped);
@@ -192,6 +193,7 @@ function CyberKnightPanel({ onClose }) {
                   <p>{"★".repeat(Number(item.stars)||({Common:1,Uncommon:2,Rare:3,Epic:4,Legendary:5}[item.rarity]||1))} · {t("Bonus slots:","Слотове за бонуси:")} {item.bonusSlots||1}</p>
                   <p>{t("Rarity bonus:","Бонус според рядкостта:")} {item.rarityBonus??({Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1)}% · {t("Maximum:","Максимум:")} {item.maximumBonus||50}%</p>
                   {knightLevel<(rarityUnlockLevel[item.rarity]||1)&&<p role="status">{t("Unlocks at Cyber Knight level","Отключва се на ниво на Киберрицаря")} {rarityUnlockLevel[item.rarity]}</p>}
+                  {Number(item.level??item.levelRequirement??1)>knightLevel&&<p role="status">{t("Requires Cyber Knight level","Изисква Cyber Knight ниво")} {Number(item.level??item.levelRequirement??1)}</p>}
                   <ul>
                     {itemEffects(item).map((s, i) => (
                       <li key={i}>{s}</li>
@@ -199,7 +201,7 @@ function CyberKnightPanel({ onClose }) {
                   </ul>
                   <div className="item-buttons">
                     <button
-                      disabled={knightLevel<(rarityUnlockLevel[item.rarity]||1)||equippedItems[selectedSlot]?.id===item.id}
+                      disabled={knightLevel<(rarityUnlockLevel[item.rarity]||1)||Number(item.level??item.levelRequirement??1)>knightLevel||equippedItems[selectedSlot]?.id===item.id}
                       onClick={() => {
                         setSelectedItem(item);
                         setActiveModal("equip");
