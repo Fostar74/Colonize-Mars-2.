@@ -2468,7 +2468,7 @@ class DatabaseManager {
     const chamber=((room-1)%10)+1;
     const boss=chamber===10;
     const base=1000+(chamber-1)*500+(boss?4500:0);
-    const hp=base+(stage-1)*100;
+    const hp=base+(stage-1)*10000;
     const damage=Math.round((65+chamber*17)*(stage===1?1:8*Math.pow(1.22,stage-2)));
     const heal=stage<4?0:Math.min(15,2+Math.floor((stage-4)/3)*2+(boss?1:0));
     const names=["Spore Mutant","Xeno Stalker","Plasma Beast","Cave Reaper","Void Sentinel","Alien Warden","Abyss Predator","Crystal Devourer","Nightmare Guardian","Alien Overlord"];
@@ -2540,7 +2540,7 @@ class DatabaseManager {
         if(progress>300)return {error:"The final medicine has already been found."};
         const requested=Number(options.room);
         const room=Number.isInteger(requested)&&requested>=1&&requested<progress?requested:progress;
-        if(room===progress&&row.combat_level_day===today)return {error:"You already cleared one floor today. Repeat a previous battle."};
+
         const monster=this.labyrinthMonster(room),knight=this.labyrinthKnight(userId);
         const monsterMaxHp=Math.max(1,Math.round(monster.hp*(1-knight.enemyHpReduction/100)));
         active={room,monster,knight,knightHp:knight.maxHp,monsterHp:monsterMaxHp,monsterMaxHp,round:0,log:[],startedAt:Date.now()};
