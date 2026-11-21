@@ -1268,7 +1268,7 @@ class DatabaseManager {
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),userId);
       const now=Date.now();
       const eventParticipant=db.prepare("SELECT 1 FROM saturday_invasion_members m JOIN saturday_invasion_runs r ON r.id=m.run_id WHERE m.user_id=? AND m.eliminated=0 AND r.status='active' AND r.week_start=?").get(recipientId,this.saturdayInvasionWindow(now).startsAt);
-      const travelMs=armyTravelDuration(eventParticipant?30000:60000,units,this.protocolBonus(userId,"Rapid Deployment"));
+      const travelMs=eventParticipant?30000:armyTravelDuration(60000,units,this.protocolBonus(userId,"Rapid Deployment"));
       const result=db.prepare("INSERT INTO alliance_reinforcements(alliance_id,sender_id,recipient_id,units,launched_at,arrives_at) VALUES (?,?,?,?,?,?)").run(members[0].alliance_id,userId,recipientId,JSON.stringify(units),now,now+travelMs);
       return {missionId:Number(result.lastInsertRowid),arrivesAt:now+travelMs};
     })();
