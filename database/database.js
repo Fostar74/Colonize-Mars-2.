@@ -1924,6 +1924,11 @@ class DatabaseManager {
       const notify=(sender,recipient,body)=>db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?, 'trade')").run(sender,recipient,null,body,now);
       notify(userId,offer.seller_id,"Marketplace offer #"+offerId+" accepted by "+buyerName+". Payment received. / Офертата #"+offerId+" е приета от "+buyerName+". Плащането е получено.");
       notify(offer.seller_id,userId,"Marketplace purchase completed from "+sellerName+". Resources added to your base. / Покупката от "+sellerName+" е завършена. Ресурсите са добавени в базата ти.");
+      // Notify both parties only after the offer is successfully accepted.
+      // The notifications persist until individually acknowledged.
+      const tradeAlert=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'trade_message', '', ?)");
+      tradeAlert.run(offer.seller_id,now);
+      tradeAlert.run(userId,now);
       db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(offer.seller_id,userId,JSON.stringify(offered),now);
       return {offerId:Number(offerId),buyerResources:buyer.resources,sellerResources:seller.resources};
     })();
