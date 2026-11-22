@@ -3088,7 +3088,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
           const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
           const slot=slots[require("crypto").randomInt(slots.length)];
           const stars=starsForAlienMission(mission.level);
-          const rarity=rarityByStars[stars];
+          const rarity="Common"; // New drops start white; forging determines rarity at levels 11/21/31/41.
           const rarityBonus=rarityBonusPercent[rarity];
           const rolled=rollEquipmentBonuses(slot,rarity,stars);
           const item={id:"alien-"+mission.id,name:"Plasma "+slot[0]+slot.slice(1).toLowerCase(),slot,rarity,stars,level:0,stats:rolled.stats,effects:rolled.effects,bonusSlots:stars,rarityBonus,maximumBonus:50,obtainedFrom:"Alien Base "+mission.level};
