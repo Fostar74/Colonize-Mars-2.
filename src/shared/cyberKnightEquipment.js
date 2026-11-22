@@ -1,6 +1,7 @@
 const {categories}=require("./unitEconomy");
 const rarityByStars={1:"Common",2:"Uncommon",3:"Rare",4:"Epic",5:"Legendary"};
-const rarityUnlockLevel={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40};
+const rarityUnlockLevel={Common:1,Uncommon:11,Rare:21,Epic:31,Legendary:41};
+function rarityForEquipmentLevel(level){const n=Math.max(0,Math.min(50,Math.floor(Number(level)||0)));return n>=41?"Legendary":n>=31?"Epic":n>=21?"Rare":n>=11?"Uncommon":"Common";}
 const rarityBonusPercent={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40};
 const combatUnits=Object.entries(categories).filter(([category])=>category!=="Elite").flatMap(([,units])=>units);
 const alienCombatUnits=["Alien Infantry","Xeno Warrior","Spore Archer","Plasma Stalker","War Drone","Siege Behemoth","Praetorian Guard","Alien Overlord"];
@@ -44,13 +45,13 @@ function normalizeEquipmentItem(item){
   if(!item||typeof item!=="object")return item;
   const slot=String(item.slot||item.type||"").toUpperCase();
   if(!effectKindBySlot[slot])return item;
-  const rarity=rarityStars[item.rarity]?item.rarity:rarityByStars[Number(item.stars)||Number(item.bonusSlots)]||"Common";
+  const rarity=rarityForEquipmentLevel(item.level??item.levelRequirement??0);
   const stars=Math.max(1,Math.min(5,Number(item.stars)||Number(item.bonusSlots)||rarityStars[rarity]||1));
   const pool=slot==="BOOTS"||slot==="GLOVES"?combatProtocols:slot==="WEAPON"||slot==="SHIELD"?[...combatUnits,...alienCombatUnits]:combatUnits;
   const effects=Array.isArray(item.effects)?item.effects:[];
   const valid=!!effectKindBySlot[slot]&&effects.length===Math.min(stars,pool.length)&&effects.every(effect=>effect?.kind===effectKindBySlot[slot]&&pool.includes(effect.target)&&Number.isFinite(Number(effect.value))&&Number(effect.value)>=0)&&new Set(effects.map(effect=>effect.target)).size===effects.length;
   // Repair legacy elite-unit bonuses in existing gear without touching level, rarity or spent forge points.
-  const normalizedEffects=valid?effects:rollEquipmentBonuses(slot,rarity,stars).effects;
+  const normalizedEffects=(valid?effects:rollEquipmentBonuses(slot,rarity,stars).effects).map(effect=>({...effect,value:rarityBonusPercent[rarity]}));
   const normalizedName=/^Alien\s/i.test(String(item.name||""))?"Plasma "+slot[0]+slot.slice(1).toLowerCase():item.name;
   return {...item,name:normalizedName||"Plasma "+slot[0]+slot.slice(1).toLowerCase(),slot,stars,bonusSlots:stars,rarity,rarityBonus:rarityBonusPercent[rarity],maximumBonus:50,effects:normalizedEffects,stats:normalizedEffects.map(describeEquipmentEffect)};
 }
@@ -69,4 +70,4 @@ function equipmentCombatBonuses(equippedItems={}){
   return result;
 }
 
-module.exports={rarityByStars,rarityUnlockLevel,rarityBonusPercent,starsForAlienMission,combatProtocols,protocolLabels,rollEquipmentBonuses,describeEquipmentEffect,normalizeEquipmentItem,equipmentCombatBonuses};
+module.exports={rarityByStars,rarityUnlockLevel,rarityBonusPercent,rarityForEquipmentLevel,starsForAlienMission,combatProtocols,protocolLabels,rollEquipmentBonuses,describeEquipmentEffect,normalizeEquipmentItem,equipmentCombatBonuses};
