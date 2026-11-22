@@ -444,7 +444,8 @@ function EventsPanel() {
       </>}
         </>}
 
-      <h3>{t("Labyrinth standings","Класиране в Лабиринта")}</h3>
+      <h3>{t("Individual Labyrinth standings","Индивидуално класиране в Лабиринта")}</h3>
+      <p style={{color:"#cfbde9",marginTop:0}}>{t("Solo event: every Cyber Knight competes independently. Rankings are based on the highest room reached, then permanent HP. Alliance points are not counted.","Индивидуално събитие: всеки Cyber Knight се състезава самостоятелно. Класирането е по най-висока достигната стая, след това по постоянен HP. Точки на алианса не се събират.")}</p>
       {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Room","Стая")}</th><th>{t("Permanent HP","Постоянен HP")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{Math.min(30,Math.ceil(row.combat_room/10))}-{(row.combat_room-1)%10+1}</td><td>+{row.combat_hp_bonus}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights yet.","Все още няма Киберрицари.")}</p>}
     </section>
 
