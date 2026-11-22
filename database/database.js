@@ -2698,7 +2698,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       // One random colored crystal for every victory, including replayed rooms.
       // Defeats and retreats do not grant crystals. Green daily rewards stay separate.
       const crystalColors=["yellow","blue","orange","purple"];
-      const crystalReward=victory?crystalColors[crypto.randomInt(crystalColors.length)]:null;
+      const crystalReward=victory?crystalColors[require("crypto").randomInt(crystalColors.length)]:null;
       const crystals=JSON.parse(row.crystals||"{}");
       if(crystalReward)crystals[crystalReward]=(Number(crystals[crystalReward])||0)+1;
       db.prepare("UPDATE labyrinth_players SET combat_active='',combat_room=?,combat_hp_bonus=combat_hp_bonus+?,combat_level_day=?,combat_log=?,crystals=?,medicine_found=?,completed_at=? WHERE user_id=?")
