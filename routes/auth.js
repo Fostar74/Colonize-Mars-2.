@@ -673,6 +673,19 @@ router.post("/save-equipment", requireSession, async (req, res) => {
   }
 });
 
+router.post("/dismantle-equipment", requireSession, (req, res) => {
+  const {userId,itemId}=req.body;
+  if(!itemId)return res.status(400).json({message:"Item ID required."});
+  try{
+    const result=db.dismantleEquipment(Number(userId),itemId);
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){
+    console.error("Dismantle equipment error:",error);
+    res.status(500).json({message:"Unable to dismantle equipment."});
+  }
+});
+
 router.post("/craft-equipment", requireSession, (req, res) => {
   const {userId, itemId, expectedLevel} = req.body;
   try {
