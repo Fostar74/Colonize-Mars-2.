@@ -3338,6 +3338,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
       points[slot] = slotPoints - fromSlot;
       points.Universal = universal - (cost - fromSlot);
       item.level = level + 1;
+      // Recalculate rarity, effect percentages and visual tier immediately at forge milestones.
+      Object.assign(item,normalizeEquipmentItem(item));
       for (const [key, equipped] of Object.entries(equipment.equippedItems)) {
         if (equipped?.id === itemId) equipment.equippedItems[key] = item;
       }
