@@ -1149,8 +1149,8 @@ class DatabaseManager {
     if(!["private","trade","alliance"].includes(scope))return {error:"Unknown message channel."};
     const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
     if(scope==="alliance"&&!member)return {error:"Join an alliance to view its chat."};
-    const filter=scope==="alliance" ? "m.alliance_id=?" : `(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND ${scope==="private"?"m.message_type IN ('private','system')":"m.message_type=?"}`;
-    const params=scope==="alliance" ? [member.alliance_id] : scope==="private" ? [userId,userId] : [userId,userId,scope];
+    const filter=scope==="alliance" ? "m.alliance_id=?" : scope==="trade" ? "m.recipient_id=? AND m.message_type='trade'" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type IN ('private','system')";
+    const params=scope==="alliance" ? [member.alliance_id] : scope==="trade" ? [userId] : [userId,userId];
     const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,m.message_type AS messageType,
       CASE WHEN m.message_type='system' THEN 'Game System' ELSE sender.username END AS sender,recipient.username AS recipient FROM player_messages m
       JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
@@ -1929,8 +1929,10 @@ class DatabaseManager {
       if(changed.changes!==1)throw new Error("Offer was accepted by another player.");
       const sellerName=this.findUserById(offer.seller_id)?.username||"Another player",buyerName=this.findUserById(userId)?.username||"Another player";
       const notify=(sender,recipient,body)=>db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?, 'trade')").run(sender,recipient,null,body,now);
-      notify(userId,offer.seller_id,"Marketplace offer #"+offerId+" accepted by "+buyerName+". Payment received. / Офертата #"+offerId+" е приета от "+buyerName+". Плащането е получено.");
-      notify(offer.seller_id,userId,"Marketplace purchase completed from "+sellerName+". Resources added to your base. / Покупката от "+sellerName+" е завършена. Ресурсите са добавени в базата ти.");
+      const formatResources=resources=>keys.filter(key=>Number(resources[key]||0)>0).map(key=>Number(resources[key]).toLocaleString("en-US")+" "+({Gold:"злато",Iron:"желязо",Water:"вода",Solar:"слънчева енергия"}[key])).join(", ");
+      const offeredText=formatResources(offered),requestedText=formatResources(requested);
+      notify(userId,offer.seller_id,"Marketplace offer #"+offerId+" accepted by "+buyerName+". Sold: "+offeredText+". Received: "+requestedText+". / Оферта #"+offerId+" е приета от "+buyerName+". Продадени: "+offeredText+". Получени: "+requestedText+".");
+      notify(offer.seller_id,userId,"Marketplace purchase #"+offerId+" completed from "+sellerName+". Received: "+offeredText+". Paid: "+requestedText+". / Покупка #"+offerId+" от "+sellerName+" е завършена. Получени: "+offeredText+". Платени: "+requestedText+".");
       // Notify both parties only after the offer is successfully accepted.
       // The notifications persist until individually acknowledged.
       const tradeAlert=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'trade_message', '', ?)");
