@@ -131,6 +131,22 @@ function CyberKnightPanel({ onClose }) {
     }
   };
 
+  const handleDismantle=async()=>{
+    if(!selectedItem||crafting)return;
+    setCrafting(true);
+    try{
+      progressManager.setUserInfo(sessionStorage.getItem("userId"),sessionStorage.getItem("username"));
+      const result=await progressManager.dismantleEquipment(selectedItem.id);
+      setEquippedItems(result.equipment.equippedItems||{});
+      setInventory(result.equipment.gearInventory||[]);
+      setCraftingPoints(result.equipment.craftingPoints||{});
+      setCraftMessage(t("Equipment dismantled. Refunded ","Предметът е претопен. Върнати са ")+result.refund+t(" Universal Forge points."," универсални точки за изковаване."));
+      setActiveModal(null);setSelectedItem(null);
+      window.dispatchEvent(new Event("game-progress-updated"));
+    }catch(error){setCraftMessage(error.message);}
+    finally{setCrafting(false);}
+  };
+
   const handleCloseAll = () => {
     setSelectedSlot(null);
     setSelectedItem(null);
@@ -249,8 +265,8 @@ function CyberKnightPanel({ onClose }) {
       {activeModal === "dismantle" && selectedItem && (
         <div className="modal-window">
           <h3>{t("Dismantle","Разглоби")} {selectedItem.name}?</h3>
-          <p>{t("You will receive 5","Ще получиш 5")} {localLabel(selectedSlot)} {t("Crafting Points.","точки за изковаване.")}</p>
-          <button onClick={handleCloseAll}>{t("Confirm","Потвърди")}</button>
+          <p>{t("This round: 100% of invested upgrade points are refunded as Universal Forge points. The item will be permanently destroyed.","Този рунд: 100% от вложените точки за подобрения се връщат като универсални точки за изковаване. Предметът се унищожава окончателно.")}</p>
+          <button disabled={crafting} onClick={handleDismantle}>{crafting?t("Processing…","Обработка…"):t("Confirm dismantling","Потвърди претопяването")}</button>
           <button onClick={() => setActiveModal(null)}>{t("Cancel","Отказ")}</button>
         </div>
       )}
