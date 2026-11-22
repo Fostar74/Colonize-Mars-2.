@@ -268,7 +268,7 @@ function EventsPanel() {
       const result=await response.json();
       if(!response.ok)throw Error(result.message||"Labyrinth battle failed.");
       setLabyrinth(result.status);
-      setLabyrinthNotice((result.victory?t("VICTORY","ПОБЕДА"):t("DEFEAT","ЗАГУБА"))+" · "+result.monster.name+" · "+(result.victory?"+ "+result.gainedHp+" HP":"0 HP")+(result.greenCrystal?" · 💚 "+t("Daily green crystal","Дневен зелен кристал"):"")+(result.medicineFound?" · 🧪 NOVA!":""));
+      setLabyrinthNotice((result.victory?t("VICTORY","ПОБЕДА"):t("DEFEAT","ЗАГУБА"))+" · "+result.monster.name+" · "+(result.victory?"+ "+result.gainedHp+" HP":"0 HP")+(result.crystalReward?" · "+({yellow:"💛",blue:"💙",orange:"🧡",purple:"💜"}[result.crystalReward]||"💎")+" +1 "+t("crystal","кристал"):"")+(result.greenCrystal?" · 💚 "+t("Daily green crystal","Дневен зелен кристал"):"")+(result.medicineFound?" · 🧪 NOVA!":""));
     }catch(error){setLabyrinthNotice(error.message);}
     finally{setLabyrinthBusy(false);}
   };
@@ -287,7 +287,7 @@ function EventsPanel() {
       if(!response.ok||result.error)throw Error(result.message||result.error||"Automatic battle failed.");
       if(result.status)setLabyrinth(result.status);
       setLabyrinthBattle(result.battle||null);
-      setLabyrinthNotice((result.victory?t("VICTORY","ПОБЕДА"):t("DEFEAT","ЗАГУБА"))+" · "+(result.monster?.name||"")+" · "+(result.victory?"+ "+result.gainedHp+" HP":"0 HP"));
+      setLabyrinthNotice((result.victory?t("VICTORY","ПОБЕДА"):t("DEFEAT","ЗАГУБА"))+" · "+(result.monster?.name||"")+" · "+(result.victory?"+ "+result.gainedHp+" HP":"0 HP")+(result.crystalReward?" · "+({yellow:"💛",blue:"💙",orange:"🧡",purple:"💜"}[result.crystalReward]||"💎")+" +1 "+t("crystal","кристал"):""));
     }catch(error){setLabyrinthNotice(error.message);}
     finally{setLabyrinthBusy(false);}
   };
@@ -303,7 +303,7 @@ function EventsPanel() {
         await new Promise(resolve=>setTimeout(resolve,1700));
       }
       if(result.testReset)setLabyrinthNotice(t("Test battles reset. Earned HP and progress preserved.","Опитите за тест са възстановени. HP и напредъкът са запазени."));
-      if(result.victory)setLabyrinthNotice(t("VICTORY!","ПОБЕДА!")+" +"+result.gainedHp+" HP");
+      if(result.victory)setLabyrinthNotice(t("VICTORY!","ПОБЕДА!")+" +"+result.gainedHp+" HP"+(result.crystalReward?" · "+({yellow:"💛",blue:"💙",orange:"🧡",purple:"💜"}[result.crystalReward]||"💎")+" +1 "+t("crystal","кристал"):""));
       if(result.defeat)setLabyrinthNotice(t("DEFEAT","ЗАГУБА"));
       if(result.retreated)setLabyrinthNotice(t("Battle left. Your daily attempt is spent, but you can now replay cleared rooms.","Напусна битката. Дневният опит е изразходван, но вече можеш да повтаряш спечелени стаи."));
     }catch(error){setLabyrinthNotice(error.message);}
@@ -383,6 +383,7 @@ function EventsPanel() {
           <strong>🛡️ {t("Stage","Ниво")} {labyrinth.stage} / 30 · {t("Room","Стая")} {labyrinth.chamber} / 10</strong>
           <strong>⚔️ {t("Daily battles","Дневни битки")}: {labyrinth.missionsToday} / 10</strong>
           <span>💚 {t("Green crystals","Зелени кристали")}: {labyrinth.crystals?.green||0}</span>
+          <span>💛 {labyrinth.crystals?.yellow||0} · 💙 {labyrinth.crystals?.blue||0} · 🧡 {labyrinth.crystals?.orange||0} · 💜 {labyrinth.crystals?.purple||0}</span>
         </div>
         <div style={{display:"flex",gap:5,marginBottom:14}}>
           {Array.from({length:10},(_,i)=><div key={i} title={String(i+1)} style={{flex:1,textAlign:"center",borderRadius:5,padding:"7px 0",fontSize:12,fontWeight:700,background:i+1<labyrinth.chamber?"#286b59":i+1===labyrinth.chamber?"#7952a8":"#262334",border:"1px solid #5e5275"}}>{i+1}</div>)}
@@ -422,7 +423,7 @@ function EventsPanel() {
 
         </>}
         {labyrinthInside&&<>
-        <p style={{color:"#cfbde9"}}>{t("Every victory permanently adds 1% of the defeated monster's original HP to Cyber Knight. All battles start at full health.","Всяка победа добавя постоянно 1% от първоначалния живот на чудовището към Cyber Knight. Всяка битка започва с пълен живот.")}</p>
+        <p style={{color:"#cfbde9"}}>{t("Every victory permanently adds 1% of the monster's original HP and one random colored crystal (yellow, blue, orange or purple). All battles start at full health.","Всяка победа добавя постоянно 1% от живота на чудовището и 1 случаен цветен кристал (жълт, син, оранжев или лилав). Всяка битка започва с пълен живот.")}</p>
         {labyrinth.medicineFound?<p style={{color:"#f8b7d8",fontWeight:800}}>🧪 {t("You found Nova's medicine!","Откри лекарството за Nova!")}</p>:<>
           {labyrinthBattle?<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
             <button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("strike")} style={{padding:"14px 28px",fontWeight:900,fontSize:18,background:"#b65b18",color:"white",borderRadius:10}}>⚔️ {t("ATTACK","АТАКУВАЙ")} · {t("Round","Рунд")} {labyrinthBattle.round+1}</button>
