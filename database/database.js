@@ -790,7 +790,10 @@ class DatabaseManager {
       if (Object.keys(cost).some(key => current.resources[key] < cost[key])) return { error: "Not enough resources." };
       for (const key of Object.keys(cost)) current.resources[key] -= cost[key];
       const trainingBonus = this.protocolBonus(userId, "Accelerated Training") / 100;
-      const duration=Math.max(1000,Math.ceil(quantity*unitTrainingDuration(unit)*1000*(1-trainingBonus)));
+      // Each level of the unit's required military building reduces training time by 3%.
+      const buildingLevel=Math.max(0,Number(current.structures[requirement.building])||0);
+      const buildingTrainingBonus=Math.min(0.9,buildingLevel*0.03);
+      const duration=Math.max(1000,Math.ceil(quantity*unitTrainingDuration(unit)*1000*(1-trainingBonus)*(1-buildingTrainingBonus)));
       const startsAt=Math.max(Date.now(),queue.length?queue[queue.length-1].endsAt:0);
       const job={unit,quantity,startsAt,endsAt:startsAt+duration,trainingSpeedVersion:10,resourceCost:{...cost}};
       const trainingQueues={...current.trainingQueues,[category]:[...queue,job]};
