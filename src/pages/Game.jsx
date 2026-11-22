@@ -217,9 +217,8 @@ function LabyrinthMap({labyrinth,busy,onMove,onBacktrack,t}){
   </div>;
 }
 
-function EventsPanel() {
+function EventsPanel({onOpenInventory}) {
   const {language,t}=useLanguage();
-  const navigate=useNavigate();
   const [data,setData]=useState(null);
   const [motherShip,setMotherShip]=useState(null);
   const [labyrinth,setLabyrinth]=useState(null);
@@ -320,7 +319,7 @@ function EventsPanel() {
     <h2>{t("Alien Invasion","Alien Invasion")}</h2>
     <p>{data.active?t("Event is active","Събитието е активно"):data.settled?t("Event results are final","Класирането е окончателно"):t("Scheduled for","Насрочено за")} {date(data.startsAt)} – {date(data.endsAt)}</p>
     <p>{t("Alliance prizes are awarded at the Sunday 00:00 UTC reset after all alliances finish: 1st place 50,000, 2nd 30,000, 3rd 15,000 of EACH resource for every participating member. Prizes are saved in Inventory and can be withdrawn later.","Наградите се раздават при ресета в неделя в 00:00 UTC, след като приключат всички алианси: 1-во място 50 000, 2-ро 30 000, 3-то 15 000 от ВСЕКИ ресурс за всеки участвал член. Наградите се пазят в Инвентара и могат да се изтеглят по-късно.")}</p>
-    {data.reward&&<p role="status" style={{fontWeight:700}}>🎁 {t("Reward deposited in Inventory","Наградата е добавена в Инвентара")}: #{data.reward.rank} · {Number(data.reward.amountEach).toLocaleString()} {t("of each resource","от всеки ресурс")}. <button type="button" onClick={()=>navigate("/game?inventory=1")}>{t("Open Inventory","Отвори Инвентара")}</button></p>}
+    {data.reward&&<p role="status" style={{fontWeight:700}}>🎁 {t("Reward deposited in Inventory","Наградата е добавена в Инвентара")}: #{data.reward.rank} · {Number(data.reward.amountEach).toLocaleString()} {t("of each resource","от всеки ресурс")}. <button type="button" onClick={onOpenInventory}>{t("Open Inventory","Отвори Инвентара")}</button></p>}
     <p>{t("The first alien wave launches immediately from an alien base and reaches each participating alliance member after one minute. A stronger wave launches every minute. Alliance reinforcements sent to an active participant arrive in 30 seconds. The event ends when all participants are eliminated or wave 20 is completed.","Първата извънземна вълна потегля веднага от извънземна база и достига всеки участващ член на алианса след една минута. По-силна вълна потегля всяка минута. Подкрепленията към участник пристигат за 30 секунди. Събитието приключва, когато всички участници бъдат елиминирани или бъде завършена вълна 20.")}</p>
     {data.alliance&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
       <strong>{data.alliance.name}</strong>
@@ -884,7 +883,7 @@ function Game() {
       )}
 
       {showTalents&&<div className="popup"><div className="popup-header"><span>{t("COMMANDER PROTOCOLS","ПРОТОКОЛИ НА КОМАНДИРА")}</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
-      {showEvents&&<div className="popup" style={{zIndex:1004}}><div className="popup-header"><span>{t("EVENTS","СЪБИТИЯ")}</span><button className="close-button" onClick={()=>setShowEvents(false)}>X</button></div><div className="popup-content"><EventsPanel/></div></div>}
+      {showEvents&&<div className="popup" style={{zIndex:1004}}><div className="popup-header"><span>{t("EVENTS","СЪБИТИЯ")}</span><button className="close-button" onClick={()=>setShowEvents(false)}>X</button></div><div className="popup-content"><EventsPanel onOpenInventory={()=>{setShowEvents(false);setShowInventory(true);}}/></div></div>}
       {showAlliance&&<div className="popup"><div className="popup-header"><span>{t("ALLIANCE","АЛИАНС")}</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction}/></div></div>}
       {showRankings&&<div className="popup"><div className="popup-header"><span>{t("RANKINGS","КЛАСИРАНЕ")}</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings playerAction={playerAction}/></div></div>}
       {messageRecipient!==null&&<div className="popup" style={{zIndex:1002}}>
