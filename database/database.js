@@ -844,7 +844,11 @@ class DatabaseManager {
       if(Object.entries(price).some(([resource,n])=>Number(current.resources[resource]||0)<n))return {error:"Not enough resources."};
       for(const [resource,n] of Object.entries(price))current.resources[resource]-=n;
       const completionXp=2*Object.values(price).reduce((total,cost)=>total+cost,0);
-      const durationMs = specific?.durationMs||upgradeDuration(level,current.allianceBonuses.speed);
+      // Upgrade Lab: 1.5% shorter unit upgrade duration per building level.
+      // Apply to both profile-specific and generic unit upgrade timers.
+      const labLevel=Math.max(0,Math.min(30,Number(current.structures["Upgrade Lab"])||0));
+      const labSpeedMultiplier=1-labLevel*0.015;
+      const durationMs=Math.max(1000,Math.ceil((specific?.durationMs||upgradeDuration(level,current.allianceBonuses.speed))*labSpeedMultiplier));
       const job = {unit,stat,level:level+1,completionXp,durationMs,resourceCost:{...price},upgradeSpeedVersion:10};
       if (nextSlot === 0) job.endsAt = Date.now() + durationMs;
       jobs[nextSlot] = job;
