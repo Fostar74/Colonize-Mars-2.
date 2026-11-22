@@ -538,7 +538,7 @@ function Game() {
         if(!active)return;
         const notices=data.notifications||[];
         const event=notices.find(item=>item.kind==="saturday_invasion_started");
-        const messages=notices.filter(item=>item.kind==="player_message"||item.kind==="game_message");
+        const messages=notices.filter(item=>item.kind==="player_message"||item.kind==="game_message"||item.kind==="trade_message");
         if(event)setEventNotification(old=>old||event);
         setMessageNotifications(messages);
       }catch{}
@@ -921,7 +921,7 @@ function Game() {
       </div>}
       {messageNotifications.length>0&&<div className="message-notification-alert" role="status">
         <span aria-hidden="true">✉️</span>
-        <span>{messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):messageNotifications[0].kind==="game_message"?t("Alien Command Ship results and rewards are ready.","Резултатите и наградите от атаката срещу командния кораб на извънземните са готови."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
+        <span>{messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):messageNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):messageNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
         <button type="button" onClick={()=>openBlueNotification(messageNotifications[0])}>{messageNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):t("View messages","Виж съобщенията")}</button>
         <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>markNotificationRead(messageNotifications[0])}>×</button>
       </div>}
