@@ -78,7 +78,7 @@ const eliteUnitProfiles = [
   health:eliteBaseHealth,
   range:2,
   population:1,
-  requirement:{building:"Order",level:1},
+  requirement:{building:"Order",level:unit.name==="Gene Warrior"?3:1},
   price:{Gold:5000,Iron:5000,Water:5000,Solar:5000},
   upgradeBonusesAreCumulative:true,
   attackUpgrades:eliteAttackUpgrades,
