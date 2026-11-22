@@ -2,7 +2,7 @@ import { useLanguage } from "../language";
 import React, { useState, useEffect } from "react";
 import "./CyberKnightPanel.css";
 import craftingCosts from "../shared/craftingCosts";
-import {rarityUnlockLevel} from "../shared/cyberKnightEquipment";
+import {rarityUnlockLevel,protocolLabels} from "../shared/cyberKnightEquipment";
 import GameProgressManager from "../utils/gameProgress";
 import cyberKnightImage from "../images/cyber-knight-expanded.jpg";
 
@@ -20,7 +20,7 @@ function PlasmaGearIcon({slot}) {
 }
 
 function CyberKnightPanel({ onClose }) {
-  const { t , label: localLabel} = useLanguage();
+  const { t , label: localLabel, language} = useLanguage();
   const [selectedSlot, setSelectedSlot] = useState(null);
   const [equippedItems, setEquippedItems] = useState({});
   const [rarityTab, setRarityTab] = useState("Common");
@@ -38,7 +38,7 @@ function CyberKnightPanel({ onClose }) {
   ];
   const rarityClasses={Common:"common",Uncommon:"uncommon",Rare:"rare",Epic:"epic",Legendary:"legendary"};
   const effectText=effect=>{
-    const target=localLabel(effect.target),value=Number(effect.value)||0;
+    const target=protocolLabels[effect.target]?.[language==="bg"?1:0]||localLabel(effect.target),value=Number(effect.value)||0;
     if(effect.kind==="unitAttack")return t("Attack of","Атака на")+" "+target+": +"+value+"%";
     if(effect.kind==="unitHealth")return t("Health of","Живот на")+" "+target+": +"+value+"%";
     if(effect.kind==="enemyUnitAttack")return t("Enemy attack of","Атака на противниковия")+" "+target+": −"+value+"%";
