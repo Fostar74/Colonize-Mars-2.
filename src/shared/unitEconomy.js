@@ -150,7 +150,7 @@ function buildingDuration(name, level, speed = 0) {
 function buildingMaxLevel(name) {
   if (name === "Order") return orderLevelCosts.length;
   if (name === "Defense Grid" || defenseGridResourceBuildings.includes(name)) return defenseGridMaxLevel;
-  return Object.prototype.hasOwnProperty.call(buildingBaseCosts, name) ? 20 : 0;
+  return Object.prototype.hasOwnProperty.call(buildingBaseCosts, name) ? 30 : 0;
 }
 
 function buildingPrice(name,nextLevel,discount = 0) {
