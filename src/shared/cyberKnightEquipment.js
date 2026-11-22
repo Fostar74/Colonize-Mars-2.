@@ -2,9 +2,11 @@ const {categories}=require("./unitEconomy");
 const rarityByStars={1:"Common",2:"Uncommon",3:"Rare",4:"Epic",5:"Legendary"};
 const rarityUnlockLevel={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40};
 const rarityBonusPercent={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40};
-const combatUnits=Object.values(categories).flat();
+const combatUnits=Object.entries(categories).filter(([category])=>category!=="Elite").flatMap(([,units])=>units);
 const alienCombatUnits=["Alien Infantry","Xeno Warrior","Spore Archer","Plasma Stalker","War Drone","Siege Behemoth","Praetorian Guard","Alien Overlord"];
 const combatProtocols=["Precision Fire","Reinforced Armor","Infantry Command","Battle Command","Evasion Protocol","Combat Recovery","Mobile Warfare","Heavy Artillery"];
+// The server uses legacy internal keys for the same protocols shown in Commander Protocols.
+const protocolLabels={"Precision Fire":["Precision Targeting","Прецизно прицелване"],"Reinforced Armor":["Nano Armor Systems","Системи за наноброня"],"Infantry Command":["Combat Augmentation","Бойно усилване"],"Battle Command":["Neural Command","Невронно командване"],"Evasion Protocol":["Probability Matrix","Матрица на вероятностите"],"Combat Recovery":["Nano Regeneration","Нанорегенерация"],"Mobile Warfare":["Assault Mobility","Щурмова мобилност"],"Heavy Artillery":["Siege Engineering","Обсадно инженерство"]};
 const effectKindBySlot={HELMET:"unitAttack",ARMOR:"unitHealth",WEAPON:"enemyUnitAttack",SHIELD:"enemyUnitHealth",BOOTS:"protocolBoost",GLOVES:"enemyProtocol"};
 const rarityStars={Common:1,Uncommon:2,Rare:3,Epic:4,Legendary:5};
 
@@ -27,14 +29,14 @@ function rollEquipmentBonuses(slot,rarity,stars){
   return {effects,stats:effects.map(describeEquipmentEffect)};
 }
 
-function describeEquipmentEffect(effect){
+function describeEquipmentEffect(effect,language="en"){
   const value=Math.max(0,Number(effect?.value)||0),target=String(effect?.target||"unknown target");
   if(effect?.kind==="unitAttack")return `${target} attack +${value}%`;
   if(effect?.kind==="unitHealth")return `${target} HP +${value}%`;
   if(effect?.kind==="enemyUnitAttack")return `Enemy ${target} attack −${value}%`;
   if(effect?.kind==="enemyUnitHealth")return `Enemy ${target} HP −${value}%`;
-  if(effect?.kind==="protocolBoost")return `${target} protocol +${value}%`;
-  if(effect?.kind==="enemyProtocol")return `Opponent ${target} protocol −${value}%`;
+  if(effect?.kind==="protocolBoost")return `${protocolLabels[target]?.[language==="bg"?1:0]||target}: +${value}%`;
+  if(effect?.kind==="enemyProtocol")return `${language==="bg"?"Противников протокол":"Opponent protocol"} ${protocolLabels[target]?.[language==="bg"?1:0]||target}: −${value}%`;
   return `${target} · ${value}%`;
 }
 
@@ -47,6 +49,7 @@ function normalizeEquipmentItem(item){
   const pool=slot==="BOOTS"||slot==="GLOVES"?combatProtocols:slot==="WEAPON"||slot==="SHIELD"?[...combatUnits,...alienCombatUnits]:combatUnits;
   const effects=Array.isArray(item.effects)?item.effects:[];
   const valid=!!effectKindBySlot[slot]&&effects.length===Math.min(stars,pool.length)&&effects.every(effect=>effect?.kind===effectKindBySlot[slot]&&pool.includes(effect.target)&&Number.isFinite(Number(effect.value))&&Number(effect.value)>=0)&&new Set(effects.map(effect=>effect.target)).size===effects.length;
+  // Repair legacy elite-unit bonuses in existing gear without touching level, rarity or spent forge points.
   const normalizedEffects=valid?effects:rollEquipmentBonuses(slot,rarity,stars).effects;
   const normalizedName=/^Alien\s/i.test(String(item.name||""))?"Plasma "+slot[0]+slot.slice(1).toLowerCase():item.name;
   return {...item,name:normalizedName||"Plasma "+slot[0]+slot.slice(1).toLowerCase(),slot,stars,bonusSlots:stars,rarity,rarityBonus:rarityBonusPercent[rarity],maximumBonus:50,effects:normalizedEffects,stats:normalizedEffects.map(describeEquipmentEffect)};
@@ -66,4 +69,4 @@ function equipmentCombatBonuses(equippedItems={}){
   return result;
 }
 
-module.exports={rarityByStars,rarityUnlockLevel,rarityBonusPercent,starsForAlienMission,combatProtocols,rollEquipmentBonuses,describeEquipmentEffect,normalizeEquipmentItem,equipmentCombatBonuses};
+module.exports={rarityByStars,rarityUnlockLevel,rarityBonusPercent,starsForAlienMission,combatProtocols,protocolLabels,rollEquipmentBonuses,describeEquipmentEffect,normalizeEquipmentItem,equipmentCombatBonuses};
