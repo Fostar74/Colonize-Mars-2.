@@ -40,7 +40,7 @@ const unlockBuildings = {
 };
 const unlockLevels = {
   Ground:[1,2,4,6], Ranged:[1,8,16], Mobile:[1,3,5,7],
-  "Heavy Systems":[2,4,6,8], Elite:[1,1]
+  "Heavy Systems":[2,4,6,8], Elite:[1,3]
 };
 function specialUnitCombatBonuses(army) {
   return {
