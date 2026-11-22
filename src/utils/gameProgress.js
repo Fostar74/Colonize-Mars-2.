@@ -135,6 +135,17 @@ class GameProgressManager {
     }
   }
 
+  async dismantleEquipment(itemId) {
+    const response=await fetch(`${API_BASE}/dismantle-equipment`,{
+      method:"POST",
+      headers:{"Content-Type":"application/json",Authorization:`Bearer ${sessionStorage.getItem("authToken")||""}`},
+      body:JSON.stringify({userId:this.userId,itemId})
+    });
+    const result=await response.json();
+    if(!response.ok)throw new Error(result.message||"Unable to dismantle equipment.");
+    return result;
+  }
+
   async craftEquipment(itemId, expectedLevel) {
     const response = await fetch(`${API_BASE}/craft-equipment`, {
       method: "POST",
