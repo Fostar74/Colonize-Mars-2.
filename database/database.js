@@ -3282,6 +3282,29 @@ Rewards are distributed per participating player, not once per alliance. / На�
     }
   }
 
+  dismantleEquipment(userId,itemId) {
+    return db.transaction(()=>{
+      const equipment=this.getUserEquipment(userId);
+      const index=equipment?.gearInventory?.findIndex(item=>item.id===itemId)??-1;
+      if(index<0)return {error:"Item not found."};
+      const item=equipment.gearInventory[index];
+      const slot=String(item.slot||item.type||"").toUpperCase();
+      const cost=craftingCosts[String(item.rarity).toLowerCase()];
+      if(!Number.isInteger(cost))return {error:"Unknown equipment rarity."};
+      // During this round return 100% of all forge upgrades as Universal
+      // points, since older upgrades did not record which wallet paid.
+      const level=Math.max(0,Math.min(50,Math.floor(Number(item.level??item.levelRequirement??0)||0)));
+      const refund=level*cost;
+      equipment.craftingPoints.Universal=(Number(equipment.craftingPoints.Universal)||0)+refund;
+      equipment.gearInventory.splice(index,1);
+      for(const [key,equipped] of Object.entries(equipment.equippedItems||{})){
+        if(equipped?.id===itemId)delete equipment.equippedItems[key];
+      }
+      this.saveUserEquipment(userId,equipment.equippedItems,equipment.gearInventory,equipment.craftingPoints);
+      return {equipment,refund,slot,refundedTo:"Universal"};
+    })();
+  }
+
   craftEquipment(userId, itemId, expectedLevel) {
     return db.transaction(() => {
       const equipment = this.getUserEquipment(userId);
