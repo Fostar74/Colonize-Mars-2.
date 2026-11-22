@@ -219,6 +219,7 @@ function LabyrinthMap({labyrinth,busy,onMove,onBacktrack,t}){
 
 function EventsPanel({onOpenInventory}) {
   const {language,t}=useLanguage();
+  const navigate=useNavigate();
   const [data,setData]=useState(null);
   const [motherShip,setMotherShip]=useState(null);
   const [labyrinth,setLabyrinth]=useState(null);
