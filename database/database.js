@@ -2695,9 +2695,15 @@ Rewards are distributed per participating player, not once per alliance. / На�
       const gainedHp=victory?Math.max(1,Math.floor(monster.hp/100)):0;
       const completedLevel=victory&&active.room===progress&&monster.chamber===10;
       const finished=nextRoom>300;
-      db.prepare("UPDATE labyrinth_players SET combat_active='',combat_room=?,combat_hp_bonus=combat_hp_bonus+?,combat_level_day=?,combat_log=?,medicine_found=?,completed_at=? WHERE user_id=?")
-        .run(nextRoom,gainedHp,completedLevel?today:row.combat_level_day,JSON.stringify(active.log),finished?1:row.medicine_found,finished?Date.now():row.completed_at,userId);
-      return {battle:null,victory,defeat,gainedHp,monster,log:active.log,medicineFound:finished,status:this.getLabyrinthStatus(userId)};
+      // One random colored crystal for every victory, including replayed rooms.
+      // Defeats and retreats do not grant crystals. Green daily rewards stay separate.
+      const crystalColors=["yellow","blue","orange","purple"];
+      const crystalReward=victory?crystalColors[crypto.randomInt(crystalColors.length)]:null;
+      const crystals=JSON.parse(row.crystals||"{}");
+      if(crystalReward)crystals[crystalReward]=(Number(crystals[crystalReward])||0)+1;
+      db.prepare("UPDATE labyrinth_players SET combat_active='',combat_room=?,combat_hp_bonus=combat_hp_bonus+?,combat_level_day=?,combat_log=?,crystals=?,medicine_found=?,completed_at=? WHERE user_id=?")
+        .run(nextRoom,gainedHp,completedLevel?today:row.combat_level_day,JSON.stringify(active.log),JSON.stringify(crystals),finished?1:row.medicine_found,finished?Date.now():row.completed_at,userId);
+      return {battle:null,victory,defeat,gainedHp,crystalReward,monster,log:active.log,medicineFound:finished,status:this.getLabyrinthStatus(userId)};
     })();
   }
 
