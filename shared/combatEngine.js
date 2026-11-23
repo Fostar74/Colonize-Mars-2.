@@ -156,6 +156,8 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     }
     report.push(round);
   }
+  // A dispatched battle counts as at least one round, even against an empty defense.
+  if(rounds===0){rounds=1;report.push({round:1,events:[]});}
   return {victory:alive(sides[0])&&!alive(sides[1]),rounds,report,survivors:Object.fromEntries(Object.keys(attackerArmy).map(unit=>[unit,sides[0].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defenderSurvivors:Object.fromEntries(Object.keys(defenderArmy).map(unit=>[unit,sides[1].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defendersRemaining:sides[1].reduce((a,g)=>a+g.count,0),provisional:true};
 }
 module.exports={fight,playerTypes,alienTypes};
