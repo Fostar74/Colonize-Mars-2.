@@ -615,7 +615,7 @@ function Map() {
         ? {userId:sessionStorage.getItem("userId"),level:marchDraft.target.level,army:selected,formation,includeCyberKnight:knightAdded,target:{x:marchDraft.target.x,y:marchDraft.target.y}}
         : isMothershipAttack ? {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded}
         : isStationDefense ? {userId:sessionStorage.getItem("userId"),stationId:marchDraft.target.stationId,army:selected}
-        : {userId:sessionStorage.getItem("userId"),army:selected,formation,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
+        : {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
       const endpoint=isSupport?"/alliance/reinforce":isGathering?"/map/gathering":isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack";
       const response=await fetch(base+endpoint,{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
@@ -1031,8 +1031,8 @@ function Map() {
               <button type="button" onClick={()=>navigate("/game?market=1")}>{t("Open marketplace","Отвори пазара")}</button>
               <button type="button" onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div> : <>
-            {marchDraft.type === "Attack" && (marchDraft.target.type === "alien"||marchDraft.target.type==="mothership") && <>
-            <p>{t("Cyber Knight leads this attack · Level","Киберрицарят води похода · Ниво")} {campaign.knightLevel || 1} {t("(required)","(задължителен)")}</p>
+            {marchDraft.type === "Attack" && (marchDraft.target.type === "alien"||marchDraft.target.type==="mothership"||marchDraft.target.type==="castle") && <>
+            <p>{t("Cyber Knight leads this attack · Level","Киберрицарят води похода · Ниво")} {campaign.knightLevel || 1} {marchDraft.target.type==="castle"?t("(optional for PvP)","(по избор за PvP)"):t("(required)","(задължителен)")}</p>
             <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
               {knightAdded ? localLabel("Remove Cyber Knight") : localLabel("Add Cyber Knight")}
             </button>
