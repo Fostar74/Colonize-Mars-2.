@@ -766,6 +766,15 @@ function Map() {
   const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+Number(count||0),0);
   const selectedPopulation=armyPopulation(marchUnits);
   const availableTroopCount=units.reduce((total,unit)=>total+Number(availableArmy[unit]||0),0);
+  const setMarchUnitWithinLimit=(unit,requested)=>{
+    setMarchUnits(old=>{
+      const cost=unitPopulation(unit);
+      const others=Object.entries(old).reduce((sum,[name,count])=>name===unit?sum:sum+Number(count||0)*unitPopulation(name),0);
+      const maxByPopulation=Math.max(0,Math.floor((marchLimit-others)/cost));
+      const amount=Math.max(0,Math.min(Number(availableArmy[unit]||0),maxByPopulation,Math.floor(Number(requested)||0)));
+      return {...old,[unit]:amount};
+    });
+  };
   const addAllAvailableTroops=()=>setMarchUnits(selectArmyWithinPopulation(availableArmy,marchLimit));
   const selectedCargoCapacity=Object.entries(marchUnits).reduce((total,[unit,count])=>total+Number(count||0)*Number(unitEconomy.cargoCapacity?.[unit]||0),0);
   const previewRows=normalizeFormation(formationRows);
@@ -1132,9 +1141,10 @@ function Map() {
                 <strong>{localLabel(unit)}</strong>
                 <span>{t("Available:","Налични:")} {Number(availableArmy[unit]||0)}</span>
                 <span>{t("Cargo per unit:","Товароносимост на единица:")} {Number(unitEconomy.cargoCapacity?.[unit]||0)}</span>
+                <span>{t("Population per unit:","Популация за войник:")} {unitPopulation(unit)} · {t("Can add:","Можеш да добавиш:")} {Math.max(0,Math.min(Number(availableArmy[unit]||0)-Number(marchUnits[unit]||0),Math.floor((marchLimit-selectedPopulation)/unitPopulation(unit))))}</span>
                 <input type="number" min="0" max={Number(availableArmy[unit]||0)} disabled={!Number(availableArmy[unit]||0)} value={marchUnits[unit]||0}
-                  onChange={e=>setMarchUnits(old=>({...old,[unit]:Math.max(0,Math.min(Number(availableArmy[unit]||0),Math.floor(Number(e.target.value)||0)))}))}/>
-                <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnits(old=>({...old,[unit]:Number(availableArmy[unit]||0)}))}>{t("MAX","МАКС.")}</button>
+                  onChange={e=>setMarchUnitWithinLimit(unit,e.target.value)}/>
+                <button disabled={!Number(availableArmy[unit]||0)} onClick={()=>setMarchUnitWithinLimit(unit,Number(availableArmy[unit]||0))}>{t("MAX","МАКС.")}</button>
 
               </label>)}
             </div>
