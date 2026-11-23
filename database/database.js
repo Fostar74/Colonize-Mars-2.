@@ -110,6 +110,7 @@ function initializeDatabase() {
       )
     `);
     console.log("Users table created/verified");
+    db.exec("CREATE TABLE IF NOT EXISTS player_activity (user_id INTEGER PRIMARY KEY REFERENCES users(id), last_seen_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS beginner_protection_forfeits (user_id INTEGER PRIMARY KEY REFERENCES users(id), forfeited_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS player_profiles (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, avatar_id TEXT NOT NULL DEFAULT 'pilot-m')");
 
@@ -1041,6 +1042,18 @@ class DatabaseManager {
     ].map(([name,values,description])=>({name,values,description}));
   }
   playerLevel(xp){return Math.min(40,1+Math.floor(Math.max(0,xp)/1000));}
+  markPlayerActive(userId){
+    if(!Number.isSafeInteger(Number(userId))||Number(userId)<1)return;
+    db.prepare("INSERT INTO player_activity(user_id,last_seen_at) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=MAX(last_seen_at,excluded.last_seen_at)").run(Number(userId),Date.now());
+  }
+  lastPlayerActivity(userId){
+    const row=db.prepare("SELECT a.last_seen_at,CAST(strftime('%s',u.created_at) AS INTEGER)*1000 AS registered FROM users u LEFT JOIN player_activity a ON a.user_id=u.id WHERE u.id=?").get(userId);
+    return Number(row?.last_seen_at||row?.registered||0);
+  }
+  isAbandonedBase(userId,now=Date.now()){
+    const last=this.lastPlayerActivity(userId);
+    return last>0&&now-last>=7*86400000;
+  }
   pvpPlayerLevel(userId){
     const row=db.prepare("SELECT COALESCE(xp,0) AS xp FROM player_talents WHERE user_id=?").get(userId);
     return this.playerLevel(Number(row?.xp||0));
@@ -1735,6 +1748,7 @@ class DatabaseManager {
         const casualties=Math.min(mission.quantity,defenders);
         const survivors=mission.quantity-casualties;
         const report={success:survivors>0&&!!target&&!!targetRuntime,scoutedAt:now,
+          lastSeenAt:this.lastPlayerActivity(mission.target_user_id),abandoned:this.isAbandonedBase(mission.target_user_id,now),
           sent:mission.quantity,attackerLost:casualties,defenderLost:casualties,survivors};
         if(casualties>0&&targetRuntime){
           targetArmy["Rover Scout"]=defenders-casualties;
@@ -1817,7 +1831,7 @@ class DatabaseManager {
     if (!target) return {error:"Player base not found at those coordinates."};
     if (target.id === userId) return {error:"You cannot attack your own base."};
     const attackerLevel=this.pvpPlayerLevel(userId),defenderLevel=this.pvpPlayerLevel(target.id);
-    if(Math.abs(attackerLevel-defenderLevel)>=6)return {error:"PvP attacks require a level difference of less than 6 (your level: "+attackerLevel+", target: "+defenderLevel+")."};
+    if(!this.isAbandonedBase(target.id)&&Math.abs(attackerLevel-defenderLevel)>=6)return {error:"PvP attacks require a level difference of less than 6 (your level: "+attackerLevel+", target: "+defenderLevel+")."};
     if(this.beginnerProtectionUntil(target.id))return {error:"This player has seven-day beginner protection."};
     const attackerAlliance=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId)?.alliance_id;
     if(attackerAlliance&&target.alliance_id&&Number(attackerAlliance)===Number(target.alliance_id))return {error:"You cannot attack a member of your alliance."};
@@ -3773,15 +3787,18 @@ Rewards are distributed per participating player, not once per alliance. / На�
     return db.prepare(`
       SELECT u.id AS user_id, u.username, b.x, b.y, m.alliance_id,
         COALESCE(t.xp,0) AS player_xp,
+        COALESCE(act.last_seen_at,CAST(strftime('%s',u.created_at) AS INTEGER)*1000) AS last_seen_at,
+        CASE WHEN ?-COALESCE(act.last_seen_at,CAST(strftime('%s',u.created_at) AS INTEGER)*1000)>=604800000 THEN 1 ELSE 0 END AS abandoned,
         CASE WHEN f.user_id IS NULL THEN MAX(0,CAST(strftime('%s',u.created_at) AS INTEGER)*1000+604800000-?) ELSE 0 END AS beginner_protection_remaining_ms,
         (SELECT MAX(expires_at) FROM alliance_market_buffs shield
          WHERE shield.user_id=u.id AND shield.kind='protection' AND shield.expires_at>?) AS protected_until
       FROM base_positions b JOIN users u ON u.id = b.user_id
       LEFT JOIN alliance_members m ON m.user_id=u.id
       LEFT JOIN player_talents t ON t.user_id=u.id
+      LEFT JOIN player_activity act ON act.user_id=u.id
       LEFT JOIN beginner_protection_forfeits f ON f.user_id=u.id
       ORDER BY u.id
-    `).all(Date.now(),Date.now());
+    `).all(Date.now(),Date.now(),Date.now());
   }
 
   getAllUsers() {
