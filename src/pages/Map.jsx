@@ -640,10 +640,21 @@ function Map() {
         : isStationDefense ? {userId:sessionStorage.getItem("userId"),stationId:marchDraft.target.stationId,army:selected}
         : {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
       const endpoint=isEspionage?"/player-campaign/scout":isSupport?"/alliance/reinforce":isGathering?"/map/gathering":isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack";
-      const response=await fetch(base+endpoint,{
-        method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
-      });
-      const data=await response.json();
+      const sendMarch=async body=>{
+        const response=await fetch(base+endpoint,{
+          method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(body)
+        });
+        return {response,data:await response.json()};
+      };
+      let {response,data}=await sendMarch(payload);
+      if(isPlayerAttack&&!response.ok&&data.requiresProtectionConfirmation){
+        const accepted=window.confirm(t(
+          "WARNING: Attacking another player will permanently remove your 7-day beginner protection. Other players will be able to attack you. Do you want to proceed?",
+          "ВНИМАНИЕ: Ако нападнеш друг играч, ще загубиш завинаги 7-дневната си защита. Другите играчи ще могат да те атакуват. Искаш ли да продължиш?"
+        ));
+        if(!accepted){setMarchNotice(t("Attack cancelled. Beginner protection remains active.","Атаката е отменена. Защитата ти остава активна."));return;}
+        ({response,data}=await sendMarch({...payload,confirmProtectionLoss:true}));
+      }
       if(!response.ok)throw Error(data.message||"Mission failed.");
       if(isEspionage){
         setCampaign(old=>({...old,playerScoutMissions:[{id:data.missionId,origin:data.origin,target:data.target,quantity:data.quantity,launched_at:data.launchedAt,arrives_at:data.arrivesAt,returns_at:data.returnsAt,report:null,returned_at:null},...(old.playerScoutMissions||[])]}));
