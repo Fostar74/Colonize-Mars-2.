@@ -569,7 +569,8 @@ function Map() {
           let remaining=marchLimit;const maxArmy={};
           for(const unit of units){maxArmy[unit]=Math.min(remaining,Number(data.gameProgress?.army?.[unit])||0);remaining-=maxArmy[unit];}
           setMarchUnits(maxArmy);
-        }else setMarchUnits({});
+        }else if(type==="Espionage")setMarchUnits({"Rover Scout":Math.min(1,Number(data.gameProgress?.army?.["Rover Scout"]||0))});
+        else setMarchUnits({});
       setTradeAmounts({Gold:0,Iron:0,Water:0,Solar:0});
       const firstAttackSlot=Object.keys(attackPresets)[0];
       setMarchFormationSlot(firstAttackSlot || "default");
@@ -592,22 +593,25 @@ function Map() {
   };
   const prepareMarch = async () => {
     setPreviewOpen(false);
+    const isEspionage=marchDraft?.type==="Espionage"&&marchDraft?.target?.type==="castle";
     const isAlienAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="alien";
     const isMothershipAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="mothership";
     const isPlayerAttack=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="castle"&&!targetIsOwn;
     const isSupport=marchDraft?.type==="Support"&&marchDraft?.target?.type==="castle"&&sameAllianceTarget;
     const isStationDefense=marchDraft?.type==="Defend"&&marchDraft?.target?.type==="station";
     const isGathering=marchDraft?.type==="Gather"&&marchDraft?.target?.type==="mine";
-    if(selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
+    if(!isEspionage&&selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
     if((isAlienAttack||isMothershipAttack)&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
-    if(!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isSupport&&!isStationDefense&&!isGathering){setMarchNotice("Choose an attackable target.");return;}
+    if(!isEspionage&&!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isSupport&&!isStationDefense&&!isGathering){setMarchNotice("Choose an attackable target.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
-    if(!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
+    if(!isEspionage&&!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
+    if(isEspionage&&(!Number.isSafeInteger(Number(marchUnits["Rover Scout"]))||Number(marchUnits["Rover Scout"])<1||Number(marchUnits["Rover Scout"])>Number(availableArmy["Rover Scout"]||0))){setMarchNotice(t("Select available Rover Scouts.","Избери налични разузнавателни роувъри."));return;}
     try{
       setMarchLoading(true);
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
-      const payload=isSupport
+      const payload=isEspionage ? {userId:sessionStorage.getItem("userId"),quantity:Number(marchUnits["Rover Scout"]),target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}}
+        : isSupport
         ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected}
         : isGathering
         ? {userId:sessionStorage.getItem("userId"),mineId:marchDraft.target.id,units:selected}
@@ -616,13 +620,17 @@ function Map() {
         : isMothershipAttack ? {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded}
         : isStationDefense ? {userId:sessionStorage.getItem("userId"),stationId:marchDraft.target.stationId,army:selected}
         : {userId:sessionStorage.getItem("userId"),army:selected,formation,includeCyberKnight:knightAdded,target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}};
-      const endpoint=isSupport?"/alliance/reinforce":isGathering?"/map/gathering":isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack";
+      const endpoint=isEspionage?"/player-campaign/scout":isSupport?"/alliance/reinforce":isGathering?"/map/gathering":isMothershipAttack?"/mothership/attack":isAlienAttack?"/alien-campaign/attack":isStationDefense?"/alien-stations/defend":"/player-campaign/attack";
       const response=await fetch(base+endpoint,{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify(payload)
       });
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Mission failed.");
-      if(isSupport){
+      if(isEspionage){
+        setCampaign(old=>({...old,playerScoutMissions:[{id:data.missionId,origin:data.origin,target:data.target,quantity:data.quantity,launched_at:data.launchedAt,arrives_at:data.arrivesAt,returns_at:data.returnsAt,report:null,returned_at:null},...(old.playerScoutMissions||[])]}));
+        setMarchSuccess(t("Rover Scouts dispatched. Reconnaissance arrives in 60 seconds.","Разузнавачите са изпратени. Докладът ще е готов след 60 секунди."));
+        window.dispatchEvent(new Event("game-progress-updated"));
+      }else if(isSupport){
         const latest=await fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
         if(latest.ok)setCampaign(await latest.json());
         setMarchSuccess(t("Reinforcements dispatched to your ally.","Подкрепленията са изпратени към съюзника.")+" "+t("Arrival in","Пристигат след")+" "+Math.max(0,Math.ceil((Number(data.arrivesAt)-Date.now())/1000))+" "+t("seconds","секунди")+".");
@@ -1038,6 +1046,14 @@ function Map() {
             </button>
             {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
             </>}
+            {marchDraft.type==="Espionage" ? <div style={{margin:"14px 0",padding:14,border:"1px solid #50718b",borderRadius:8}}>
+              <h4>🔎 {t("Rover Scout — Espionage","Разузнавателен роувър — Шпионаж")}</h4>
+              <p>{t("Available scouts","Налични разузнавачи")}: {Number(availableArmy["Rover Scout"]||0).toLocaleString()}</p>
+              <label>{t("Send scouts","Изпрати разузнавачи")}: <input type="number" min="1" max={Math.min(50000,Number(availableArmy["Rover Scout"]||0))} value={marchUnits["Rover Scout"]||0} onChange={e=>setMarchUnits({"Rover Scout":Math.max(0,Math.min(50000,Number(e.target.value)||0))})} /></label>
+              <p>{t("Travel: 60 seconds to target, 60 seconds back. No battle or loot.","Пътуване: 60 секунди до целта и 60 обратно. Без битка и плячка.")}</p>
+              <button disabled={marchLoading||!Number(marchUnits["Rover Scout"])||Number(marchUnits["Rover Scout"])>Number(availableArmy["Rover Scout"]||0)} onClick={prepareMarch}>{t("Send reconnaissance","Изпрати шпионаж")}</button>
+              <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
+            </div> : <>
             <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",margin:"10px 0"}}><p style={{margin:0}}>{marchDraft.target.type==="mothership"?t("Maximum force selected ·","Избрана е максималната армия ·"):t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p><button type="button" disabled={!availableTroopCount} title={t("Only troops currently available at your base can be selected. Wounded troops must first recover in the Hospital.","Могат да се изберат само наличните войници в базата. Ранените трябва първо да се възстановят в болницата.")} onClick={addAllAvailableTroops}>{availableTroopCount<=marchLimit?t("Add All Available","Добави всички налични"):t("Add up to 50,000","Добави до 50 000")}</button></div>{availableTroopCount>marchLimit&&<p style={{fontSize:12,color:"#b5c7d9"}}>{t("Only the first 50,000 available troops in the list will be selected.","Ще бъдат избрани първите 50 000 налични войници от списъка.")}</p>}
             {marchDraft.type==="Attack" && marchDraft.target.type==="castle" && <p>{t("Estimated cargo capacity if the surviving army wins:","Очаквана товароносимост при победа на оцелялата армия:")} {selectedCargoCapacity.toLocaleString()} {t("resources","ресурси")}</p>}
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
@@ -1086,6 +1102,7 @@ function Map() {
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
             <p style={{fontSize:12,color:"#b5c7d9"}}>{marchDraft.type==="Gather"?t("Selected troops are reserved until the mine is depleted, then they return to your base.","Избраните войски се отделят до изчерпване на мината, след което се връщат в базата."):t("Selected troops leave your base immediately and return after the mission.","Избраните войски напускат базата веднага и се връщат след мисията.")}</p>
+            </>}
             </>}
           </div>}
           {marchNotice && <p role="status" style={{color:"#ffdc9c"}}>{localLabel(marchNotice)}</p>}
