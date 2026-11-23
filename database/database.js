@@ -2089,12 +2089,12 @@ class DatabaseManager {
         const upgradeBonus=usesProfileUpgrades?0:Math.max(0,Number(upgrades.attack||1)-1)*10+Math.max(0,Number(upgrades.defense||1)-1)*3;
         const attackVs=usesProfileUpgrades?unitCombatStats(group.unit,upgrades).attack:type.attackVs;
         const categoryBonus=protocols[type.category]||0;
-        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+protocols.leadership+specialAttackBonus+Number(attack.knight_level||1)*2+(Number(gearEffects.unitEffects[group.unit]?.attack)||0);
+        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+protocols.leadership+specialAttackBonus+Number(attack.knight_level||1)*2;
         // The Mother Ship has no target category. Average the unit's matchup values.
         const baseAttack=attackVs
           ? ["infantry","mobile","ranged","artillery"].reduce((sum,category)=>sum+(Number(attackVs[category])||0),0)/4
           : Number(type.attack)||0;
-        damage+=Math.max(0,Number(group.count)||0)*baseAttack*(1+attackBonus/100);
+        damage+=Math.max(0,Number(group.count)||0)*Math.max(0,baseAttack+(Number(gearEffects.unitEffects[group.unit]?.attack)||0))*(1+attackBonus/100);
       }
       damage=Math.max(1,Math.floor(damage));
       const xp=Math.max(1,Math.floor(damage/1000*(1+gearXp/100)));
@@ -3392,57 +3392,11 @@ Rewards are distributed per participating player, not once per alliance. / На�
 
   getUserEquipment(userId) {
     try {
-      // One-time, player-specific correction of an overleveled armor item.
-      // The original split between slot and Universal points is not recorded;
-      // refund the five upgrade costs as Universal points (usable for armor).
-      if(db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="KakaMarianka"){
-        db.exec("CREATE TABLE IF NOT EXISTS equipment_repair_log (repair_key TEXT PRIMARY KEY, applied_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)");
-        db.transaction(()=>{
-          const key="kakamarianka-armor-15-to-10-2026-11";
-          if(db.prepare("SELECT 1 FROM equipment_repair_log WHERE repair_key=?").get(key))return;
-          const row=this.equipmentQueries.getEquipment.get(userId);
-          if(!row)return;
-          const inventory=JSON.parse(row.gear_inventory||"[]");
-          const matches=inventory.filter(item=>String(item.slot||item.type||"").toUpperCase()==="ARMOR"&&Number(item.level??item.levelRequirement??0)===15);
-          if(matches.length!==1)return;
-          const item=matches[0],cost=craftingCosts[String(item.rarity).toLowerCase()];
-          if(!Number.isInteger(cost))return;
-          item.level=10;
-          const equipped=JSON.parse(row.equipped_items||"{}");
-          for(const [slot,gear] of Object.entries(equipped)){
-            if(gear?.id===item.id)equipped[slot]={...gear,level:10};
-          }
-          const points=JSON.parse(row.crafting_points||"{}");
-          points.Universal=(Number(points.Universal)||0)+5*cost;
-          this.equipmentQueries.updateEquipment.run(JSON.stringify(equipped),JSON.stringify(inventory),JSON.stringify(points),userId);
-          db.prepare("INSERT INTO equipment_repair_log(repair_key) VALUES (?)").run(key);
-        })();
-      }
-      // One-time refund for KakaMarianka's level-15 helmet, matching armor repair.
-      if(db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="KakaMarianka"){
-        db.transaction(()=>{
-          const key="kakamarianka-helmet-15-to-10-2026-11";
-          if(db.prepare("SELECT 1 FROM equipment_repair_log WHERE repair_key=?").get(key))return;
-          const row=this.equipmentQueries.getEquipment.get(userId);
-          if(!row)return;
-          const inventory=JSON.parse(row.gear_inventory||"[]");
-          const matches=inventory.filter(item=>String(item.slot||item.type||"").toUpperCase()==="HELMET"&&Number(item.level??item.levelRequirement??0)===15);
-          if(matches.length!==1)return;
-          const item=matches[0],cost=craftingCosts[String(item.rarity).toLowerCase()];
-          if(!Number.isInteger(cost))return;
-          item.level=10;
-          const equipped=JSON.parse(row.equipped_items||"{}");
-          for(const [slot,gear] of Object.entries(equipped)){
-            if(gear?.id===item.id)equipped[slot]={...gear,level:10};
-          }
-          const points=JSON.parse(row.crafting_points||"{}");
-          points.Universal=(Number(points.Universal)||0)+5*cost;
-          this.equipmentQueries.updateEquipment.run(JSON.stringify(equipped),JSON.stringify(inventory),JSON.stringify(points),userId);
-          db.prepare("INSERT INTO equipment_repair_log(repair_key) VALUES (?)").run(key);
-        })();
-      }
       const equipment = this.equipmentQueries.getEquipment.get(userId);
       if (!equipment) return null;
+      // Retain a permanent pre-migration snapshot for recovery instead of silently losing originals.
+      db.exec("CREATE TABLE IF NOT EXISTS equipment_migration_snapshots (user_id INTEGER PRIMARY KEY, equipped_items TEXT NOT NULL, gear_inventory TEXT NOT NULL, crafting_points TEXT NOT NULL, saved_at TEXT DEFAULT CURRENT_TIMESTAMP)");
+      db.prepare("INSERT OR IGNORE INTO equipment_migration_snapshots(user_id,equipped_items,gear_inventory,crafting_points) VALUES (?,?,?,?)").run(userId,equipment.equipped_items,equipment.gear_inventory,equipment.crafting_points);
       const originalEquipped=JSON.parse(equipment.equipped_items||"{}");
       const originalInventory=JSON.parse(equipment.gear_inventory||"[]");
       const isLostAlienReward=item=>{
