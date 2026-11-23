@@ -1152,6 +1152,46 @@ class DatabaseManager {
     }).immediate();
   }
 
+  searchReportRecipients(userId,query){
+    const term=String(query||"").trim();
+    if(term.length<3||term.length>32)return [];
+    return db.prepare("SELECT id,username FROM users WHERE username LIKE ? AND id<>? ORDER BY username LIMIT 15").all("%"+term.replace(/[\\%_]/g,"\\  listMessages(userId, scope){")+"%",userId);
+  }
+
+  shareBattleReport(userId,reportType,reportId,scope,recipientName){
+    if(!["player","scout"].includes(reportType)||!["alliance","private"].includes(scope)||!Number.isSafeInteger(reportId)||reportId<1)return {error:"Invalid report or destination."};
+    return db.transaction(()=>{
+      const member=scope==="alliance"?db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId):null;
+      if(scope==="alliance"&&!member)return {error:"Join an alliance to share reports."};
+      const recipient=scope==="private"?this.findUserByUsername(String(recipientName||"").trim()):null;
+      if(scope==="private"&&(!recipient||recipient.id===userId))return {error:"Select an existing player."};
+      let body="";
+      const formatArmy=army=>Object.entries(army||{}).filter(([,n])=>Number(n)>0).map(([name,n])=>name+": "+Number(n).toLocaleString()).join(", ")||"0";
+      if(reportType==="player"){
+        const row=db.prepare("SELECT * FROM player_missions WHERE id=? AND resolved_at IS NOT NULL AND (attacker_id=? OR defender_id=?)").get(reportId,userId,userId);
+        if(!row)return {error:"Battle report not found."};
+        const result=JSON.parse(row.result||"{}"),data=JSON.parse(row.army||"{}");
+        const names=db.prepare("SELECT id,username FROM users WHERE id IN (?,?)").all(row.attacker_id,row.defender_id);
+        const name=id=>names.find(x=>x.id===id)?.username||"Unknown";
+        body="⚔️ Battle report / Боен доклад #"+row.id+"\n"+name(row.attacker_id)+" → "+name(row.defender_id)+" ("+(data.target?.x??"?")+":"+(data.target?.y??"?")+")\n"+(result.victory?"Victory / Победа":"Defeat / Поражение")+" · Rounds / Рундове: "+(result.rounds??0)+"\nAttackers / Нападатели: "+formatArmy(data.units)+"\nAttacker survivors / Оцелели нападатели: "+formatArmy(result.survivors)+"\nDefender survivors / Оцелели защитници: "+formatArmy(result.defenderSurvivors)+"\nLoot / Плячка: "+Object.entries(result.loot||{}).map(([k,v])=>k+": "+v).join(", ");
+      }else{
+        const row=db.prepare("SELECT * FROM player_scout_missions WHERE id=? AND user_id=? AND report IS NOT NULL").get(reportId,userId);
+        if(!row)return {error:"Espionage report not found."};
+        const report=JSON.parse(row.report),target=JSON.parse(row.target||"{}");
+        body="🔎 Espionage / Шпионаж #"+row.id+" · "+target.username+" ("+target.x+":"+target.y+")\nScouts / Разузнавачи: "+row.quantity+" · Survivors / Оцелели: "+(report.survivors??0)+"\nResources / Ресурси: "+Object.entries(report.resources||{}).map(([k,v])=>k+": "+v).join(", ")+"\nDefenders / Защитници: "+formatArmy(report.army)+"\nBuildings / Сгради: "+Object.entries(report.structures||{}).map(([k,v])=>k+": "+v).join(", ");
+      }
+      const now=Date.now();
+      const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,'private')");
+      const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'player_message',?,?)");
+      if(scope==="private"){insert.run(userId,recipient.id,null,body,now);notify.run(recipient.id,"",now);}
+      else{
+        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,NULL,?,?,?,'alliance')").run(userId,member.alliance_id,body,now);
+        for(const row of db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId))notify.run(row.user_id,"alliance",now);
+      }
+      return {success:true};
+    })();
+  }
+
   listMessages(userId, scope){
     if(!["private","trade","alliance"].includes(scope))return {error:"Unknown message channel."};
     const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
