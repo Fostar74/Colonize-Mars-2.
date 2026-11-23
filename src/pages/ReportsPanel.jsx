@@ -45,6 +45,7 @@ export default function ReportsPanel({onClose,onRead}) {
     ...(data?.mothershipReports||[]).map(report=>({type:"mothership",report})),
   ].sort((a,b)=>b.report.resolved_at-a.report.resolved_at||b.report.id-a.report.id);
   const newAlienCount=alienReports.filter(({type,report})=>unreadIds.has(type+":"+report.id)).length;
+  const scoutReports=(data?.playerScoutMissions||[]).filter(m=>m.report);
   const gathering=(data?.gatheringReports||[]);
   const newGathering=gathering.filter(report=>unreadIds.has("gathering:"+report.id));
   const previousGathering=gathering.filter(report=>!newGathering.includes(report));
@@ -131,6 +132,16 @@ export default function ReportsPanel({onClose,onRead}) {
       <p>{new Date(report.returnedAt).toLocaleString()}</p>
     </article>;
   };
+  const espionageReport=m=><article key={"scout-"+m.id} style={card}>
+    <h3>🔎 {t("Espionage against","Шпионаж срещу")} {m.target.username} · {m.target.x}:{m.target.y}</h3>
+    <p>{new Date(m.report.scoutedAt||m.arrives_at).toLocaleString()}</p>
+    <p>{t("Sent scouts","Изпратени разузнавачи")}: {m.quantity.toLocaleString()} · {t("Your losses","Твои загуби")}: {Number(m.report.attackerLost||0).toLocaleString()} · {t("Enemy scout losses","Загуби на противниковите разузнавачи")}: {Number(m.report.defenderLost||0).toLocaleString()} · {t("Survivors","Оцелели")}: {Number(m.report.survivors??m.quantity).toLocaleString()}</p>
+    {m.report.success===false?<p><strong>{t("All your scouts died during espionage. No survivor returned to report.","При шпионажа всичките ви шпиони загинаха и не се завърна оцелял, за да докладва.")}</strong></p>:<>
+      {m.report.resources&&<p><strong>{t("Resources","Ресурси")}:</strong> {Object.entries(m.report.resources).map(([name,n])=>localLabel(name)+": "+Number(n).toLocaleString()).join(" · ")}</p>}
+      {m.report.army&&<p><strong>{t("Defending army","Защитна армия")}:</strong> {list(m.report.army)}</p>}
+      {m.report.structures&&<div><strong>{t("Buildings and levels","Сгради и нива")}:</strong><ul>{Object.entries(m.report.structures).map(([name,level])=><li key={name}>{localLabel(name)}: {t("Level","Ниво")} {level}</li>)}</ul></div>}
+    </>}
+  </article>;
   const incomingMarch=m=><article key={"march-"+m.id} style={card}>
     <h3>{t("Attack in progress from","Идваща атака от")} {m.attacker_name} · {m.target?.x}:{m.target?.y}</h3>
     <p>{t("The attack is on the way. No battle report exists yet.","Походът е в движение. Все още няма боен доклад.")}</p>
@@ -142,6 +153,7 @@ export default function ReportsPanel({onClose,onRead}) {
       {error&&<p role="alert">{error}</p>}{!data&&!error&&<p>{t("Loading reports…","Зареждане на докладите…")}</p>}
       {data&&<div style={{display:"flex",gap:8,marginBottom:16}}>
         <button type="button" onClick={()=>setActiveTab("military")} style={{...tabButton,background:activeTab==="military"?"#24629b":"#293443"}}>{t("Military","Военни")}</button>
+        <button type="button" onClick={()=>setActiveTab("espionage")} style={{...tabButton,background:activeTab==="espionage"?"#24629b":"#293443"}}>🔎 {t("Espionage","Шпионажи")}</button>
         <button type="button" onClick={()=>setActiveTab("economy")} style={{...tabButton,background:activeTab==="economy"?"#24629b":"#293443"}}>{t("Economy","Икономика")}{newGathering.length>0?" · "+newGathering.length:""}</button>
       </div>}
       {data&&activeTab==="military"&&<>{activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}
@@ -152,6 +164,7 @@ export default function ReportsPanel({onClose,onRead}) {
         </>}
         {previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
       </>}
+      {data&&activeTab==="espionage"&&<>{scoutReports.length?scoutReports.map(espionageReport):<p>{t("No espionage reports yet.","Все още няма доклади от шпионаж.")}</p>}</>}
       {data&&activeTab==="economy"&&<>
         {newGathering.length>0&&<><h2>{t("New resource gathering reports","Нови доклади от добив")}</h2>{newGathering.map(gatheringReport)}</>}
         {previousGathering.length>0&&<><h2>{t("Previous resource gathering reports","Предишни доклади от добив")}</h2>{previousGathering.map(gatheringReport)}</>}
