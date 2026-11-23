@@ -37,7 +37,7 @@ function rollEquipmentBonuses(slot,rarity,stars,level=1){
   const available=[...pool],effects=[];
   for(let i=0;i<Math.min(stars,available.length);i++){
     const target=available.splice(Math.floor(Math.random()*available.length),1)[0];
-    effects.push({kind:effectKindBySlot[slot],target,value:valueForEffect(slot,target,restoredLevel)});
+    effects.push({kind:effectKindBySlot[slot],target,value:valueForEffect(slot,target,level)});
   }
   return {effects,stats:effects.map(describeEquipmentEffect)};
 }
