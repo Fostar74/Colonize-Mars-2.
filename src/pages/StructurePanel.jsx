@@ -322,7 +322,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
           return (
             <div key={unit} className="unit-card" style={{filter:unlocked?"none":"grayscale(1)",opacity:unlocked?1:0.62,border:unlocked?"1px solid #40a7b9":"1px solid #777",transition:"filter .25s, opacity .25s, border-color .25s"}}>
               <div aria-hidden="true" style={{fontSize:36,filter:unlocked?"none":"grayscale(1)",marginBottom:4}}>{unitTab==="Ground"?"🪖":unitTab==="Ranged"?"🎯":unitTab==="Mobile"?"🚙":unitTab==="Heavy Systems"?"🤖":"⚔️"}</div>
-              <h4>{localLabel(unit)}</h4>
+              <h4>{localLabel(unit)}{unit==="Rover Scout"&&<span style={{display:"inline-block",marginLeft:8,padding:"3px 8px",borderRadius:6,background:"#205c78",color:"#fff",fontSize:12}}>🔎 {t("Espionage unit","Разузнавач · за шпионаж")}</span>}</h4>
               {eliteStats && <>
                 <p>{t("Attack against all targets","Атака срещу всички цели")}: {eliteStats.attack.infantry} · {t("Health","Живот")}: {eliteStats.health}</p>
                 <p>{t("Recommended formation position: row 4, out of wall range. You can choose any row.","Препоръчителна позиция във формацията: 4-ти ред, извън обсега на стената. Можеш да избереш всеки ред.")}</p>
