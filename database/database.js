@@ -3406,8 +3406,32 @@ Rewards are distributed per participating player, not once per alliance. / На�
         if(!mission?.result)return false;
         try{return !JSON.parse(mission.result).victory;}catch{return false;}
       };
-      // Preserve every earned item; normalize its display tier from its own level.
-      const gearInventory=(Array.isArray(originalInventory)?originalInventory:[]).map(normalizeEquipmentItem);
+      // Recover only verifiable historical levels/rarities from the saved pre-migration snapshot.
+      // Never invent a tier for an item with no historical evidence.
+      const historical=db.prepare("SELECT equipped_items,gear_inventory FROM equipment_migration_snapshots WHERE user_id=?").get(userId);
+      const historicItems=[
+        ...JSON.parse(historical?.gear_inventory||"[]"),
+        ...Object.values(JSON.parse(historical?.equipped_items||"{}")).filter(Boolean),
+        ...Object.values(originalEquipped||{}).filter(Boolean)
+      ];
+      const rarityRank={Common:0,Uncommon:1,Rare:2,Epic:3,Legendary:4};
+      const historicById=new Map();
+      for(const item of historicItems){
+        if(!item?.id)continue;
+        const previous=historicById.get(item.id);
+        const rank=rarityRank[item.rarity]??0,previousRank=rarityRank[previous?.rarity]??0;
+        if(!previous||rank>previousRank||Number(item.level||0)>Number(previous.level||0))historicById.set(item.id,{
+          ...previous,...item,
+          rarity:rank>=previousRank?item.rarity:previous.rarity,
+          level:Math.max(Number(previous?.level)||1,Number(item.level)||1)
+        });
+      }
+      const gearInventory=(Array.isArray(originalInventory)?originalInventory:[]).map(item=>{
+        const historic=historicById.get(item?.id);
+        const rank=rarityRank[item?.rarity]??0,historicRank=rarityRank[historic?.rarity]??0;
+        const restored=historic?{...item,level:Math.max(Number(item.level)||1,Number(historic.level)||1),rarity:historicRank>rank?historic.rarity:item.rarity}:item;
+        return normalizeEquipmentItem(restored);
+      });
       const inventoryById=new Map(gearInventory.filter(item=>item?.id).map(item=>[item.id,item]));
       const knightLevel=Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1);
       const equippedItems=Object.fromEntries(Object.entries(originalEquipped||{}).flatMap(([slot,item])=>{
