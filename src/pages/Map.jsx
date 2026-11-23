@@ -244,6 +244,7 @@ function Map() {
       }
     }catch{}
   },[]);
+  const reportNavigation = useRef(Boolean(sessionStorage.getItem("mapReportTarget")));
   const mapPlayerTarget = useRef(sessionStorage.getItem("mapPlayerTarget"));
   useEffect(() => {
     if (reconShortcut) {
@@ -349,7 +350,7 @@ function Map() {
           setSelectedTarget({ type: "alien", ...nearest });
           setMarchDraft(null);
         }
-      } else if (!mapPlayerTarget.current) {
+      } else if (!mapPlayerTarget.current && !reportNavigation.current) {
         setViewCenter({ x: savedCastle.x, y: savedCastle.y });
       }
     } catch {
