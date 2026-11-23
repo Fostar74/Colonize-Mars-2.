@@ -1,6 +1,6 @@
 const {categories}=require("./unitEconomy");
 const rarityByStars={1:"Common",2:"Uncommon",3:"Rare",4:"Epic",5:"Legendary"};
-const rarityUnlockLevel={Common:1,Uncommon:11,Rare:21,Epic:31,Legendary:41};
+const rarityUnlockLevel={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40};
 function rarityForEquipmentLevel(level){const n=Math.max(0,Math.min(50,Math.floor(Number(level)||0)));return n>=41?"Legendary":n>=31?"Epic":n>=21?"Rare":n>=11?"Uncommon":"Common";}
 const rarityBonusPercent={Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40};
 const combatUnits=Object.entries(categories).filter(([category])=>category!=="Elite").flatMap(([,units])=>units);
@@ -45,7 +45,7 @@ function normalizeEquipmentItem(item){
   if(!item||typeof item!=="object")return item;
   const slot=String(item.slot||item.type||"").toUpperCase();
   if(!effectKindBySlot[slot])return item;
-  const rarity=rarityForEquipmentLevel(item.level??item.levelRequirement??0);
+  const rarity=rarityStars[item.rarity]?item.rarity:rarityForEquipmentLevel(item.level??item.levelRequirement??0);
   const stars=Math.max(1,Math.min(5,Number(item.stars)||Number(item.bonusSlots)||rarityStars[rarity]||1));
   const pool=slot==="BOOTS"||slot==="GLOVES"?combatProtocols:slot==="WEAPON"||slot==="SHIELD"?[...combatUnits,...alienCombatUnits]:combatUnits;
   const effects=Array.isArray(item.effects)?item.effects:[];
