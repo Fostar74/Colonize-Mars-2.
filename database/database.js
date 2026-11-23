@@ -110,6 +110,7 @@ function initializeDatabase() {
       )
     `);
     console.log("Users table created/verified");
+    db.exec("CREATE TABLE IF NOT EXISTS beginner_protection_forfeits (user_id INTEGER PRIMARY KEY REFERENCES users(id), forfeited_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS player_profiles (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, avatar_id TEXT NOT NULL DEFAULT 'pilot-m')");
 
     db.exec(`
@@ -1040,6 +1041,16 @@ class DatabaseManager {
     ].map(([name,values,description])=>({name,values,description}));
   }
   playerLevel(xp){return Math.min(40,1+Math.floor(Math.max(0,xp)/1000));}
+  pvpPlayerLevel(userId){
+    const row=db.prepare("SELECT COALESCE(xp,0) AS xp FROM player_talents WHERE user_id=?").get(userId);
+    return this.playerLevel(Number(row?.xp||0));
+  }
+  beginnerProtectionUntil(userId){
+    const row=db.prepare("SELECT CAST(strftime('%s',created_at) AS INTEGER)*1000 AS registered FROM users WHERE id=?").get(userId);
+    if(!row?.registered||db.prepare("SELECT 1 FROM beginner_protection_forfeits WHERE user_id=?").get(userId))return 0;
+    const expires=Number(row.registered)+7*86400000;
+    return expires>Date.now()?expires:0;
+  }
   playerTalents(userId){
     db.prepare("INSERT OR IGNORE INTO player_talents(user_id) VALUES (?)").run(userId);
     const row=db.prepare("SELECT xp,talents FROM player_talents WHERE user_id=?").get(userId);
@@ -1797,7 +1808,7 @@ class DatabaseManager {
     })();
   }
 
-    launchPlayerAttack(userId, selectedArmy, formation, targetCoords, includeCyberKnight=false) {
+    launchPlayerAttack(userId, selectedArmy, formation, targetCoords, includeCyberKnight=false, confirmProtectionLoss=false) {
     if (!targetCoords || typeof targetCoords.username !== "string") return {error:"Choose a player base on the map."};
     const target = db.prepare(`SELECT u.id,u.username,b.x,b.y,m.alliance_id
       FROM users u JOIN base_positions b ON b.user_id=u.id
@@ -1805,6 +1816,9 @@ class DatabaseManager {
       WHERE u.username=? AND b.x=? AND b.y=?`).get(targetCoords.username,targetCoords.x,targetCoords.y);
     if (!target) return {error:"Player base not found at those coordinates."};
     if (target.id === userId) return {error:"You cannot attack your own base."};
+    const attackerLevel=this.pvpPlayerLevel(userId),defenderLevel=this.pvpPlayerLevel(target.id);
+    if(Math.abs(attackerLevel-defenderLevel)>=6)return {error:"PvP attacks require a level difference of less than 6 (your level: "+attackerLevel+", target: "+defenderLevel+")."};
+    if(this.beginnerProtectionUntil(target.id))return {error:"This player has seven-day beginner protection."};
     const attackerAlliance=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId)?.alliance_id;
     if(attackerAlliance&&target.alliance_id&&Number(attackerAlliance)===Number(target.alliance_id))return {error:"You cannot attack a member of your alliance."};
     if(db.prepare("SELECT 1 FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(target.id,Date.now()))
@@ -1812,6 +1826,8 @@ class DatabaseManager {
     return db.transaction(()=>{
       const current=this.syncGame(userId);
       if (!current) return {error:"Player not found."};
+      const protectionUntil=this.beginnerProtectionUntil(userId);
+      if(protectionUntil&&!confirmProtectionLoss)return {error:"Attacking a player permanently ends your seven-day beginner protection. Confirm to continue.",requiresProtectionConfirmation:true,protectionUntil};
       if (!selectedArmy||typeof selectedArmy!=="object"||Array.isArray(selectedArmy)) return {error:"Choose an army."};
       const {playerTypes}=require("../shared/combatEngine");
       let total=0;
@@ -1831,6 +1847,7 @@ class DatabaseManager {
         tally[group.unit]=(tally[group.unit]||0)+group.count;
       }
       if(Object.keys({...selected,...tally}).some(unit=>(selected[unit]||0)!==(tally[unit]||0))) return {error:"Formation does not match selected troops."};
+      if(protectionUntil)db.prepare("INSERT OR IGNORE INTO beginner_protection_forfeits(user_id,forfeited_at) VALUES (?,?)").run(userId,Date.now());
       for(const [unit,count] of Object.entries(selected)) current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       const now=Date.now();
@@ -1872,7 +1889,7 @@ class DatabaseManager {
           continue;
         }
         const shield=db.prepare("SELECT expires_at FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(mission.defender_id,now);
-        if(shield){
+        if(shield||this.beginnerProtectionUntil(mission.defender_id)){
           const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
           const shielded={victory:false,rounds:0,report:[],survivors:data.units||{},defenderInitial:defender.army||{},defenderSurvivors:defender.army||{},
             defendersRemaining:Object.values(defender.army||{}).reduce((sum,count)=>sum+Number(count||0),0),
@@ -3755,12 +3772,16 @@ Rewards are distributed per participating player, not once per alliance. / На�
   getPublicBases() {
     return db.prepare(`
       SELECT u.id AS user_id, u.username, b.x, b.y, m.alliance_id,
+        COALESCE(t.xp,0) AS player_xp,
+        CASE WHEN f.user_id IS NULL THEN MAX(0,CAST(strftime('%s',u.created_at) AS INTEGER)*1000+604800000-?) ELSE 0 END AS beginner_protection_remaining_ms,
         (SELECT MAX(expires_at) FROM alliance_market_buffs shield
          WHERE shield.user_id=u.id AND shield.kind='protection' AND shield.expires_at>?) AS protected_until
       FROM base_positions b JOIN users u ON u.id = b.user_id
       LEFT JOIN alliance_members m ON m.user_id=u.id
+      LEFT JOIN player_talents t ON t.user_id=u.id
+      LEFT JOIN beginner_protection_forfeits f ON f.user_id=u.id
       ORDER BY u.id
-    `).all(Date.now());
+    `).all(Date.now(),Date.now());
   }
 
   getAllUsers() {
