@@ -1677,8 +1677,9 @@ class DatabaseManager {
     const due=db.prepare("SELECT * FROM player_scout_missions WHERE user_id=? AND returned_at IS NULL AND arrives_at<=?").all(userId,now);
     for(const mission of due){
       if(!mission.report){
-        const target=this.syncGame(mission.target_user_id,now);
-        const report=target?{resources:target.resources,army:target.army,scoutedAt:now}:{error:"Target unavailable"};
+        const target=this.progressQueries.getProgress.get(mission.target_user_id);
+        const targetRuntime=target?this.runtime(mission.target_user_id):null;
+        const report=target&&targetRuntime?{resources:JSON.parse(target.resources),army:JSON.parse(targetRuntime.army),scoutedAt:now}:{error:"Target unavailable"};
         db.prepare("UPDATE player_scout_missions SET report=? WHERE id=?").run(JSON.stringify(report),mission.id);
       }
       if(now>=mission.returns_at){
