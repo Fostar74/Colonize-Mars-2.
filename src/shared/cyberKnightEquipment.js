@@ -80,7 +80,7 @@ function normalizeEquipmentItem(item){
     const target=available.splice(Math.floor(Math.random()*available.length),1)[0];
     effects.push({kind:effectKindBySlot[slot],target,value:valueForEffect(slot,target,level)});
   }
-  return {...item,slot,level:restoredLevel,stars,bonusSlots:stars,rarity,rarityBonus:rarityBonusPercent[rarity],effects,stats:effects.map(describeEquipmentEffect)};
+  return {...item,slot,level:restoredLevel,restorationLocked:!!item.restorationLocked||restoredLevel>level,stars,bonusSlots:stars,rarity,rarityBonus:rarityBonusPercent[rarity],effects,stats:effects.map(describeEquipmentEffect)};
 }
 function equipmentCombatBonuses(equippedItems={}){
   const result={unitEffects:{},enemyDebuffs:{},protocolBoosts:{},enemyProtocolDebuffs:{}};
