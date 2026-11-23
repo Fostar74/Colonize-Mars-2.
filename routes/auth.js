@@ -213,6 +213,16 @@ router.post("/wheel/spin",requireSession,(req,res)=>{
     res.json(result);
   }catch(e){console.error(e);res.status(500).json({message:"Spin unavailable."});}
 });
+router.get("/reports/recipients/:userId",requireSession,(req,res)=>{
+  try{res.json({players:db.searchReportRecipients(Number(req.params.userId),req.query.q)});}
+  catch(error){console.error("Search report recipients:",error);res.status(500).json({message:"Player search unavailable."});}
+});
+router.post("/reports/share",requireSession,(req,res)=>{
+  try{
+    const result=db.shareBattleReport(Number(req.body.userId),req.body.reportType,Number(req.body.reportId),req.body.scope,req.body.recipient);
+    res.status(result.error?400:200).json(result.error?{message:result.error}:result);
+  }catch(error){console.error("Share battle report:",error);res.status(500).json({message:"Could not share report."});}
+});
 router.route("/messages/:scope/:userId")
   .get(requireSession,(req,res)=>{
     const result=db.listMessages(Number(req.params.userId),req.params.scope);
