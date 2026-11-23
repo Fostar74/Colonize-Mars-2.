@@ -2,7 +2,7 @@ const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/sha
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
 const alienBases = require("../src/shared/alienBases");
-const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
+const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,rarityForEquipmentLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
 const {specialUnitCombatBonuses,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
@@ -3340,6 +3340,9 @@ Rewards are distributed per participating player, not once per alliance. / На�
       points[slot] = slotPoints - fromSlot;
       points.Universal = universal - (cost - fromSlot);
       item.level = level + 1;
+      const nextTier=rarityForEquipmentLevel(item.level);
+      const rarityOrder={Common:0,Uncommon:1,Rare:2,Epic:3,Legendary:4};
+      if((rarityOrder[nextTier]||0)>(rarityOrder[item.rarity]||0))item.rarity=nextTier;
       // Recalculate rarity, effect percentages and visual tier immediately at forge milestones.
       Object.assign(item,normalizeEquipmentItem(item));
       for (const [key, equipped] of Object.entries(equipment.equippedItems)) {
@@ -3452,7 +3455,21 @@ Rewards are distributed per participating player, not once per alliance. / На�
         if(!mission?.result)return false;
         try{return !JSON.parse(mission.result).victory;}catch{return false;}
       };
-      const gearInventory=(Array.isArray(originalInventory)?originalInventory:[]).filter(item=>!isLostAlienReward(item)).map(normalizeEquipmentItem);
+      // Restore the earned rarity of alien-mission rewards created before the
+      // November 22 rarity migration. Their original drop rarity was determined
+      // by stars; the migration mistakenly overwrote it with Common on read.
+      // Do not apply this recovery to later drops or non-mission equipment.
+      const recoverLegacyRarity=item=>{
+        const match=/^alien-(\\d+)$/.exec(String(item?.id||""));
+        if(!match)return item;
+        const mission=db.prepare("SELECT launched_at FROM alien_missions WHERE id=? AND user_id=?").get(Number(match[1]),userId);
+        if(!mission||Number(mission.launched_at)>=Date.parse("2026-11-22T16:07:49Z"))return item;
+        const earnedRarity=rarityByStars[Number(item.stars)||Number(item.bonusSlots)];
+        if(!earnedRarity)return item;
+        const rank={Common:0,Uncommon:1,Rare:2,Epic:3,Legendary:4};
+        return (rank[earnedRarity]||0)>(rank[item.rarity]||0)?{...item,rarity:earnedRarity}:item;
+      };
+      const gearInventory=(Array.isArray(originalInventory)?originalInventory:[]).filter(item=>!isLostAlienReward(item)).map(item=>normalizeEquipmentItem(recoverLegacyRarity(item)));
       const inventoryById=new Map(gearInventory.filter(item=>item?.id).map(item=>[item.id,item]));
       const knightLevel=Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1);
       const equippedItems=Object.fromEntries(Object.entries(originalEquipped||{}).flatMap(([slot,item])=>{
