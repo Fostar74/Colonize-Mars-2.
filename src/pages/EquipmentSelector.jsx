@@ -87,7 +87,7 @@ function EquipmentSelector({ slot, onClose, onEquip }) {
   }, [inventory, craftingPoints, equippedItems, isLoading]);
 
   const filteredGear = inventory.filter(
-    (item) => item.slot === slot.toUpperCase() && item.rarity === activeTab.toLowerCase()
+    (item) => String(item.slot || item.type || "").toUpperCase() === slot.toUpperCase() && String(item.rarity || "Common").toLowerCase() === activeTab.toLowerCase()
   );
 
   const handleDismantle = (item) => {
