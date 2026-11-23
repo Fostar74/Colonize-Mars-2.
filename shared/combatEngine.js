@@ -63,11 +63,17 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     const categoryBonus=group.category==="ranged"?ownerBonuses.rangedAttack:group.category==="infantry"?ownerBonuses.infantryAttack:group.category==="mobile"?ownerBonuses.mobileAttack:group.category==="artillery"?ownerBonuses.artilleryAttack:0;
     const research=ownerBonuses.unitResearch?.[group.unit]||options.defenderUnitResearch?.[group.unit];
     const unitEffect=ownerBonuses.unitEffects?.[group.unit]||{},enemyDebuff=enemyBonuses.enemyDebuffs?.[group.unit]||{};
-    const attackMultiplier=Math.max(0,1+((Number(categoryBonus)||0)+(Number(ownerBonuses.leadership)||0)+(Number(ownerBonuses.allAttack)||0)+specialBonuses[side].attack+(research?.attack||0)+(Number(unitEffect.attack)||0)-(Number(enemyDebuff.attack)||0))/100);
-    group.attack*=attackMultiplier;
-    if(group.attackVs)for(const key of Object.keys(group.attackVs))group.attackVs[key]*=attackMultiplier;
-    const healthMultiplier=Math.max(.01,1+((Number(ownerBonuses.allHealth)||0)+specialBonuses[side].health+(research?.health||0)+(group.category==="infantry"?(Number(ownerBonuses.infantryHealth)||0):0)+(Number(unitEffect.health)||0)-(Number(enemyDebuff.health)||0))/100);
-    group.hp*=healthMultiplier;
+    // Helmet/weapon and armor/shield are FLAT per-soldier modifiers, not percentages.
+    const flatAttack=(Number(unitEffect.attack)||0)-(Number(enemyDebuff.attack)||0);
+    const flatHealth=(Number(unitEffect.health)||0)-(Number(enemyDebuff.health)||0);
+    const attackMultiplier=Math.max(0,1+((Number(categoryBonus)||0)+(Number(ownerBonuses.leadership)||0)+(Number(ownerBonuses.allAttack)||0)+specialBonuses[side].attack+(research?.attack||0))/100);
+    group.attack=Math.max(0,group.attack>0?group.attack+flatAttack:0)*attackMultiplier;
+    if(group.attackVs)for(const key of Object.keys(group.attackVs)){
+      const base=Number(group.attackVs[key])||0;
+      group.attackVs[key]=Math.max(0,base>0?base+flatAttack:0)*attackMultiplier;
+    }
+    const healthMultiplier=Math.max(.01,1+((Number(ownerBonuses.allHealth)||0)+specialBonuses[side].health+(research?.health||0)+(group.category==="infantry"?(Number(ownerBonuses.infantryHealth)||0):0))/100);
+    group.hp=Math.max(1,group.hp+flatHealth)*healthMultiplier;
   }
   const report=[];let rounds=0;
   const alive=side=>side.some(g=>g.count>0);
