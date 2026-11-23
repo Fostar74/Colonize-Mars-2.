@@ -63,6 +63,8 @@ export default function ReportsPanel({onClose,onRead}) {
     return <article key={"player-"+m.id} style={card}>
       <h3>{title} · {m.target?.x}:{m.target?.y}</h3>
       <p>{outcome}{!m.result.recalled&&" · "+t("Rounds","Рундове")+": "+(m.result.rounds??"—")}</p>
+      {!m.incoming&&m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
+      {m.result.loot&&!m.result.recalled&&<p><strong>{m.incoming?t("Resources plundered","Отнети ресурси"):t("Loot","Плячка")}:</strong> {["Gold","Iron","Water","Solar"].map(key=>t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(m.result.loot[key]||0).toLocaleString()).join(" · ")} · {t("Total","Общо")}: {Number(m.result.totalLoot||0).toLocaleString()} · {t("Cargo capacity","Товароносимост")}: {Number(m.result.cargoCapacity||0).toLocaleString()}</p>}
       {army(t("Your starting army","Твоята начална армия"),ownInitialRecorded?ownInitial:null)}
       {army(t("Your losses","Твоите загуби"),diff(ownInitial,ownRemaining))}
       {army(t("Your survivors","Твоите оцелели"),ownRemaining)}
