@@ -1256,13 +1256,10 @@ function Map() {
             })}
             {mineNotice&&<p role="status">{localLabel(mineNotice)}</p>}
           </section>}
-          {(campaignTab==="reports" || scoutMarches.length>0) && <h3>{t("Reconnaissance","Разузнаване")}</h3>}
-          {playerScoutMarches.map(m=><article key={"player-scout-"+m.id} style={{padding:12,margin:"8px 0",border:"1px solid #50718b",borderRadius:8}}>
+          {(campaignTab==="reports" || scoutMarches.length>0 || playerScoutMarches.some(m=>!m.report)) && <h3>{t("Reconnaissance","Разузнаване")}</h3>}
+          {playerScoutMarches.filter(m=>!m.report).map(m=><article key={"player-scout-"+m.id} style={{padding:12,margin:"8px 0",border:"1px solid #50718b",borderRadius:8}}>
             <strong>🔎 {t("Espionage against","Шпионаж срещу")} {m.target.username} · {m.target.x}:{m.target.y}</strong>
-            <p>{m.report?t("Reconnaissance complete","Разузнаването приключи"):t("Arriving in","Пристига след")+" "+Math.max(0,Math.ceil((m.arrives_at-clock)/1000))+" "+t("seconds","секунди")} · {m.quantity} × {localLabel("Rover Scout")}</p>
-            {m.report?.resources&&<p><strong>{t("Resources","Ресурси")}:</strong> {Object.entries(m.report.resources).map(([name,value])=>localLabel(name)+": "+Number(value).toLocaleString()).join(" · ")}</p>}
-            {m.report?.army&&<p><strong>{t("Defending army","Защитна армия")}:</strong> {Object.entries(m.report.army).filter(([,n])=>Number(n)>0).map(([name,n])=>localLabel(name)+": "+Number(n).toLocaleString()).join(" · ")||"0"}</p>}
-            {m.report?.error&&<p>{m.report.error}</p>}
+            <p>{t("Arriving in","Пристига след")} {Math.max(0,Math.ceil((m.arrives_at-clock)/1000))} {t("seconds","секунди")} · {m.quantity} × {localLabel("Rover Scout")}</p>
           </article>)}
           {scoutMarches.map(mission=>{
             const returning=clock>=mission.arrives_at;
