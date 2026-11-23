@@ -39,10 +39,10 @@ function CyberKnightPanel({ onClose }) {
   const rarityClasses={Common:"common",Uncommon:"uncommon",Rare:"rare",Epic:"epic",Legendary:"legendary"};
   const effectText=effect=>{
     const target=protocolLabels[effect.target]?.[language==="bg"?1:0]||localLabel(effect.target),value=Number(effect.value)||0;
-    if(effect.kind==="unitAttack")return t("Attack of","Атака на")+" "+target+": +"+value+"%";
-    if(effect.kind==="unitHealth")return t("Health of","Живот на")+" "+target+": +"+value+"%";
-    if(effect.kind==="enemyUnitAttack")return t("Enemy attack of","Атака на противниковия")+" "+target+": −"+value+"%";
-    if(effect.kind==="enemyUnitHealth")return t("Enemy health of","Живот на противниковия")+" "+target+": −"+value+"%";
+    if(effect.kind==="unitAttack")return t("Attack of","Атака на")+" "+target+": +"+value;
+    if(effect.kind==="unitHealth")return t("Health of","Живот на")+" "+target+": +"+value;
+    if(effect.kind==="enemyUnitAttack")return t("Enemy attack of","Атака на противниковия")+" "+target+": −"+value;
+    if(effect.kind==="enemyUnitHealth")return t("Enemy health of","Живот на противниковия")+" "+target+": −"+value;
     if(effect.kind==="protocolBoost")return t("Combat protocol","Боен протокол")+" "+target+": +"+value+"%";
     if(effect.kind==="enemyProtocol")return t("Opponent combat protocol","Противников боен протокол")+" "+target+": −"+value+"%";
     return effect.target+": "+value+"%";
