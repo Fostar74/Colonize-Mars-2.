@@ -3351,26 +3351,22 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   saveEquipmentFromClient(userId, equippedItems, gearInventory, craftingPoints) {
-    const current = this.getUserEquipment(userId);
-    const knightLevel=Number(current?.knightLevel||1),inventory=current?.gearInventory||[];
+    // The server is authoritative for item rarity, level, bonuses, inventory and forge points.
+    // A stale browser payload must never overwrite restored gear or earned rewards.
+    const current=this.getUserEquipment(userId);
+    if(!current)return {error:"Equipment inventory not found."};
+    const knightLevel=Number(current.knightLevel||1),inventory=current.gearInventory||[];
+    const selected={};
     for(const [slot,item] of Object.entries(equippedItems||{})){
       if(!item)continue;
-      const saved=inventory.find(gear=>gear.id===item.id&&(gear.slot||gear.type||"").toUpperCase()===slot);
-      if(!saved)continue;
-      const required=Math.max(1,Number(saved.level??saved.levelRequirement??1)||1);
+      const saved=inventory.find(gear=>gear.id===item.id&&String(gear.slot||gear.type||"").toUpperCase()===slot);
+      if(!saved)return {error:"Equipment selection is out of date. Reopen Cyber Knight."};
       if(saved.restorationLocked)return {error:"Restored equipment is temporarily locked for equipping."};
-      if(knightLevel<required)return {error:`${saved.rarity} equipment unlocks at Cyber Knight level ${required}.`};
-      if(Number(saved.level??saved.levelRequirement??1)>knightLevel)return {error:`Equipment level ${saved.level} requires Cyber Knight level ${saved.level}.`};
+      const required=Math.max(1,Number(saved.level??saved.levelRequirement??1)||1);
+      if(knightLevel<required)return {error:`Equipment level ${required} requires Cyber Knight level ${required}.`};
+      selected[slot]=saved;
     }
-    if (gearInventory === undefined && craftingPoints === undefined) {
-      const equipped = Object.fromEntries(Object.entries(equippedItems).flatMap(([slot, item]) => {
-        const saved = inventory.find(gear => gear.id === item?.id && (gear.slot || gear.type || "").toUpperCase() === slot);
-        return saved ? [[slot, saved]] : [];
-      }));
-      return this.saveUserEquipment(userId, equipped, inventory, current?.craftingPoints || {});
-    }
-    return this.saveUserEquipment(userId, equippedItems, gearInventory || [],
-      {...craftingPoints, Universal:current?.craftingPoints?.Universal || 0});
+    return this.saveUserEquipment(userId,selected,inventory,current.craftingPoints||{});
   }
 
   saveUserEquipment(userId, equippedItems, gearInventory, craftingPoints) {
