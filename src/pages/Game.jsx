@@ -291,6 +291,20 @@ function EventsPanel({onOpenInventory}) {
     }catch(error){setLabyrinthNotice(error.message);}
     finally{setLabyrinthBusy(false);}
   };
+  const labyrinthPortrait=(()=>{
+    const room=labyrinthBattle?.room||labyrinth?.room||1;
+    const stage=Math.ceil(room/10);
+    if(stage===30){
+      // The final chamber uses Helen's original portrait before her first counterattack.
+      // Every monster strike reveals the next cursed form; victory restores Helen.
+      if(room===300){
+        const attacks=(labyrinthBattle?.log||[]).filter(entry=>entry.actor==="monster").length;
+        return attacks>0?"/labyrinth-monsters/helen-curse-"+(((attacks-1)%5)+1)+".webp":"/labyrinth-monsters/floor-30-3.webp";
+      }
+      return "/labyrinth-monsters/floor-30-1.webp";
+    }
+    return "/labyrinth-monsters/floor-"+String(stage).padStart(2,"0")+".webp";
+  })();
   const labyrinthCombat=async(action,room)=>{
     setLabyrinthBusy(true);setLabyrinthNotice("");
     try{
@@ -414,7 +428,7 @@ function EventsPanel({onOpenInventory}) {
               <strong>{labyrinthBattle?.monster?.name||labyrinth.monster?.name}</strong>
               <div style={{background:"#261322",border:"1px solid #e45c78",borderRadius:8,overflow:"hidden",margin:"8px auto",maxWidth:320,height:20}}><div style={{width:Math.max(0,100*(labyrinthBattle?.monsterHp??labyrinth.monster?.hp??1)/(labyrinthBattle?.monsterMaxHp||labyrinth.monster?.hp||1))+"%",height:"100%",background:"linear-gradient(90deg,#b3203e,#ff6c61)",transition:"width .5s"}}/></div>
               <div>{Number(labyrinthBattle?.monsterHp??labyrinth.monster?.hp??0).toLocaleString()} / {Number(labyrinthBattle?.monsterMaxHp||labyrinth.monster?.hp||0).toLocaleString()} HP</div>
-              <img src={(labyrinth.stage===2?"/labyrinth-monsters/Menacing%20Werewolf%20in%20Torchlit%20Labyrinth.png":"/labyrinth-monsters/floor-"+String(labyrinth.stage).padStart(2,"0")+".webp")} onError={event=>{const img=event.currentTarget;if(!img.dataset.labyrinthFallback){img.dataset.labyrinthFallback="1";img.src="/labyrinth-monsters/floor-01.webp";}else{img.onerror=null;img.src=labyrinthMonsterArt;}}} alt={labyrinth.monster?.name||"Alien monster"} style={{width:"min(100%,290px)",height:280,objectFit:"contain",filter:"drop-shadow(0 0 25px #fa4769)",animation:labyrinthImpact?"labyrinthMonsterHit .65s ease-out":"none"}} key={"monster"+labyrinth.stage+"-"+labyrinth.chamber+"-"+labyrinthImpact}/>
+              <img src={labyrinthPortrait} onError={event=>{const img=event.currentTarget;if(!img.dataset.labyrinthFallback){img.dataset.labyrinthFallback="1";img.src="/labyrinth-monsters/floor-01.webp";}else{img.onerror=null;img.src=labyrinthMonsterArt;}}} alt={labyrinth.monster?.name||"Alien monster"} style={{width:"min(100%,290px)",height:280,objectFit:"contain",filter:"drop-shadow(0 0 25px #fa4769)",animation:labyrinthImpact?"labyrinthMonsterHit .65s ease-out":"none"}} key={"monster"+labyrinth.stage+"-"+labyrinth.chamber+"-"+labyrinthImpact}/>
             </div>
           </div>
           <style>{`@keyframes labyrinthBolt{0%{left:0;opacity:0;transform:scale(.5)}15%{opacity:1}85%{opacity:1}100%{left:95%;opacity:0;transform:scale(1.6)}}@keyframes labyrinthCounter{0%{right:0;opacity:0;transform:scale(.5)}15%{opacity:1}85%{opacity:1}100%{right:95%;opacity:0;transform:scale(1.6)}}@keyframes labyrinthHeroStrike{0%{transform:translateX(0)}35%{transform:translateX(25px) scale(1.05)}100%{transform:translateX(0)}}@keyframes labyrinthMonsterHit{0%{transform:translateX(0);filter:brightness(1)}40%{transform:translateX(12px);filter:brightness(2.5)}70%{transform:translateX(-12px)}100%{transform:translateX(0);filter:brightness(1)}}`}</style>
