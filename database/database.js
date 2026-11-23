@@ -287,6 +287,12 @@ function initializeDatabase() {
       arrives_at INTEGER NOT NULL, returns_at INTEGER NOT NULL, report TEXT, returned_at INTEGER
     );
     CREATE INDEX IF NOT EXISTS scout_missions_user ON scout_missions(user_id,id);`);
+    db.exec(`CREATE TABLE IF NOT EXISTS player_scout_missions (
+      id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL, target_user_id INTEGER NOT NULL,
+      quantity INTEGER NOT NULL, origin TEXT NOT NULL, target TEXT NOT NULL,
+      launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, returns_at INTEGER NOT NULL,
+      report TEXT, returned_at INTEGER
+    ); CREATE INDEX IF NOT EXISTS player_scout_missions_user ON player_scout_missions(user_id,id);`);
     db.exec("CREATE TABLE IF NOT EXISTS alien_recon (user_id INTEGER NOT NULL REFERENCES users(id), level INTEGER NOT NULL, scouted_at INTEGER NOT NULL, PRIMARY KEY(user_id,level))");
     db.exec("CREATE TABLE IF NOT EXISTS player_talents (user_id INTEGER PRIMARY KEY REFERENCES users(id), xp INTEGER NOT NULL DEFAULT 0, talents TEXT NOT NULL DEFAULT '{}')");
     db.exec("CREATE TABLE IF NOT EXISTS resource_mines (id INTEGER PRIMARY KEY AUTOINCREMENT, resource TEXT NOT NULL, x INTEGER NOT NULL, y INTEGER NOT NULL, amount INTEGER NOT NULL DEFAULT 5000, claimed_by INTEGER REFERENCES users(id), launched_at INTEGER, arrives_at INTEGER, origin_x INTEGER, origin_y INTEGER, gathering_started_at INTEGER, gathering_rate REAL)");
@@ -585,6 +591,7 @@ class DatabaseManager {
       const structures = JSON.parse(row.structures);
       const army = JSON.parse(state.army);
       this.settleScoutMissions(userId, now, army);
+      this.settlePlayerScoutMissions(userId, now, army);
       const barracksReserve = JSON.parse(state.barracks_reserve || "{}");
       const upgradeJobs=JSON.parse(state.upgrade_jobs || "[]");
       const unitUpgrades=JSON.parse(state.unit_upgrades);
@@ -1644,6 +1651,46 @@ class DatabaseManager {
         db.prepare("UPDATE scout_missions SET returned_at=? WHERE id=?").run(now, mission.id);
       }
     }
+  }
+
+  launchPlayerScout(userId, targetCoords, quantity) {
+    if(!targetCoords||typeof targetCoords.username!=="string")return {error:"Choose a player base."};
+    const target=db.prepare("SELECT u.id,u.username,b.x,b.y FROM users u JOIN base_positions b ON b.user_id=u.id WHERE u.username=? AND b.x=? AND b.y=?").get(targetCoords.username,targetCoords.x,targetCoords.y);
+    if(!target||target.id===userId)return {error:"Invalid scouting target."};
+    if(db.prepare("SELECT 1 FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(target.id,Date.now()))return {error:"Target is protected by a Plasma Shield."};
+    if(!Number.isSafeInteger(quantity)||quantity<1||quantity>50000)return {error:"Select between 1 and 50,000 Rover Scouts."};
+    return db.transaction(()=>{
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      if(Number(current.army["Rover Scout"]||0)<quantity)return {error:"Not enough Rover Scouts available."};
+      current.army["Rover Scout"]-=quantity;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      const now=Date.now(),travelMs=60000;
+      const origin={username:current.castle.username,x:current.castle.x,y:current.castle.y};
+      const destination={username:target.username,x:target.x,y:target.y};
+      const result=db.prepare("INSERT INTO player_scout_missions(user_id,target_user_id,quantity,origin,target,launched_at,arrives_at,returns_at) VALUES(?,?,?,?,?,?,?,?)").run(userId,target.id,quantity,JSON.stringify(origin),JSON.stringify(destination),now,now+travelMs,now+travelMs*2);
+      return {missionId:Number(result.lastInsertRowid),launchedAt:now,arrivesAt:now+travelMs,returnsAt:now+travelMs*2,origin,target:destination,quantity};
+    })();
+  }
+
+  settlePlayerScoutMissions(userId,now,army) {
+    const due=db.prepare("SELECT * FROM player_scout_missions WHERE user_id=? AND returned_at IS NULL AND arrives_at<=?").all(userId,now);
+    for(const mission of due){
+      if(!mission.report){
+        const target=this.syncGame(mission.target_user_id,now);
+        const report=target?{resources:target.resources,army:target.army,scoutedAt:now}:{error:"Target unavailable"};
+        db.prepare("UPDATE player_scout_missions SET report=? WHERE id=?").run(JSON.stringify(report),mission.id);
+      }
+      if(now>=mission.returns_at){
+        army["Rover Scout"]=(Number(army["Rover Scout"])||0)+mission.quantity;
+        db.prepare("UPDATE player_scout_missions SET returned_at=? WHERE id=?").run(now,mission.id);
+      }
+    }
+  }
+
+  getPlayerScoutMissions(userId) {
+    return db.prepare("SELECT * FROM player_scout_missions WHERE user_id=? ORDER BY id DESC LIMIT 30").all(userId)
+      .map(({origin,target,report,...mission})=>({...mission,origin:JSON.parse(origin),target:JSON.parse(target),report:report?JSON.parse(report):null}));
   }
 
   getFormations(userId) {
@@ -2800,7 +2847,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,gatheringReports,mothershipEvent};
+    return {scoutMissions,playerScoutMissions:this.getPlayerScoutMissions(userId),playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,gatheringReports,mothershipEvent};
   }
 
   getAlienStationStatus(userId){
