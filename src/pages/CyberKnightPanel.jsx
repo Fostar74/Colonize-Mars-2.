@@ -64,7 +64,7 @@ function CyberKnightPanel({ onClose }) {
   const [prestige, setPrestige] = useState(0);
   const itemsForSlot = inventory.filter(item =>
     (item.slot || item.type || "").toUpperCase() === selectedSlot && String(item.rarity).toLowerCase() === rarityTab.toLowerCase()
-  );
+  ).sort((a,b)=>Number(String(b.id)===String(equippedItems[selectedSlot]?.id))-Number(String(a.id)===String(equippedItems[selectedSlot]?.id)));
 
   useEffect(() => {
     loadEquipmentData();
@@ -100,7 +100,7 @@ function CyberKnightPanel({ onClose }) {
 
   const handleSlotClick = (slotName) => {
     setSelectedSlot(slotName);
-    setRarityTab("Common");
+    setRarityTab(equippedItems[slotName]?.rarity || "Common");
   };
 
   const handleEquip = async (slot, item) => {
@@ -111,6 +111,7 @@ function CyberKnightPanel({ onClose }) {
     const saved=await progressManager.saveEquipment(nextEquipped);
     if(!saved){alert("Could not save equipment. Please retry.");return;}
     setEquippedItems(nextEquipped);
+    setRarityTab(item.rarity || "Common");
     setEquipmentNotice(t("Equipped","Екипирано")+": "+localLabel(slot)+" · "+item.rarity+" · Lv "+(Number(item.level)||0));
     setActiveModal(null);
     setSelectedItem(null);
@@ -129,6 +130,8 @@ function CyberKnightPanel({ onClose }) {
       const equipment = await progressManager.craftEquipment(selectedItem.id, itemLevel);
       setEquippedItems(equipment.equippedItems);
       setInventory(equipment.gearInventory);
+      const upgraded=equipment.gearInventory?.find(item=>String(item.id)===String(selectedItem.id));
+      if(upgraded?.rarity)setRarityTab(upgraded.rarity);
       setCraftingPoints(equipment.craftingPoints);
       setActiveModal(null);
       setCraftMessage(`${selectedItem.name} upgraded to level ${itemLevel + 1}.`);
@@ -177,7 +180,7 @@ function CyberKnightPanel({ onClose }) {
           <div className="equipment-layout">
             {gearColumns.map(column=><section key={column.side} className={`equipment-column ${column.side}`}>
               <h3>{t(column.title,column.titleBg)}</h3>
-              {column.slots.map(slot=>{const currentItem=equippedItems[slot],slotCount=inventory.filter(item=>(item.slot||item.type||"").toUpperCase()===slot).length;return <button key={slot} className={`gear-slot ${currentItem?"is-equipped":""}`} onClick={()=>handleSlotClick(slot)} aria-pressed={!!currentItem}>
+              {[...column.slots].sort((a,b)=>Number(!!equippedItems[b])-Number(!!equippedItems[a])).map(slot=>{const currentItem=equippedItems[slot],slotCount=inventory.filter(item=>(item.slot||item.type||"").toUpperCase()===slot).length;return <button key={slot} className={`gear-slot ${currentItem?"is-equipped":""}`} onClick={()=>handleSlotClick(slot)} aria-pressed={!!currentItem}>
                 <span className="gear-icon-frame"><PlasmaGearIcon slot={slot}/></span>
                 <span className="gear-slot-text"><strong>{localLabel(slot)}</strong><small>{currentItem?t("Equipped","Екипирано")+" · "+currentItem.rarity+" · Lv "+(Number(currentItem.level)||0):t("Not equipped","Не е екипирано")}</small><small>{slotCount} {t("in inventory","в инвентара")}</small></span>
                 {currentItem&&<span className={`equipped-rarity rarity-${rarityClasses[currentItem.rarity]||"common"}`}>✓</span>}
