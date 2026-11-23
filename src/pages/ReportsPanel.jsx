@@ -20,6 +20,43 @@ export default function ReportsPanel({onClose,onRead}) {
   const [error,setError]=useState("");
   const [newReportIds,setNewReportIds]=useState([]);
   const [clock,setClock]=useState(Date.now);
+  const [sharing,setSharing]=useState(null);
+  const [shareScope,setShareScope]=useState("alliance");
+  const [recipientQuery,setRecipientQuery]=useState("");
+  const [selectedRecipient,setSelectedRecipient]=useState("");
+  const [recipientMatches,setRecipientMatches]=useState([]);
+  const [shareBusy,setShareBusy]=useState(false);
+  const [shareNotice,setShareNotice]=useState("");
+  useEffect(()=>{
+    if(!sharing||shareScope!=="private"||recipientQuery.trim().length<3){setRecipientMatches([]);return;}
+    let active=true;
+    fetch(api+"/reports/recipients/"+encodeURIComponent(userId)+"?q="+encodeURIComponent(recipientQuery.trim()),{headers:auth()})
+      .then(r=>r.ok?r.json():{players:[]}).then(data=>{if(active)setRecipientMatches(data.players||[]);}).catch(()=>{if(active)setRecipientMatches([]);});
+    return()=>{active=false;};
+  },[sharing,shareScope,recipientQuery,userId]);
+  const shareControls=(type,id)=><div style={{marginTop:10}}>
+    <button type="button" onClick={()=>{setSharing(sharing?.type===type&&sharing?.id===id?null:{type,id});setShareScope("alliance");setRecipientQuery("");setSelectedRecipient("");setShareNotice("");}}>{t("Share","Сподели")}</button>
+    {sharing?.type===type&&sharing?.id===id&&<div style={{padding:10,marginTop:6,border:"1px solid #64839a",borderRadius:8}}>
+      <label>{t("Share with","Сподели с")}: <select value={shareScope} onChange={e=>{setShareScope(e.target.value);setRecipientQuery("");setSelectedRecipient("");}}><option value="alliance">{t("Alliance","Алианс")}</option><option value="private">{t("Player","Играч")}</option></select></label>
+      {shareScope==="private"&&<div style={{marginTop:8}}>
+        <input aria-label={t("Player name","Име на играч")} placeholder={t("At least 3 letters","Поне 3 букви")} value={recipientQuery} onChange={e=>{setRecipientQuery(e.target.value);setSelectedRecipient("");}}/>
+        {recipientQuery.trim().length>=3&&!selectedRecipient&&<div style={{display:"flex",flexDirection:"column",alignItems:"flex-start",gap:3}}>
+          {recipientMatches.map(p=><button type="button" key={p.id} onClick={()=>{setSelectedRecipient(p.username);setRecipientQuery(p.username);}}>{p.username}</button>)}
+        </div>}
+        {selectedRecipient&&<p>✓ {selectedRecipient}</p>}
+      </div>}
+      <button type="button" disabled={shareBusy||(shareScope==="private"&&!selectedRecipient)} onClick={async()=>{
+        setShareBusy(true);setShareNotice("");
+        try{
+          const response=await fetch(api+"/reports/share",{method:"POST",headers:{"Content-Type":"application/json",...auth()},body:JSON.stringify({userId:Number(userId),reportType:type,reportId:id,scope:shareScope,recipient:selectedRecipient})});
+          const data=await response.json();if(!response.ok)throw Error(data.message||"Share failed.");
+          setShareNotice(t("Report shared successfully.","Докладът е споделен успешно."));
+        }catch(error){setShareNotice(error.message);}finally{setShareBusy(false);}
+      }}>{shareBusy?t("Sharing...","Изпращане..."):t("Share","Сподели")}</button>
+      {shareNotice&&<p role="status">{shareNotice}</p>}
+    </div>}
+  </div>;
+
   useEffect(()=>{const timer=window.setInterval(()=>setClock(Date.now()),1000);return()=>window.clearInterval(timer);},[]);
   useEffect(()=>{
     let active=true;
@@ -62,7 +99,8 @@ export default function ReportsPanel({onClose,onRead}) {
     const noWitness=!m.result.recalled&&!m.result.shielded&&didLose&&Number(m.result.rounds||0)<=1&&countUnits(ownRemaining)===0;
     const title=m.incoming?t("Incoming attack from","Атака от")+" "+m.attacker_name:t("Attack on","Атака срещу")+" "+m.defender_name;
     const outcome=m.result.recalled?t("Attack recalled before arrival","Атаката е върната преди пристигане"):m.result.shielded?t("Blocked by protection","Спряна от протекция"):m.incoming?(m.result.victory?t("Base lost","Базата е превзета"):t("Defense held","Защитата устоя")):(m.result.victory?t("Victory","Победа"):t("Defeat","Поражение"));
-    if(noWitness)return <article key={"player-"+m.id} style={card}><h3>{title} · {coordinateLink(m.target?.x,m.target?.y)}</h3><p>{t("The battle ended too quickly. No survivors remained to report what happened.","Битката се състоя твърде бързо и няма оцелели, които да докладват какво се е случило.")}</p></article>;
+    // Even a decisive first-round defeat has a report, including surviving defenders.
+    if(false&&noWitness)return <article key={"player-"+m.id} style={card}><h3>{title} · {coordinateLink(m.target?.x,m.target?.y)}</h3><p>{t("The battle ended too quickly. No survivors remained to report what happened.","Битката се състоя твърде бързо и няма оцелели, които да докладват какво се е случило.")}</p></article>;
     const enemyInitial=m.incoming?(m.units||{}):null;
     const enemyRemaining=m.incoming?(m.result.survivors||{}):null;
     return <article key={"player-"+m.id} style={card}>
@@ -75,7 +113,9 @@ export default function ReportsPanel({onClose,onRead}) {
       {army(t("Your survivors","Твоите оцелели"),ownRemaining)}
       {m.incoming&&Object.keys(enemyInitial||{}).length>0&&<details><summary>{t("Attacking force","Нападателна армия")}</summary>{army(t("Starting army","Начална армия"),enemyInitial)}{army(t("Losses","Загуби"),diff(enemyInitial,enemyRemaining))}{army(t("Survivors","Оцелели"),enemyRemaining)}</details>}
       {m.result.recalled&&<p>{t("No battle took place; the attacking army returned unchanged.","Битка не е имало; нападателната армия се е върнала непокътната.")}</p>}
+      {!m.incoming&&!m.result.recalled&&m.result.defenderSurvivors&&army(t("Enemy surviving defenders","Оцелели защитници на противника"),m.result.defenderSurvivors)}
       {m.result.error&&<p>{m.result.error}</p>}
+      {shareControls("player",m.id)}}
     </article>;
   };
   const alienReport=m=>{
@@ -145,6 +185,7 @@ export default function ReportsPanel({onClose,onRead}) {
       {m.report.army&&<p><strong>{t("Defending army","Защитна армия")}:</strong> {list(m.report.army)}</p>}
       {m.report.structures&&<div><strong>{t("Buildings and levels","Сгради и нива")}:</strong><ul>{Object.entries(m.report.structures).map(([name,level])=><li key={name}>{localLabel(name)}: {t("Level","Ниво")} {level}</li>)}</ul></div>}
     </>}
+    {shareControls("scout",m.id)}
   </article>;
   const incomingMarch=m=><article key={"march-"+m.id} style={card}>
     <h3>{t("Attack in progress from","Идваща атака от")} {m.attacker_name} · {coordinateLink(m.target?.x,m.target?.y)}</h3>
