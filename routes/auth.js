@@ -21,6 +21,7 @@ function requireSession(req, res, next) {
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   const requestedId = req.params.userId ?? req.body?.userId;
   if (String(requestedId) !== String(session.userId)) return res.status(403).json({ message: "Access denied." });
+  db.markPlayerActive(session.userId);
   next();
 }
 
@@ -86,6 +87,7 @@ router.post("/login", async (req, res) => {
     }
 
     db.ensureBase(user.id, user.username);
+    db.markPlayerActive(user.id);
     const gameProgress = db.getGameProgress(user.id);
     const gameStats = db.getGameStats(user.id);
 
@@ -118,6 +120,7 @@ function requireSessionForMap(req, res, next) {
   const session = match && sessions.get(match[1]);
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   req.mapUserId=session.userId;
+  db.markPlayerActive(session.userId);
   next();
 }
 
