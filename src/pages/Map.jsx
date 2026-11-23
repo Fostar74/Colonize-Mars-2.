@@ -25,6 +25,17 @@ import alienBases from "../shared/alienBases";
 import spaceStations from "../shared/spaceStations";
 import earthMapBackground from "../images/3C5B6E22-97A8-422D-B54F-96E836796ABC.png";
 const {units, marchLimit, cellsPerRow, defaultFormation, normalizeFormation}=formations;
+const {armyPopulation,profileFor}=require("../shared/unitProfiles");
+const unitPopulation=unit=>Number(profileFor(unit)?.population||1);
+const selectArmyWithinPopulation=(available,limit)=>{
+  let remaining=limit;const selected={};
+  for(const unit of units){
+    const cost=unitPopulation(unit);
+    selected[unit]=Math.min(Math.floor(remaining/cost),Math.max(0,Number(available?.[unit])||0));
+    remaining-=selected[unit]*cost;
+  }
+  return selected;
+};
 
 const formationTypes = {
   Ground: ["Ground", "Наземни", 1],
@@ -588,9 +599,7 @@ function Map() {
       setAvailableArmy(data.gameProgress?.army || {});
       setAvailableResources(data.gameProgress?.resources || {});
         if(target?.type==="mothership"){
-          let remaining=marchLimit;const maxArmy={};
-          for(const unit of units){maxArmy[unit]=Math.min(remaining,Number(data.gameProgress?.army?.[unit])||0);remaining-=maxArmy[unit];}
-          setMarchUnits(maxArmy);
+          setMarchUnits(selectArmyWithinPopulation(data.gameProgress?.army,marchLimit));
         }else if(type==="Espionage")setMarchUnits({"Rover Scout":Math.min(1,Number(data.gameProgress?.army?.["Rover Scout"]||0))});
         else setMarchUnits({});
       setTradeAmounts({Gold:0,Iron:0,Water:0,Solar:0});
@@ -626,7 +635,7 @@ function Map() {
     const isSupport=marchDraft?.type==="Support"&&marchDraft?.target?.type==="castle"&&sameAllianceTarget;
     const isStationDefense=marchDraft?.type==="Defend"&&marchDraft?.target?.type==="station";
     const isGathering=marchDraft?.type==="Gather"&&marchDraft?.target?.type==="mine";
-    if(!isEspionage&&selectedTroops>marchLimit){setMarchNotice("A march can contain at most 50,000 troops.");return;}
+    if(!isEspionage&&selectedPopulation>marchLimit){setMarchNotice(t("A march can contain at most 50,000 population.","Походът може да включва най-много 50 000 популация."));return;}
     if((isAlienAttack||isMothershipAttack)&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
     if(!isEspionage&&!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isSupport&&!isStationDefense&&!isGathering){setMarchNotice("Choose an attackable target.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
@@ -754,9 +763,10 @@ function Map() {
     }catch(error){setMarchNotice(error.message);}
     finally{setMarchLoading(false);}
   };
-  const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+count,0);
+  const selectedTroops=Object.values(marchUnits).reduce((total,count)=>total+Number(count||0),0);
+  const selectedPopulation=armyPopulation(marchUnits);
   const availableTroopCount=units.reduce((total,unit)=>total+Number(availableArmy[unit]||0),0);
-  const addAllAvailableTroops=()=>{let remaining=marchLimit;const selection={};for(const unit of units){selection[unit]=Math.min(remaining,Number(availableArmy[unit])||0);remaining-=selection[unit];}setMarchUnits(selection);};
+  const addAllAvailableTroops=()=>setMarchUnits(selectArmyWithinPopulation(availableArmy,marchLimit));
   const selectedCargoCapacity=Object.entries(marchUnits).reduce((total,[unit,count])=>total+Number(count||0)*Number(unitEconomy.cargoCapacity?.[unit]||0),0);
   const previewRows=normalizeFormation(formationRows);
   const formationSettings=campaign.formations || {};
@@ -1113,7 +1123,7 @@ function Map() {
               <button disabled={marchLoading||!Number(marchUnits["Rover Scout"])||Number(marchUnits["Rover Scout"])>Number(availableArmy["Rover Scout"]||0)} onClick={prepareMarch}>{t("Send reconnaissance","Изпрати шпионаж")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div> : <>
-            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",margin:"10px 0"}}><p style={{margin:0}}>{marchDraft.target.type==="mothership"?t("Maximum force selected ·","Избрана е максималната армия ·"):t("Select troops from your base army ·","Избери войски от базата ·")} {selectedTroops.toLocaleString()} / {marchLimit.toLocaleString()}</p><button type="button" disabled={!availableTroopCount} title={t("Only troops currently available at your base can be selected. Wounded troops must first recover in the Hospital.","Могат да се изберат само наличните войници в базата. Ранените трябва първо да се възстановят в болницата.")} onClick={addAllAvailableTroops}>{availableTroopCount<=marchLimit?t("Add All Available","Добави всички налични"):t("Add up to 50,000","Добави до 50 000")}</button></div>{availableTroopCount>marchLimit&&<p style={{fontSize:12,color:"#b5c7d9"}}>{t("Only the first 50,000 available troops in the list will be selected.","Ще бъдат избрани първите 50 000 налични войници от списъка.")}</p>}
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",margin:"10px 0"}}><p style={{margin:0}}>{marchDraft.target.type==="mothership"?t("Maximum force selected ·","Избрана е максималната армия ·"):t("Select troops from your base army ·","Избери войски от базата ·")} {selectedPopulation.toLocaleString()} / {marchLimit.toLocaleString()} {t("population","популация")} ({selectedTroops.toLocaleString()} {t("troops","войници")})</p><button type="button" disabled={!availableTroopCount} title={t("Only troops currently available at your base can be selected. Wounded troops must first recover in the Hospital.","Могат да се изберат само наличните войници в базата. Ранените трябва първо да се възстановят в болницата.")} onClick={addAllAvailableTroops}>{availableTroopCount<=marchLimit?t("Add All Available","Добави всички налични"):t("Add up to 50,000","Добави до 50 000")}</button></div>{availableTroopCount>marchLimit&&<p style={{fontSize:12,color:"#b5c7d9"}}>{t("Troops are selected in list order up to 50,000 population.","Войниците се избират по реда в списъка до 50 000 популация.")}</p>}
             {marchDraft.type==="Attack" && marchDraft.target.type==="castle" && <p>{t("Estimated cargo capacity if the surviving army wins:","Очаквана товароносимост при победа на оцелялата армия:")} {selectedCargoCapacity.toLocaleString()} {t("resources","ресурси")}</p>}
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
             {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
@@ -1155,11 +1165,11 @@ function Map() {
             }
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
-              {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
-              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):marchDraft.type==="Support"?t("Send reinforcements","Изпрати подкрепление"):marchDraft.target.type==="castle"?t("ATTACK","АТАКА"):t("Launch attack","Изпрати похода")}</button>
+              {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedPopulation>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
+              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedPopulation>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):marchDraft.type==="Support"?t("Send reinforcements","Изпрати подкрепление"):marchDraft.target.type==="castle"?t("ATTACK","АТАКА"):t("Launch attack","Изпрати похода")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
-            {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
+            {selectedPopulation>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
             {pvpTravelSeconds!==null&&<p style={{margin:"8px 0",color:"#9cdbff",fontWeight:600}}>{t("Travel to player","Пътуване до играча")}: {pvpTravelLabel} · {pvpDistance} {t("map squares","квадратчета")}</p>}
             <p style={{fontSize:12,color:"#b5c7d9"}}>{marchDraft.type==="Gather"?t("Selected troops are reserved until the mine is depleted, then they return to your base.","Избраните войски се отделят до изчерпване на мината, след което се връщат в базата."):t("Selected troops leave your base immediately and return after the mission.","Избраните войски напускат базата веднага и се връщат след мисията.")}</p>
             </>}
@@ -1187,7 +1197,7 @@ function Map() {
           <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {t("Formation:","Формация:")} {marchFormationSlot==="default"?t("Standard attack","Стандартна атака"):attackNames[marchFormationSlot]||t("Attack formation","Формация за атака")+" "+marchFormationSlot}</p>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
             <button type="button" onClick={()=>setPreviewOpen(false)}>{t("Back to army selection","Назад към избора на войници")}</button>
-            <button type="button" disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):t("Send attack","Изпрати похода")}</button>
+            <button type="button" disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedPopulation>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):t("Send attack","Изпрати похода")}</button>
           </div>
         </div>
       </div>}
