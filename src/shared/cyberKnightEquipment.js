@@ -37,7 +37,7 @@ function rollEquipmentBonuses(slot,rarity,stars,level=1){
   const available=[...pool],effects=[];
   for(let i=0;i<Math.min(stars,available.length);i++){
     const target=available.splice(Math.floor(Math.random()*available.length),1)[0];
-    effects.push({kind:effectKindBySlot[slot],target,value:valueForEffect(slot,target,level)});
+    effects.push({kind:effectKindBySlot[slot],target,value:valueForEffect(slot,target,restoredLevel)});
   }
   return {effects,stats:effects.map(describeEquipmentEffect)};
 }
@@ -60,7 +60,11 @@ function normalizeEquipmentItem(item){
   if(!effectKindBySlot[slot])return item;
   // Preserve the original forged level, star count, item identity and valid targets.
   const level=Math.max(1,Math.min(50,Math.floor(Number(item.level??item.levelRequirement??1)||1)));
-  const rarity=rarityForEquipmentLevel(level);
+  // Never demote a historically earned rarity just because an older migration reset its level.
+  const rarityFloor={Common:1,Uncommon:11,Rare:21,Epic:31,Legendary:41};
+  const recordedRarity=rarityFloor[item.rarity]?item.rarity:"Common";
+  const restoredLevel=Math.max(level,rarityFloor[recordedRarity]);
+  const rarity=rarityForEquipmentLevel(restoredLevel);
   const stars=Math.max(1,Math.min(5,Number(item.stars)||Number(item.bonusSlots)||1));
   const pool=slot==="BOOTS"||slot==="GLOVES"?combatProtocols:combatUnits;
   const previous=Array.isArray(item.effects)?item.effects:[];
@@ -68,7 +72,7 @@ function normalizeEquipmentItem(item){
   for(const effect of previous){
     if(effects.length>=stars)break;
     if(effect?.kind!==effectKindBySlot[slot]||!pool.includes(effect.target)||used.has(effect.target))continue;
-    used.add(effect.target);effects.push({kind:effect.kind,target:effect.target,value:valueForEffect(slot,effect.target,level)});
+    used.add(effect.target);effects.push({kind:effect.kind,target:effect.target,value:valueForEffect(slot,effect.target,restoredLevel)});
   }
   // Only replace invalid/missing targets, never reroll valid earned bonuses.
   const available=pool.filter(target=>!used.has(target));
@@ -76,7 +80,7 @@ function normalizeEquipmentItem(item){
     const target=available.splice(Math.floor(Math.random()*available.length),1)[0];
     effects.push({kind:effectKindBySlot[slot],target,value:valueForEffect(slot,target,level)});
   }
-  return {...item,slot,level,stars,bonusSlots:stars,rarity,rarityBonus:rarityBonusPercent[rarity],effects,stats:effects.map(describeEquipmentEffect)};
+  return {...item,slot,level:restoredLevel,stars,bonusSlots:stars,rarity,rarityBonus:rarityBonusPercent[rarity],effects,stats:effects.map(describeEquipmentEffect)};
 }
 function equipmentCombatBonuses(equippedItems={}){
   const result={unitEffects:{},enemyDebuffs:{},protocolBoosts:{},enemyProtocolDebuffs:{}};
