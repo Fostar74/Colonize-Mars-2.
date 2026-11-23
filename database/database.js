@@ -1317,7 +1317,7 @@ class DatabaseManager {
       return h.building_name===("Upgrade: "+job.unit+" "+job.stat)&&Number(h.building_level)===Number(job.level)&&h.job_key===this.allianceUpgradeKey(job);
     return job.name===h.building_name&&job.level===h.building_level&&String(h.job_key??(h.job_ends_at-(job.duration||0)))===this.allianceJobKey(job);
   }
-  allianceUpgradeKey(job){return "upgrade:"+job.unit+":"+job.stat+":"+job.level+":"+String(job.endsAt??"");}
+  allianceUpgradeKey(job){return "upgrade:"+job.unit+":"+job.stat+":"+job.level;}
   allianceHelpJob(userId,request){
     const current=this.syncGame(userId);
     if(String(request.job_key||"").startsWith("upgrade:"))return current?.upgradeJobs?.find(job=>job?.endsAt!=null&&this.allianceRequestMatches(request,job))||null;
