@@ -1311,7 +1311,18 @@ class DatabaseManager {
     return {alliances:alliances.map(a=>({...a,pending:pending.includes(a.id)}))};
   }
   allianceJobKey(job){return job?String(job.startedAt??(job.endsAt-job.duration)):null;}
-  allianceRequestMatches(h,job){return !!(job&&job.name===h.building_name&&job.level===h.building_level&&job.endsAt>Date.now()&&String(h.job_key??(h.job_ends_at-(job.duration||0)))===this.allianceJobKey(job));}
+  allianceRequestMatches(h,job){
+    if(!job||job.endsAt<=Date.now())return false;
+    if(String(h.job_key||"").startsWith("upgrade:"))
+      return h.building_name===("Upgrade: "+job.unit+" "+job.stat)&&Number(h.building_level)===Number(job.level)&&h.job_key===this.allianceUpgradeKey(job);
+    return job.name===h.building_name&&job.level===h.building_level&&String(h.job_key??(h.job_ends_at-(job.duration||0)))===this.allianceJobKey(job);
+  }
+  allianceUpgradeKey(job){return "upgrade:"+job.unit+":"+job.stat+":"+job.level+":"+String(job.endsAt??"");}
+  allianceHelpJob(userId,request){
+    const current=this.syncGame(userId);
+    if(String(request.job_key||"").startsWith("upgrade:"))return current?.upgradeJobs?.find(job=>job?.endsAt!=null&&this.allianceRequestMatches(request,job))||null;
+    return current?.buildingJob||null;
+  }
   settleAllianceReinforcements(userId){
     const now=Date.now();
     const returning=db.prepare("SELECT id,sender_id,units FROM alliance_reinforcements WHERE sender_id=? AND recall_at IS NOT NULL AND returned_at IS NULL AND recall_at<=?").all(userId,now);
@@ -1518,7 +1529,7 @@ class DatabaseManager {
     const members=db.prepare("SELECT u.id,u.username,m.role FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=? ORDER BY CASE WHEN m.role='Leader' THEN 0 WHEN m.role='Co-Leader' THEN 1 ELSE 2 END,u.username").all(membership.id);
     const applications=db.prepare("SELECT u.id,u.username,a.applied_at FROM alliance_applications a JOIN users u ON u.id=a.user_id WHERE a.alliance_id=? ORDER BY a.applied_at").all(membership.id);
     const requests=db.prepare("SELECT h.id,h.requester_id,h.building_name,h.building_level,h.requested_at,h.job_key,h.job_ends_at,u.username FROM alliance_help h JOIN users u ON u.id=h.requester_id WHERE h.alliance_id=? ORDER BY h.id DESC LIMIT 30").all(membership.id).filter(h=>{
-      const job=this.syncGame(h.requester_id)?.buildingJob;
+      const job=this.allianceHelpJob(h.requester_id,h);
       return this.allianceRequestMatches(h,job);
     }).map(h=>({...h,helped:!!db.prepare("SELECT 1 FROM alliance_help_clicks WHERE request_id=? AND helper_id=?").get(h.id,userId),helperCount:db.prepare("SELECT COUNT(*) AS n FROM alliance_help_clicks WHERE request_id=?").get(h.id).n}));
     const helpHistory=db.prepare("SELECT h.id,h.building_name,h.building_level,h.reduction_ms,h.helped_at,requester.username AS requester,helper.username AS helper FROM alliance_help_history h JOIN users requester ON requester.id=h.requester_id JOIN users helper ON helper.id=h.helper_id WHERE h.alliance_id=? ORDER BY h.helped_at DESC,h.id DESC LIMIT 50").all(membership.id);
@@ -1620,16 +1631,18 @@ class DatabaseManager {
       return this.allianceState(userId);
     })();
   }
-  requestAllianceHelp(userId){
+  requestAllianceHelp(userId,kind="building"){
     return db.transaction(()=>{
       const a=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
       if(!a)return {error:"Join an alliance first."};
-      const job=this.syncGame(userId)?.buildingJob;
-      if(!job||job.endsAt<=Date.now())return {error:"No active construction to request help for."};
-      const key=this.allianceJobKey(job);
-      const old=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND (job_key=? OR (job_key IS NULL AND job_ends_at=?))").get(userId,job.name,job.level,key,job.endsAt);
-      if(old)return {error:"Help already requested for this construction."};
-      const id=db.prepare("INSERT INTO alliance_help(requester_id,alliance_id,building_name,building_level,requested_at,job_ends_at,job_key) VALUES (?,?,?,?,?,?,?)").run(userId,a.alliance_id,job.name,job.level,Date.now(),job.endsAt,key).lastInsertRowid;
+      const current=this.syncGame(userId);
+      const job=kind==="upgrade"?current?.upgradeJobs?.find(j=>j?.endsAt>Date.now()):current?.buildingJob;
+      if(!job||job.endsAt<=Date.now())return {error:kind==="upgrade"?"No active unit upgrade to request help for.":"No active construction to request help for."};
+      const name=kind==="upgrade"?"Upgrade: "+job.unit+" "+job.stat:job.name;
+      const key=kind==="upgrade"?this.allianceUpgradeKey(job):this.allianceJobKey(job);
+      const old=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND (job_key=? OR (job_key IS NULL AND job_ends_at=?))").get(userId,name,job.level,key,job.endsAt);
+      if(old)return {error:"Help already requested for this job."};
+      const id=db.prepare("INSERT INTO alliance_help(requester_id,alliance_id,building_name,building_level,requested_at,job_ends_at,job_key) VALUES (?,?,?,?,?,?,?)").run(userId,a.alliance_id,name,job.level,Date.now(),job.endsAt,key).lastInsertRowid;
       return {requestId:Number(id)};
     })();
   }
@@ -1641,14 +1654,21 @@ class DatabaseManager {
       if(!h||!m||m.alliance_id!==h.alliance_id)return {error:"Help request unavailable."};
       if(h.requester_id===userId)return {error:"Cannot help your own construction."};
       if(db.prepare("SELECT 1 FROM alliance_help_clicks WHERE request_id=? AND helper_id=?").get(requestId,userId))return {error:"Already helped this construction."};
-      const job=this.syncGame(h.requester_id)?.buildingJob;
-      if(!this.allianceRequestMatches(h,job))return {error:"Construction already finished."};
+      const job=this.allianceHelpJob(h.requester_id,h);
+      if(!this.allianceRequestMatches(h,job))return {error:"Help request already finished."};
       const now = Date.now();
       const remaining = job.endsAt - now;
       if (remaining <= 0) return {error:"Construction already finished."};
       const reduction = Math.min(remaining, Math.max(60000, Math.ceil(remaining * .01)));
       job.endsAt -= reduction;
-      db.prepare("UPDATE game_runtime SET building_job=? WHERE user_id=?").run(JSON.stringify(job),h.requester_id);
+      if(String(h.job_key||"").startsWith("upgrade:")){
+        const current=this.syncGame(h.requester_id);
+        const jobs=current.upgradeJobs;
+        const index=jobs.findIndex(j=>j?.unit===job.unit&&j?.stat===job.stat&&j?.level===job.level&&j?.endsAt!=null);
+        if(index<0)return {error:"Upgrade no longer active."};
+        jobs[index]={...jobs[index],endsAt:job.endsAt};
+        db.prepare("UPDATE game_runtime SET upgrade_jobs=? WHERE user_id=?").run(JSON.stringify(jobs),h.requester_id);
+      }else db.prepare("UPDATE game_runtime SET building_job=? WHERE user_id=?").run(JSON.stringify(job),h.requester_id);
       db.prepare("INSERT INTO alliance_help_clicks(request_id,helper_id) VALUES (?,?)").run(requestId,userId);
       db.prepare("INSERT INTO alliance_help_history(alliance_id,requester_id,helper_id,building_name,building_level,reduction_ms,helped_at) VALUES (?,?,?,?,?,?,?)").run(h.alliance_id,h.requester_id,userId,h.building_name,h.building_level,reduction,now);
       this.creditTokens(userId,1);
