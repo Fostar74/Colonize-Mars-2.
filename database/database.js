@@ -1940,9 +1940,7 @@ class DatabaseManager {
         const parsed=result?JSON.parse(result):null;
         if(parsed&&!incoming){
           delete parsed.defenderInitial;
-          delete parsed.defenderSurvivors;
           delete parsed.defenderWounded;
-          delete parsed.defendersRemaining;
         }
         return {...mission,...data,result:parsed,incoming,unread:incoming?defender_seen_at==null:attacker_seen_at==null};
       });
