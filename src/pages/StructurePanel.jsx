@@ -90,7 +90,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
         if(response.ok)helped++;else failed++;
       } catch (_) { failed++; }
     }
-    setAllianceHelpMessage(`Helped ${helped} alliance construction(s)${failed?`; ${failed} failed`:""}.`);
+    setAllianceHelpMessage(`Helped ${helped} alliance job(s)${failed?`; ${failed} failed`:""}.`);
     await refreshAllianceHelp();
     window.dispatchEvent(new Event("alliance-help-updated"));
     setAllianceHelpBusy(false);
@@ -118,10 +118,10 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
     catch (e) { setError(e.message); }
     finally { setBusy(""); }
   };
-  const requestBuildingHelp=async()=>{
+  const requestBuildingHelp=async(kind="building")=>{
     setAllianceHelpBusy(true);setAllianceHelpMessage("");
     try{
-      const response=await request("/alliance/request-help",{});
+      const response=await request("/alliance/request-help",{kind});
       setAllianceHelpMessage("Help request sent to your alliance. Members can now assist from Alliance → Help Requests.");
       await refreshAllianceHelp();
       window.dispatchEvent(new Event("alliance-help-updated"));
@@ -188,10 +188,11 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
       </p>
       <p>{t("Construction:","Строеж:")} {game.buildingJob ? localLabel(game.buildingJob.name) + t(" (level "," (ниво ") + game.buildingJob.level + ", " + formatTime(remaining(game.buildingJob)) + ")" : t("Idle","Няма")} {t("· Queue:","· Опашка:")} {(game.buildingQueue|| (game.queuedBuildingJob?[game.queuedBuildingJob]:[])).length}/2</p>{(game.buildingQueue|| (game.queuedBuildingJob?[game.queuedBuildingJob]:[])).map((job,index)=><p key={"building-queue-"+index} style={{margin:"4px 0 4px 18px"}}>{index+2}. {localLabel(job.name)}{t(" (level "," (ниво ")}{job.level})</p>)}
       <div style={{padding:12,margin:"12px 0",border:"1px solid #4b96ac",borderRadius:8,background:"#183449"}}>
-        <strong>{t("🤝 Alliance Construction Help","🤝 Строителна помощ от алианса")}</strong>
-        <p>{game.buildingJob ? <>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {localLabel(game.buildingJob.name)} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</> : t("Start a building to request construction help. You can help alliance members at any time.","Започни строеж, за да поискаш помощ. Можеш да помагаш на членовете на алианса по всяко време.")}</p>
+        <strong>{t("🤝 Alliance Help — Buildings and Upgrades","🤝 Помощ от алианса — строежи и подобрения")}</strong>
+        <p>{game.buildingJob ? <>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {localLabel(game.buildingJob.name)} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</> : t("Start a building or unit upgrade to request help. You can help alliance members at any time.","Започни строеж или подобрение на войска, за да поискаш помощ. Можеш да помагаш на членовете на алианса по всяко време.")}</p>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button className="upgrade-btn" disabled={allianceHelpBusy||!game.buildingJob} onClick={requestBuildingHelp}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
+          <button className="upgrade-btn" disabled={allianceHelpBusy||!game.buildingJob} onClick={()=>requestBuildingHelp("building")}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
+          <button className="upgrade-btn" disabled={allianceHelpBusy||!(game.upgradeJobs||[]).some(job=>job?.endsAt>Date.now())} onClick={()=>requestBuildingHelp("upgrade")}>{t("Request Upgrade Help","Поискай помощ за подобрение")}</button>
           <button type="button" disabled={allianceHelpBusy||!eligibleAllianceHelp.length} onClick={helpAlliance}
             style={{background:eligibleAllianceHelp.length?"#bd3030":"#777",color:"#fff",border:"1px solid "+(eligibleAllianceHelp.length?"#ef7777":"#999"),borderRadius:5,padding:"8px 12px",fontWeight:"bold",cursor:eligibleAllianceHelp.length?"pointer":"not-allowed"}}>
             {allianceHelpBusy?localLabel("Helping..."):t("Help Alliance","Помогни на алианса")}{eligibleAllianceHelp.length?` (${eligibleAllianceHelp.length})`:""}
