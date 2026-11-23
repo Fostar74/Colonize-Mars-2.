@@ -233,6 +233,17 @@ function Map() {
     const timer = setInterval(()=>{loadBases();fetch((process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"")+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d&&!cancelled)applyCampaign(d)}).catch(()=>{});},10000);
     return () => { cancelled = true; clearInterval(timer); };
   }, []);
+  useEffect(()=>{
+    const raw=sessionStorage.getItem("mapReportTarget");
+    if(!raw)return;
+    sessionStorage.removeItem("mapReportTarget");
+    try{
+      const target=JSON.parse(raw);
+      if(Number.isInteger(target.x)&&Number.isInteger(target.y)&&target.x>=1&&target.x<=100&&target.y>=1&&target.y<=100){
+        setViewCenter({x:target.x,y:target.y});
+      }
+    }catch{}
+  },[]);
   const mapPlayerTarget = useRef(sessionStorage.getItem("mapPlayerTarget"));
   useEffect(() => {
     if (reconShortcut) {
@@ -255,6 +266,7 @@ function Map() {
   const [alienIcon, setAlienIcon] = useState(null);
   const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
+  const [mineSearchResource,setMineSearchResource]=useState("");
 
   // World coordinates are 1–100; each tile has a stable geographic location.
   // Reserve the central sector for the four alliance bases and Lv20.
@@ -935,6 +947,21 @@ function Map() {
               </button>
             ))}
           </div>}
+          <div style={{marginTop:8}}>
+            <label>{t("Find resource mines","Търси мини")}{" "}
+              <select value={mineSearchResource} onChange={e=>setMineSearchResource(e.target.value)}>
+                <option value="">{t("Select resource","Избери ресурс")}</option>
+                <option value="gold">{t("Gold","Злато")}</option>
+                <option value="iron">{t("Iron","Желязо")}</option>
+                <option value="water">{t("Water","Вода")}</option>
+                <option value="solar">{t("Solar","Слънчева енергия")}</option>
+              </select>
+            </label>
+            {mineSearchResource&&<div style={{display:"flex",gap:5,flexWrap:"wrap",maxHeight:140,overflowY:"auto",marginTop:6}}>
+              {mineData.filter(m=>String(m.resource).toLowerCase()===mineSearchResource).map(m=><button type="button" key={m.id||m.x+":"+m.y} onClick={()=>{centerMapOn(Number(m.x),Number(m.y));setSelectedTarget({type:"mine",...m});setMarchDraft(null);}}>{m.x}:{m.y}</button>)}
+              {!mineData.some(m=>String(m.resource).toLowerCase()===mineSearchResource)&&<p>{t("No mines found","Няма намерени мини")}</p>}
+            </div>}
+          </div>
         </div>
         </div>
       </div>
