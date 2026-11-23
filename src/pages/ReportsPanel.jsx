@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import { useLanguage } from "../language";
+import { useNavigate } from "react-router-dom";
+import alienBases from "../shared/alienBases";
 
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const auth=()=>({Authorization:"Bearer "+sessionStorage.getItem("authToken")});
@@ -10,6 +12,8 @@ const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).
 
 export default function ReportsPanel({onClose,onRead}) {
   const {t,label:localLabel}=useLanguage();
+  const navigate=useNavigate();
+  const coordinateLink=(x,y)=>Number.isInteger(Number(x))&&Number.isInteger(Number(y))&&Number(x)>=1&&Number(x)<=100&&Number(y)>=1&&Number(y)<=100?<button type="button" title={t("Show on map","Покажи на картата")} onClick={()=>{sessionStorage.setItem("mapReportTarget",JSON.stringify({x:Number(x),y:Number(y)}));onClose?.();navigate("/map");}} style={{border:0,background:"transparent",color:"#78d7ff",textDecoration:"underline",cursor:"pointer",font:"inherit",padding:0}}>{x}:{y}</button>:<span>{x??"?"}:{y??"?"}</span>;
   const userId=sessionStorage.getItem("userId");
   const [data,setData]=useState(null);
   const [activeTab,setActiveTab]=useState("military");
@@ -58,11 +62,11 @@ export default function ReportsPanel({onClose,onRead}) {
     const noWitness=!m.result.recalled&&!m.result.shielded&&didLose&&Number(m.result.rounds||0)<=1&&countUnits(ownRemaining)===0;
     const title=m.incoming?t("Incoming attack from","Атака от")+" "+m.attacker_name:t("Attack on","Атака срещу")+" "+m.defender_name;
     const outcome=m.result.recalled?t("Attack recalled before arrival","Атаката е върната преди пристигане"):m.result.shielded?t("Blocked by protection","Спряна от протекция"):m.incoming?(m.result.victory?t("Base lost","Базата е превзета"):t("Defense held","Защитата устоя")):(m.result.victory?t("Victory","Победа"):t("Defeat","Поражение"));
-    if(noWitness)return <article key={"player-"+m.id} style={card}><h3>{title} · {m.target?.x}:{m.target?.y}</h3><p>{t("The battle ended too quickly. No survivors remained to report what happened.","Битката се състоя твърде бързо и няма оцелели, които да докладват какво се е случило.")}</p></article>;
+    if(noWitness)return <article key={"player-"+m.id} style={card}><h3>{title} · {coordinateLink(m.target?.x,m.target?.y)}</h3><p>{t("The battle ended too quickly. No survivors remained to report what happened.","Битката се състоя твърде бързо и няма оцелели, които да докладват какво се е случило.")}</p></article>;
     const enemyInitial=m.incoming?(m.units||{}):null;
     const enemyRemaining=m.incoming?(m.result.survivors||{}):null;
     return <article key={"player-"+m.id} style={card}>
-      <h3>{title} · {m.target?.x}:{m.target?.y}</h3>
+      <h3>{title} · {coordinateLink(m.target?.x,m.target?.y)}</h3>
       <p>{outcome}{!m.result.recalled&&" · "+t("Rounds","Рундове")+": "+(m.result.rounds??"—")}</p>
       {!m.incoming&&m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
       {m.result.loot&&!m.result.recalled&&<p><strong>{m.incoming?t("Resources plundered","Отнети ресурси"):t("Loot","Плячка")}:</strong> {["Gold","Iron","Water","Solar"].map(key=>t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(m.result.loot[key]||0).toLocaleString()).join(" · ")} · {t("Total","Общо")}: {Number(m.result.totalLoot||0).toLocaleString()} · {t("Cargo capacity","Товароносимост")}: {Number(m.result.cargoCapacity||0).toLocaleString()}</p>}
@@ -126,14 +130,14 @@ export default function ReportsPanel({onClose,onRead}) {
     const resource={gold:t("Gold","Злато"),iron:t("Iron","Желязо"),water:t("Water","Вода"),solar:t("Solar","Слънчева енергия")}[String(report.resource).toLowerCase()]||report.resource;
     const title=report.reason==="depleted"?t("Mine depleted · army returned","Мината се изчерпа · армията се прибра"):t("Army recalled from mine","Армията се прибра от мината");
     return <article key={"gathering-"+report.id} style={card}>
-      <h3>{title} · {t("Mine","Мина")} #{report.mineId} ({report.x}:{report.y})</h3>
+      <h3>{title} · {t("Mine","Мина")} #{report.mineId} ({coordinateLink(report.x,report.y)})</h3>
       <p>{t("Resources collected","Източен ресурс")}: {Number(report.amount||0).toLocaleString()} {resource}</p>
       {army(t("Army returned","Върната армия"),report.units)}
       <p>{new Date(report.returnedAt).toLocaleString()}</p>
     </article>;
   };
   const espionageReport=m=><article key={"scout-"+m.id} style={card}>
-    <h3>🔎 {t("Espionage against","Шпионаж срещу")} {m.target.username} · {m.target.x}:{m.target.y}</h3>
+    <h3>🔎 {t("Espionage against","Шпионаж срещу")} {m.target.username} · {coordinateLink(m.target.x,m.target.y)}</h3>
     <p>{new Date(m.report.scoutedAt||m.arrives_at).toLocaleString()}</p>
     <p>{t("Sent scouts","Изпратени разузнавачи")}: {m.quantity.toLocaleString()} · {t("Your losses","Твои загуби")}: {Number(m.report.attackerLost||0).toLocaleString()} · {t("Enemy scout losses","Загуби на противниковите разузнавачи")}: {Number(m.report.defenderLost||0).toLocaleString()} · {t("Survivors","Оцелели")}: {Number(m.report.survivors??m.quantity).toLocaleString()}</p>
     {m.report.success===false?<p><strong>{t("All your scouts died during espionage. No survivor returned to report.","При шпионажа всичките ви шпиони загинаха и не се завърна оцелял, за да докладва.")}</strong></p>:<>
@@ -143,7 +147,7 @@ export default function ReportsPanel({onClose,onRead}) {
     </>}
   </article>;
   const incomingMarch=m=><article key={"march-"+m.id} style={card}>
-    <h3>{t("Attack in progress from","Идваща атака от")} {m.attacker_name} · {m.target?.x}:{m.target?.y}</h3>
+    <h3>{t("Attack in progress from","Идваща атака от")} {m.attacker_name} · {coordinateLink(m.target?.x,m.target?.y)}</h3>
     <p>{t("The attack is on the way. No battle report exists yet.","Походът е в движение. Все още няма боен доклад.")}</p>
     <p>{t("Expected arrival","Очаквано пристигане")}: {new Date(m.arrives_at).toLocaleTimeString()}</p>
   </article>;
