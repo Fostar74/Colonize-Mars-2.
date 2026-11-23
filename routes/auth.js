@@ -311,7 +311,7 @@ router.post("/alliance/market/exchange",requireSession,(req,res)=>{
   }catch(e){console.error(e);res.status(500).json({message:"Resource exchange failed."});}
 });
 router.post("/alliance/request-help",requireSession,(req,res)=>{
-  try{const result=db.requestAllianceHelp(Number(req.body.userId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
+  try{const result=db.requestAllianceHelp(Number(req.body.userId),req.body.kind==="upgrade"?"upgrade":"building");if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
 });
 router.post("/alliance/help",requireSession,(req,res)=>{
   try{const result=db.helpAlliance(Number(req.body.userId),Number(req.body.requestId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot help construction."});}
