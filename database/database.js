@@ -3358,6 +3358,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       const saved=inventory.find(gear=>gear.id===item.id&&(gear.slot||gear.type||"").toUpperCase()===slot);
       if(!saved)continue;
       const required=Math.max(1,Number(saved.level??saved.levelRequirement??1)||1);
+      if(saved.restorationLocked)return {error:"Restored equipment is temporarily locked for equipping."};
       if(knightLevel<required)return {error:`${saved.rarity} equipment unlocks at Cyber Knight level ${required}.`};
       if(Number(saved.level??saved.levelRequirement??1)>knightLevel)return {error:`Equipment level ${saved.level} requires Cyber Knight level ${saved.level}.`};
     }
@@ -3429,7 +3430,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       const gearInventory=(Array.isArray(originalInventory)?originalInventory:[]).map(item=>{
         const historic=historicById.get(item?.id);
         const rank=rarityRank[item?.rarity]??0,historicRank=rarityRank[historic?.rarity]??0;
-        const restored=historic?{...item,level:Math.max(Number(item.level)||1,Number(historic.level)||1),rarity:historicRank>rank?historic.rarity:item.rarity}:item;
+        const restored=historic?{...item,level:Math.max(Number(item.level)||1,Number(historic.level)||1),rarity:historicRank>rank?historic.rarity:item.rarity,restorationLocked:item.restorationLocked||historicRank>rank||Number(historic.level||1)>Number(item.level||1)}:item;
         return normalizeEquipmentItem(restored);
       });
       const inventoryById=new Map(gearInventory.filter(item=>item?.id).map(item=>[item.id,item]));
@@ -3437,7 +3438,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       const equippedItems=Object.fromEntries(Object.entries(originalEquipped||{}).flatMap(([slot,item])=>{
         if(!item||isLostAlienReward(item))return [];
         const normalized=inventoryById.get(item.id)||normalizeEquipmentItem(item);
-        if(Number(normalized.level??normalized.levelRequirement??1)>knightLevel)return [];
+        if(normalized.restorationLocked||Number(normalized.level??normalized.levelRequirement??1)>knightLevel)return [];
         return [[slot,normalized]];
       }));
       if(JSON.stringify(equippedItems)!==JSON.stringify(originalEquipped)||JSON.stringify(gearInventory)!==JSON.stringify(originalInventory)){
