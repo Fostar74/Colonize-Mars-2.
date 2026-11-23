@@ -179,6 +179,8 @@ export default function ReportsPanel({onClose,onRead}) {
   const espionageReport=m=><article key={"scout-"+m.id} style={card}>
     <h3>🔎 {t("Espionage against","Шпионаж срещу")} {m.target.username} · {coordinateLink(m.target.x,m.target.y)}</h3>
     <p>{new Date(m.report.scoutedAt||m.arrives_at).toLocaleString()}</p>
+    <p><strong>{t("Player last active","Последна активност на играча")}:</strong> {m.report.lastSeenAt?new Date(m.report.lastSeenAt).toLocaleString():t("Unknown","Неизвестна")}</p>
+    {m.report.abandoned&&<p style={{color:"#c5c5c5",fontWeight:700}}>{t("Abandoned base — inactive for at least 7 days","Необитаема база — неактивна поне 7 дни")}</p>}
     <p>{t("Sent scouts","Изпратени разузнавачи")}: {m.quantity.toLocaleString()} · {t("Your losses","Твои загуби")}: {Number(m.report.attackerLost||0).toLocaleString()} · {t("Enemy scout losses","Загуби на противниковите разузнавачи")}: {Number(m.report.defenderLost||0).toLocaleString()} · {t("Survivors","Оцелели")}: {Number(m.report.survivors??m.quantity).toLocaleString()}</p>
     {m.report.success===false?<p><strong>{t("All your scouts died during espionage. No survivor returned to report.","При шпионажа всичките ви шпиони загинаха и не се завърна оцелял, за да докладва.")}</strong></p>:<>
       {m.report.resources&&<p><strong>{t("Resources","Ресурси")}:</strong> {Object.entries(m.report.resources).map(([name,n])=>localLabel(name)+": "+Number(n).toLocaleString()).join(" · ")}</p>}
