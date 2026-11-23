@@ -3,7 +3,7 @@ import { useLanguage } from "../language";
 import React, { useState, useEffect, useRef } from "react";
 import "./StructurePanel.css";
 import unitEconomy from "../shared/unitEconomy";
-import {unitCombatStats, unitUpgradeMaxLevel} from "../shared/unitProfiles";
+import {unitCombatStats, unitUpgradeMaxLevel, profileFor} from "../shared/unitProfiles";
 import {heavyUnitProfiles} from "../shared/heavyUnitProfiles";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
@@ -324,6 +324,8 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
             <div key={unit} className="unit-card" style={{filter:unlocked?"none":"grayscale(1)",opacity:unlocked?1:0.62,border:unlocked?"1px solid #40a7b9":"1px solid #777",transition:"filter .25s, opacity .25s, border-color .25s"}}>
               <div aria-hidden="true" style={{fontSize:36,filter:unlocked?"none":"grayscale(1)",marginBottom:4}}>{unitTab==="Ground"?"🪖":unitTab==="Ranged"?"🎯":unitTab==="Mobile"?"🚙":unitTab==="Heavy Systems"?"🤖":"⚔️"}</div>
               <h4>{localLabel(unit)}{unit==="Rover Scout"&&<span style={{display:"inline-block",marginLeft:8,padding:"3px 8px",borderRadius:6,background:"#205c78",color:"#fff",fontSize:12}}>🔎 {t("Espionage unit","Разузнавач · за шпионаж")}</span>}</h4>
+              <p style={{margin:"6px 0",fontWeight:700,color:"#aee8ff"}}>👥 {t("Population per unit:","Популация за 1 войник:")} {Number(profileFor(unit)?.population??1)}</p>
+              {qty>0&&<p style={{margin:"4px 0",color:"#c8d8e5"}}>{t("Population for selected quantity:","Популация за избраното количество:")} {(qty*Number(profileFor(unit)?.population??1)).toLocaleString()}</p>}
               {eliteStats && <>
                 <p>{t("Attack against all targets","Атака срещу всички цели")}: {eliteStats.attack.infantry} · {t("Health","Живот")}: {eliteStats.health}</p>
                 <p>{t("Recommended formation position: row 4, out of wall range. You can choose any row.","Препоръчителна позиция във формацията: 4-ти ред, извън обсега на стената. Можеш да избереш всеки ред.")}</p>
