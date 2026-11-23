@@ -606,6 +606,10 @@ function Map() {
     }
     openMarch(type, selectedTarget, home);
   };
+  const pvpDistance=marchDraft?.type==="Attack"&&marchDraft?.target?.type==="castle"
+    ?Math.max(Math.abs(Number(marchDraft.origin.x)-Number(marchDraft.target.x)),Math.abs(Number(marchDraft.origin.y)-Number(marchDraft.target.y))):null;
+  const pvpTravelSeconds=pvpDistance===null?null:Math.max(1,pvpDistance)*30;
+  const pvpTravelLabel=pvpTravelSeconds===null?"":(Math.floor(pvpTravelSeconds/3600)>0?Math.floor(pvpTravelSeconds/3600)+" "+t("h","ч")+" ":"")+(Math.floor(pvpTravelSeconds%3600/60)>0?Math.floor(pvpTravelSeconds%3600/60)+" "+t("min","мин")+" ":"")+(pvpTravelSeconds%60>0?pvpTravelSeconds%60+" "+t("sec","сек"):"");
   const prepareMarch = async () => {
     setPreviewOpen(false);
     const isEspionage=marchDraft?.type==="Espionage"&&marchDraft?.target?.type==="castle";
@@ -1133,10 +1137,11 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
               {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedTroops>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
-              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):marchDraft.type==="Support"?t("Send reinforcements","Изпрати подкрепление"):t("Launch attack (60 sec)","Изпрати похода (60 сек.)")}</button>
+              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedTroops>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):marchDraft.type==="Support"?t("Send reinforcements","Изпрати подкрепление"):marchDraft.target.type==="castle"?t("ATTACK","АТАКА"):t("Launch attack","Изпрати похода")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedTroops>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
+            {pvpTravelSeconds!==null&&<p style={{margin:"8px 0",color:"#9cdbff",fontWeight:600}}>{t("Travel to player","Пътуване до играча")}: {pvpTravelLabel} · {pvpDistance} {t("map squares","квадратчета")}</p>}
             <p style={{fontSize:12,color:"#b5c7d9"}}>{marchDraft.type==="Gather"?t("Selected troops are reserved until the mine is depleted, then they return to your base.","Избраните войски се отделят до изчерпване на мината, след което се връщат в базата."):t("Selected troops leave your base immediately and return after the mission.","Избраните войски напускат базата веднага и се връщат след мисията.")}</p>
             </>}
             </>}
