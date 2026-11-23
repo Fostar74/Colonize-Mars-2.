@@ -1975,6 +1975,44 @@ class DatabaseManager {
     })();
   }
 
+  sendPlayerResources(userId,recipientId,input) {
+    const keys=["Gold","Iron","Water","Solar"];
+    if(!Number.isSafeInteger(userId)||!Number.isSafeInteger(recipientId)||userId===recipientId)return {error:"Select another player."};
+    if(!input||typeof input!=="object"||Array.isArray(input))return {error:"Invalid resources."};
+    const amounts={};
+    for(const key of keys){
+      const value=input[key]===undefined?0:input[key];
+      if(typeof value!=="number"||!Number.isSafeInteger(value)||value<0)return {error:"Resource amounts must be nonnegative whole numbers."};
+      amounts[key]=value;
+    }
+    const total=keys.reduce((sum,key)=>sum+amounts[key],0);
+    if(total<=0||total>50000)return {error:"Enter between 1 and 50,000 resources in total."};
+    return db.transaction(()=>{
+      const recipient=this.findUserById(recipientId);
+      if(!recipient)return {error:"Recipient not found."};
+      const sender=this.syncGame(userId),receiver=this.syncGame(recipientId);
+      if(!sender||!receiver)return {error:"Player base not found."};
+      const now=Date.now();
+      const today=new Date(now).toISOString().slice(0,10);
+      const dayStart=Date.parse(today+"T00:00:00Z");
+      const rows=db.prepare("SELECT resources FROM interbase_trades WHERE sender_id=? AND traded_at>=? AND traded_at<?").all(userId,dayStart,dayStart+86400000);
+      const sentToday=rows.reduce((sum,row)=>{
+        const sent=JSON.parse(row.resources);
+        return sum+keys.reduce((part,key)=>part+Math.max(0,Number(sent[key])||0),0);
+      },0);
+      if(sentToday+total>50000)return {error:"Daily transfer limit: 50,000 total resources (UTC). Remaining: "+Math.max(0,50000-sentToday)+"."};
+      for(const key of keys)if(amounts[key]>Number(sender.resources[key]||0))return {error:"Not enough "+key+"."};
+      for(const key of keys){sender.resources[key]-=amounts[key];receiver.resources[key]=Number(receiver.resources[key]||0)+amounts[key];}
+      const update=db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?");
+      update.run(JSON.stringify(sender.resources),userId);
+      update.run(JSON.stringify(receiver.resources),recipientId);
+      const trade=db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(userId,recipientId,JSON.stringify(amounts),now);
+      const senderName=this.findUserById(userId)?.username||"Player";
+      writeTradeNotification(Number(trade.lastInsertRowid),userId,recipientId,senderName,amounts,now);
+      return {success:true,remaining:sender.resources,sentToday:sentToday+total,dailyRemaining:50000-sentToday-total,recipient:recipient.username};
+    })();
+  }
+
   acceptMarketOffer(userId,offerId) {
     const keys=["Gold","Iron","Water","Solar"];
     return db.transaction(()=>{
