@@ -3460,7 +3460,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       // by stars; the migration mistakenly overwrote it with Common on read.
       // Do not apply this recovery to later drops or non-mission equipment.
       const recoverLegacyRarity=item=>{
-        const match=/^alien-(\\d+)$/.exec(String(item?.id||""));
+        const match=/^alien-(\d+)$/.exec(String(item?.id||""));
         if(!match)return item;
         const mission=db.prepare("SELECT launched_at FROM alien_missions WHERE id=? AND user_id=?").get(Number(match[1]),userId);
         if(!mission||Number(mission.launched_at)>=Date.parse("2026-11-22T16:07:49Z"))return item;
