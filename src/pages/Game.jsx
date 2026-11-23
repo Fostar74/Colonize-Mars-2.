@@ -502,6 +502,9 @@ function Game() {
   const [supportTarget,setSupportTarget]=useState(null);
   const [playerMenu,setPlayerMenu]=useState(null);
   const [playerNotice,setPlayerNotice]=useState("");
+  const [giftOpen,setGiftOpen]=useState(false);
+  const [giftAmounts,setGiftAmounts]=useState({Gold:"",Iron:"",Water:"",Solar:""});
+  const [giftBusy,setGiftBusy]=useState(false);
   const [inviting,setInviting]=useState(false);
 
   const api=useMemo(()=> (process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,""),[]);
@@ -909,6 +912,28 @@ function Game() {
           <button disabled={!playerMenu.ally || playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setSupportTarget(playerMenu);setShowRankings(false);setShowAlliance(true);setPlayerMenu(null);}}>{t("Support","Подкрепление")}</button>
           <button disabled title={playerMenu.ally?"You cannot attack an ally.":"Player battles are not enabled yet."}>{t("Attack","Атака")}</button>
           <button disabled={!playerMenu.canInvite || inviting} onClick={invitePlayer}>{t("Invite to Alliance","Покани в алианса")}</button>
+          <button type="button" disabled={String(playerMenu.id)===String(sessionStorage.getItem("userId"))} onClick={()=>{setGiftOpen(v=>!v);setPlayerNotice("");}}>{t("Send resources","Изпрати ресурси")}</button>
+          {giftOpen&&<div style={{width:"100%",padding:12,border:"1px solid #5b8297",borderRadius:8}}>
+            <strong>{t("Send resources to","Изпрати ресурси на")} {playerMenu.username}</strong>
+            <p>{t("Daily limit: 50,000 total resources, resets at 00:00 UTC.","Дневен лимит: общо 50 000 ресурса, нулира се в 00:00 UTC.")}</p>
+            <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(120px,1fr))",gap:8}}>
+              {["Gold","Iron","Water","Solar"].map(key=><label key={key}>{t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])}<input type="number" min="0" max="50000" step="1" value={giftAmounts[key]} onChange={e=>setGiftAmounts(old=>({...old,[key]:e.target.value}))} style={{display:"block",width:"100%",boxSizing:"border-box"}}/></label>)}
+            </div>
+            <p>{t("Total","Общо")}: {Object.values(giftAmounts).reduce((sum,v)=>sum+(Number(v)||0),0).toLocaleString()} / 50 000</p>
+            <button type="button" disabled={giftBusy} onClick={async()=>{
+              const amounts=Object.fromEntries(Object.entries(giftAmounts).map(([key,value])=>[key,value===""?0:Number(value)]));
+              const total=Object.values(amounts).reduce((sum,value)=>sum+value,0);
+              if(!Object.values(amounts).every(n=>Number.isSafeInteger(n)&&n>=0)||total<1||total>50000){setPlayerNotice(t("Enter 1–50,000 whole resources in total.","Въведи общо от 1 до 50 000 цели единици ресурси."));return;}
+              setGiftBusy(true);setPlayerNotice("");
+              try{
+                const response=await fetch(api+"/players/send-resources",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:Number(sessionStorage.getItem("userId")),recipientId:Number(playerMenu.id),resources:amounts})});
+                const result=await response.json();if(!response.ok)throw Error(result.message||"Transfer failed.");
+                setPlayerNotice(t("Resources sent! Daily remaining: ","Ресурсите са изпратени! Оставащ дневен лимит: ")+Number(result.dailyRemaining).toLocaleString());
+                setGiftOpen(false);setGiftAmounts({Gold:"",Iron:"",Water:"",Solar:""});
+                window.dispatchEvent(new Event("game-progress-updated"));
+              }catch(error){setPlayerNotice(error.message);}finally{setGiftBusy(false);}
+            }}>{giftBusy?t("Sending...","Изпращане..."):t("Confirm transfer","Потвърди изпращането")}</button>
+          </div>}
           {playerNotice&&<p role="status">{localLabel(playerNotice)}</p>}
           </div>
         </div>
