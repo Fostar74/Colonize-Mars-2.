@@ -470,7 +470,7 @@ router.post("/alien-campaign/attack",requireSession,(req,res)=>{
 
 router.post("/player-campaign/attack",requireSession,(req,res)=>{
   try {
-    const result=db.launchPlayerAttack(Number(req.body.userId),req.body.army,req.body.formation,req.body.target);
+    const result=db.launchPlayerAttack(Number(req.body.userId),req.body.army,req.body.formation,req.body.target,req.body.includeCyberKnight===true);
     if(result.error)return res.status(400).json({message:result.error});
     res.json(result);
   } catch(error) {console.error("Player attack:",error);res.status(500).json({message:"Player attack unavailable."});}
