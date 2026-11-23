@@ -1694,7 +1694,7 @@ class DatabaseManager {
     })();
   }
 
-    launchPlayerAttack(userId, selectedArmy, formation, targetCoords) {
+    launchPlayerAttack(userId, selectedArmy, formation, targetCoords, includeCyberKnight=false) {
     if (!targetCoords || typeof targetCoords.username !== "string") return {error:"Choose a player base on the map."};
     const target = db.prepare(`SELECT u.id,u.username,b.x,b.y,m.alliance_id
       FROM users u JOIN base_positions b ON b.user_id=u.id
@@ -1734,7 +1734,7 @@ class DatabaseManager {
       const travelMs=armyTravelDuration(60000,selected,this.protocolBonus(userId,"Rapid Deployment"));
       const origin={username:this.findUserById(userId)?.username||current.castle.username,x:current.castle.x,y:current.castle.y};
       const destination={username:target.username,x:target.x,y:target.y};
-      const armyData={units:selected,formation:battleFormation,origin,target:destination};
+      const armyData={units:selected,formation:battleFormation,origin,target:destination,includeCyberKnight:includeCyberKnight===true,cyberKnightLevel:includeCyberKnight?Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1):null};
       const mission=db.prepare("INSERT INTO player_missions(attacker_id,defender_id,army,launched_at,arrives_at) VALUES (?,?,?,?,?)")
         .run(userId,target.id,JSON.stringify(armyData),now,now+travelMs);
       return {missionId:Number(mission.lastInsertRowid),launchedAt:now,arrivesAt:now+travelMs,origin,target:destination,units:selected,formation:battleFormation};
@@ -1784,7 +1784,7 @@ class DatabaseManager {
         }));
         const {fight,playerTypes}=require("../shared/combatEngine");
         const validDefenders=Object.fromEntries(Object.entries(defender.army).filter(([unit,count])=>playerTypes[unit]&&Number(count)>0));
-        const attackerGear=this.equipmentBonuses(mission.attacker_id),defenderGear=this.equipmentBonuses(mission.defender_id);
+        const attackerGear=data.includeCyberKnight?this.equipmentBonuses(mission.attacker_id):equipmentCombatBonuses({}),defenderGear=this.equipmentBonuses(mission.defender_id);
         const attackerProtocols=this.protocolCombatBonuses(mission.attacker_id,attackerGear,defenderGear),defenderProtocols=this.protocolCombatBonuses(mission.defender_id,defenderGear,attackerGear);
         const attackerAlliance=data.allianceCombat||attacker.allianceBonuses||{},defenderAlliance=defender.allianceBonuses||{};
         const attackerCombat={...attackerProtocols,unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{},unitResearch:attackerAlliance.units||{},allAttack:Number(attackerAlliance.attack)||0,allHealth:Number(attackerAlliance.health)||0,unitEffects:attackerGear.unitEffects,enemyDebuffs:attackerGear.enemyDebuffs};
@@ -1795,6 +1795,7 @@ class DatabaseManager {
           defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit]),
           defenderBonuses:defenderCombat
         });
+        result.cyberKnightLevel=data.includeCyberKnight?data.cyberKnightLevel:null;
         const defenderWounded={};
         for(const [unit,count] of Object.entries(validDefenders)){
           const killed=Math.max(0,Number(count||0)-Number(result.defenderSurvivors?.[unit]||0));
