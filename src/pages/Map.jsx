@@ -469,6 +469,7 @@ function Map() {
       const markerSize = Math.max(108, tileSize * 2.5);
       if(sx+markerSize/2<0||sy+markerSize/2<0||sx-markerSize/2>canvas.width||sy-markerSize/2>canvas.height)return;
       const isOwn=c.username===sessionStorage.getItem("username");
+      const abandoned=!!c.abandoned;
       ctx.save();
       const protectedUntil=Number(c.protected_until||c.protectedUntil||0);
       if(protectedUntil>Date.now()){
@@ -482,11 +483,17 @@ function Map() {
       ctx.fill();
       ctx.strokeStyle=isOwn?"#67ffd0":"#a8d8ff";
       ctx.lineWidth=isOwn?3:2;ctx.stroke();
-      if(hqIcon)ctx.drawImage(hqIcon,sx-markerSize/2,sy-markerSize/2,markerSize,markerSize);
+      if(hqIcon){
+        ctx.drawImage(hqIcon,sx-markerSize/2,sy-markerSize/2,markerSize,markerSize);
+        if(abandoned){
+          ctx.fillStyle="rgba(115,115,115,.65)";
+          ctx.beginPath();ctx.arc(sx,sy,markerSize*.54,0,Math.PI*2);ctx.fill();
+        }
+      }
       ctx.font=isOwn?"bold 15px Arial":"14px Arial";
       ctx.textAlign="center";
       ctx.lineWidth=3;ctx.strokeStyle="rgba(0,0,0,.9)";
-      const name=`${isOwn?"★ ":""}${c.username} (${c.x}:${c.y})`;
+      const name=`${isOwn?"★ ":""}${c.username} (${c.x}:${c.y})${abandoned?" · Необитаема":""}`;
       ctx.strokeText(name,sx,sy+markerSize*.8);
       ctx.fillStyle=isOwn?"#aaffdb":"white";
       ctx.fillText(name,sx,sy+markerSize*.8);
@@ -1078,6 +1085,7 @@ function Map() {
               })}
             </div>
             {selectedTarget?.type==="castle"&&!targetIsOwn&&(Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now()||Number(selectedTarget?.beginner_protection_remaining_ms||0)>0)&&<p role="status" style={{color:"#c4f4ff",background:"rgba(41,117,145,.35)",padding:10,borderRadius:7}}>{t("This player has active protection (beginner protection or Plasma Shield). Attacks are blocked until it expires.","Този играч има активна защита (начална или плазмен щит). Атаките са блокирани до изтичането ѝ.")}</p>}
+            {selectedTarget?.type==="castle"&&!!selectedTarget.abandoned&&<p role="status" style={{color:"#d1d1d1"}}>{t("Abandoned base — inactive for 7+ days. The PvP level difference limit does not apply.","Необитаема база — неактивна от поне 7 дни. Ограничението за разлика в нивата не важи.")}</p>}
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
             {sameAllianceTarget&&<p role="status">{t("You cannot attack a member of your alliance.","Не можеш да атакуваш член на своя алианс.")}</p>}
             {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
