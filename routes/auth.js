@@ -468,6 +468,14 @@ router.post("/alien-campaign/attack",requireSession,(req,res)=>{
   } catch(error) {console.error(error);res.status(500).json({message:"Attack unavailable."});}
 });
 
+router.post("/player-campaign/scout",requireSession,(req,res)=>{
+  try {
+    const result=db.launchPlayerScout(Number(req.body.userId),req.body.target,Number(req.body.quantity));
+    if(result.error)return res.status(400).json({message:result.error});
+    res.json(result);
+  }catch(error){console.error("Player scouting:",error);res.status(500).json({message:"Scouting unavailable."});}
+});
+
 router.post("/player-campaign/attack",requireSession,(req,res)=>{
   try {
     const result=db.launchPlayerAttack(Number(req.body.userId),req.body.army,req.body.formation,req.body.target,req.body.includeCyberKnight===true);
