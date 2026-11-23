@@ -301,7 +301,7 @@ function initializeDatabase() {
     if (!db.prepare("PRAGMA table_info(resource_mines)").all().some(column => column.name === "gathering_units")) db.exec("ALTER TABLE resource_mines ADD COLUMN gathering_units TEXT NOT NULL DEFAULT '{}' ");
     db.exec("CREATE INDEX IF NOT EXISTS resource_mines_claimed ON resource_mines(claimed_by,arrives_at)");
     {
-      // Keep eight mines of each resource on the map, including existing databases.
+      // Ensure ten mines of each resource on existing and new maps without moving existing mines.
       const blocked = new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row => row.x + ":" + row.y));
       for (const base of alienBases) blocked.add(base.x + ":" + base.y);
       for (const mine of db.prepare("SELECT x,y FROM resource_mines").all()) blocked.add(mine.x + ":" + mine.y);
@@ -316,7 +316,7 @@ function initializeDatabase() {
       const countMines = db.prepare("SELECT COUNT(*) AS count FROM resource_mines WHERE resource=?");
       for (const resource of ["gold","iron","water","solar"]) {
         const existing = Number(countMines.get(resource).count) || 0;
-        for (let count = existing; count < 8; count++) {
+        for (let count = existing; count < 10; count++) {
           const tile = chooseMineTile();
           insertMine.run(resource,tile.x,tile.y);
         }
