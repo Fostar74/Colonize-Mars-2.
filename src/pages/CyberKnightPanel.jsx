@@ -2,7 +2,7 @@ import { useLanguage } from "../language";
 import React, { useState, useEffect } from "react";
 import "./CyberKnightPanel.css";
 import craftingCosts from "../shared/craftingCosts";
-import {rarityUnlockLevel,protocolLabels} from "../shared/cyberKnightEquipment";
+import {rarityUnlockLevel,protocolLabels,protocolRanges,unitRanges} from "../shared/cyberKnightEquipment";
 import GameProgressManager from "../utils/gameProgress";
 import cyberKnightImage from "../images/cyber-knight-expanded.jpg";
 
@@ -47,7 +47,16 @@ function CyberKnightPanel({ onClose }) {
     if(effect.kind==="enemyProtocol")return t("Opponent combat protocol","Противников боен протокол")+" "+target+": −"+value+"%";
     return effect.target+": "+value+"%";
   };
-  const itemEffects=item=>(item?.effects||[]).length?item.effects.map(effectText):(item?.stats||[]);
+  const effectMaximum=effect=>{
+    if(effect.kind==="protocolBoost"||effect.kind==="enemyProtocol")return protocolRanges[effect.target]?.[1];
+    const range=unitRanges[effect.target];
+    if(!range)return null;
+    return range[(effect.kind==="unitHealth"||effect.kind==="enemyUnitHealth")?3:1];
+  };
+  const itemEffects=item=>(item?.effects||[]).length?item.effects.map(effect=>{
+    const maximum=effectMaximum(effect);
+    return effectText(effect)+(maximum==null?"":" · "+t("Max at level 50: ","Максимум на ниво 50: ")+maximum+(effect.kind==="protocolBoost"||effect.kind==="enemyProtocol"?"%":""));
+  }):(item?.stats||[]);
 
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
@@ -207,7 +216,7 @@ function CyberKnightPanel({ onClose }) {
                   <div className="item-card-title"><span className="gear-icon-frame"><PlasmaGearIcon slot={item.slot||item.type}/></span><div><span className="rarity-label">{localLabel(item.rarity)}</span><h4>{localLabel(item.slot||item.type)} · {t("Plasma gear","Плазмена екипировка")}</h4></div></div>
                   <p>{t("Item Level:","Ниво на предмета:")} {item.level}</p>
                   <p>{"★".repeat(Number(item.stars)||({Common:1,Uncommon:2,Rare:3,Epic:4,Legendary:5}[item.rarity]||1))} · {t("Bonus slots:","Слотове за бонуси:")} {item.bonusSlots||1}</p>
-                  <p>{t("Rarity bonus:","Бонус според рядкостта:")} {item.rarityBonus??({Common:1,Uncommon:10,Rare:20,Epic:30,Legendary:40}[item.rarity]||1)}% · {t("Maximum:","Максимум:")} {item.maximumBonus||50}%</p>
+                  <p>{t("Each bonus scales with item level. Individual maximum values are shown below for level 50.","Всеки бонус нараства с нивото на предмета. Индивидуалните максимуми за ниво 50 са показани по-долу.")}</p>
                   {knightLevel<(rarityUnlockLevel[item.rarity]||1)&&<p role="status">{t("Unlocks at Cyber Knight level","Отключва се на ниво на Киберрицаря")} {rarityUnlockLevel[item.rarity]}</p>}
                   {Number(item.level??item.levelRequirement??1)>knightLevel&&<p role="status">{t("Requires Cyber Knight level","Изисква Cyber Knight ниво")} {Number(item.level??item.levelRequirement??1)}</p>}
                   <ul>
