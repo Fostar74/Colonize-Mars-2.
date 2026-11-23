@@ -1679,11 +1679,26 @@ class DatabaseManager {
       if(!mission.report){
         const target=this.progressQueries.getProgress.get(mission.target_user_id);
         const targetRuntime=target?this.runtime(mission.target_user_id):null;
-        const report=target&&targetRuntime?{resources:JSON.parse(target.resources),army:JSON.parse(targetRuntime.army),scoutedAt:now}:{error:"Target unavailable"};
+        const targetArmy=targetRuntime?JSON.parse(targetRuntime.army):{};
+        const defenders=Math.max(0,Number(targetArmy["Rover Scout"]||0));
+        const casualties=Math.min(mission.quantity,defenders);
+        const survivors=mission.quantity-casualties;
+        const report={success:survivors>0&&!!target&&!!targetRuntime,scoutedAt:now,
+          sent:mission.quantity,attackerLost:casualties,defenderLost:casualties,survivors};
+        if(casualties>0&&targetRuntime){
+          targetArmy["Rover Scout"]=defenders-casualties;
+          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(targetArmy),mission.target_user_id);
+        }
+        if(report.success){
+          report.resources=JSON.parse(target.resources);
+          report.army=targetArmy;
+          report.structures=JSON.parse(target.structures);
+        }else if(!target||!targetRuntime)report.error="Target unavailable";
         db.prepare("UPDATE player_scout_missions SET report=? WHERE id=?").run(JSON.stringify(report),mission.id);
       }
       if(now>=mission.returns_at){
-        army["Rover Scout"]=(Number(army["Rover Scout"])||0)+mission.quantity;
+        const result=JSON.parse(mission.report||db.prepare("SELECT report FROM player_scout_missions WHERE id=?").get(mission.id)?.report||"{}");
+        army["Rover Scout"]=(Number(army["Rover Scout"])||0)+Math.max(0,Number(result.survivors??mission.quantity));
         db.prepare("UPDATE player_scout_missions SET returned_at=? WHERE id=?").run(now,mission.id);
       }
     }
