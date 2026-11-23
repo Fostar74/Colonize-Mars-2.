@@ -1794,7 +1794,9 @@ class DatabaseManager {
       for(const [unit,count] of Object.entries(selected)) current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       const now=Date.now();
-      const travelMs=armyTravelDuration(60000,selected,this.protocolBonus(userId,"Rapid Deployment"));
+      // PvP travel: 30 seconds per map square (diagonal movement counts as one square).
+      const distance=Math.max(Math.abs(Number(current.castle.x)-Number(target.x)),Math.abs(Number(current.castle.y)-Number(target.y)));
+      const travelMs=Math.max(30000,distance*30000);
       const origin={username:this.findUserById(userId)?.username||current.castle.username,x:current.castle.x,y:current.castle.y};
       const destination={username:target.username,x:target.x,y:target.y};
       const armyData={units:selected,formation:battleFormation,origin,target:destination,includeCyberKnight:includeCyberKnight===true,cyberKnightLevel:includeCyberKnight?Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1):null};
