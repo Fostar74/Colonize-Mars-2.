@@ -267,6 +267,7 @@ function Map() {
   const [alienIcon, setAlienIcon] = useState(null);
   const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
+  const [playerSearch,setPlayerSearch]=useState("");
   const [mineSearchResource,setMineSearchResource]=useState("");
 
   // World coordinates are 1–100; each tile has a stable geographic location.
@@ -770,20 +771,21 @@ function Map() {
     }
   };
 
-  const searchByUsername = () => {
-    const input = document.getElementById("usernameInput").value.trim();
-
-    const found = castles.find(
-      (c) => c.username.toLowerCase() === input.toLowerCase()
-    );
-
-    if (found) {
-      centerMapOn(found.x, found.y);
-    } else {
-      alert("Player not found.");
-    }
+  const playerMatches=playerSearch.trim().length>=3
+    ? castles.filter(base=>String(base.username||"").toLocaleLowerCase().includes(playerSearch.trim().toLocaleLowerCase())).sort((a,b)=>a.username.localeCompare(b.username))
+    : [];
+  const selectSearchedPlayer=base=>{
+    centerMapOn(Number(base.x),Number(base.y));
+    setSelectedTarget({type:"castle",...base});
+    setMarchDraft(null);
+    setPlayerSearch(base.username);
+    setMapError("");
   };
-
+  const searchByUsername=()=>{
+    if(playerSearch.trim().length<3){setMapError(t("Enter at least 3 letters of a player name.","Въведи поне 3 букви от името на играч."));return;}
+    if(playerMatches.length===1){selectSearchedPlayer(playerMatches[0]);return;}
+    if(!playerMatches.length)setMapError(t("No matching players found.","Няма намерени играчи."));
+  };
   const attackRoutes=[...(campaign.missions||[]),...(campaign.playerMissions||[]).map(m=>({...m,playerBattle:true}))]
     .filter(m=>m.target&&m.origin&&!m.returned_at).map(m=>({
       id:(m.playerBattle?"player-attack-":"attack-")+m.id,color:"#ff5252",from:m.result?m.target:m.origin,to:m.result?m.origin:m.target,
@@ -927,8 +929,13 @@ function Map() {
         <button type="button" onClick={goToMyBase}>{t("My base","Моята база")}</button>
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
-        <input type="text" id="usernameInput" placeholder={localLabel("Search Username")} />
-        <button onClick={searchByUsername}>{t("Search","Търси")}</button>
+        <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
+          <input type="text" value={playerSearch} onChange={e=>{setPlayerSearch(e.target.value);setMapError("");}} placeholder={t("Player name (at least 3 letters)","Име на играч (поне 3 букви)")} aria-label={t("Search players","Търси играчи")} />
+          <button type="button" onClick={searchByUsername}>{t("Search","Търси")}</button>
+        </div>
+        {playerSearch.trim().length>=3&&<div style={{marginTop:5,maxHeight:170,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
+          {playerMatches.length?playerMatches.map(base=><button type="button" key={base.username+":"+base.x+":"+base.y} onClick={()=>selectSearchedPlayer(base)} style={{textAlign:"left"}}>{base.username} · {base.x}:{base.y}</button>):<span>{t("No matching players found.","Няма намерени играчи.")}</span>}
+        </div>}
         <div style={{marginTop:6}}>
           <input type="number" id="xCoord" placeholder="X (1–100)" style={{width:90}} />
           <input type="number" id="yCoord" placeholder="Y (1–100)" style={{width:90}} />
