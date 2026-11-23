@@ -51,7 +51,7 @@ function calculateCargoCapacity(survivors={}) {
 
 function calculateLoot(resources={},capacity=0) {
   const keys=["Gold","Iron","Water","Solar"];
-  const available=Object.fromEntries(keys.map(key=>[key,Math.floor(Math.max(0,Math.floor(Number(resources[key])||0))*0.1)]));
+  const available=Object.fromEntries(keys.map(key=>[key,Math.floor(Math.max(0,Math.floor(Number(resources[key])||0))*0.5)]));
   const loot=Object.fromEntries(keys.map(key=>[key,0]));
   let remaining=Math.min(Math.max(0,Math.floor(Number(capacity)||0)),Object.values(available).reduce((sum,n)=>sum+n,0));
   while(remaining>0){
