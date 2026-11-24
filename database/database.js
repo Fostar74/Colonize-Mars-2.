@@ -2208,12 +2208,24 @@ class DatabaseManager {
     this.getSaturdayAllianceInvasion(userId);
     const now=Date.now();
     return db.transaction(()=>{
-      const completed=db.prepare("SELECT * FROM hospital_entries WHERE user_id=? AND status='healing' AND heals_at<=?").all(userId,now);
-      for(const row of completed){
+      const healing=db.prepare("SELECT * FROM hospital_entries WHERE user_id=? AND status='healing' ORDER BY heals_at,id").all(userId);
+      for(const row of healing){
+        const wounded=JSON.parse(row.wounded||"{}"),remaining={},ready={};
+        // Work backwards from the scheduled end, preserving the original queue order.
+        let end=Number(row.heals_at);
+        for(const [unit,raw] of Object.entries(wounded).reverse()){
+          const count=Math.max(0,Math.floor(Number(raw)||0)),duration=Math.max(1000,unitTrainingDuration(unit)*1000);
+          const pending=Math.min(count,Math.max(0,Math.ceil((end-now)/duration)));
+          if(pending)remaining[unit]=pending;
+          if(count>pending)ready[unit]=count-pending;
+          end-=count*duration;
+        }
+        if(!Object.keys(ready).length)continue;
         const current=this.syncGame(userId);if(!current)continue;
-        for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
+        for(const [unit,count] of Object.entries(ready))current.army[unit]=(Number(current.army[unit])||0)+count;
         db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
-        db.prepare("UPDATE hospital_entries SET status='healed',recovered_at=? WHERE id=?").run(now,row.id);
+        if(Object.keys(remaining).length)db.prepare("UPDATE hospital_entries SET wounded=? WHERE id=? AND status='healing'").run(JSON.stringify(Object.fromEntries(Object.entries(remaining).reverse())),row.id);
+        else db.prepare("UPDATE hospital_entries SET status='healed',recovered_at=? WHERE id=? AND status='healing'").run(now,row.id);
       }
       const rows=db.prepare("SELECT * FROM hospital_entries WHERE user_id=? AND status IN ('waiting','healing','event') ORDER BY created_at,id").all(userId)
         .map(row=>({...row,wounded:JSON.parse(row.wounded||"{}"),healingCost:JSON.parse(row.healing_cost||"{}")}));
@@ -2246,7 +2258,11 @@ class DatabaseManager {
       const startsAt=Math.max(now,Number(active?.heals_at)||now);
       const healsAt=startsAt+Math.max(1000,durationMs);
       const update=db.prepare("UPDATE hospital_entries SET status='healing',healing_cost=?,heals_at=? WHERE id=? AND status='waiting'");
-      for(const row of rows)update.run(JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),healsAt,row.id);
+      let cursor=startsAt;
+      for(const row of rows){
+        cursor+=Object.entries(JSON.parse(row.wounded||"{}")).reduce((sum,[unit,count])=>sum+Math.max(0,Number(count)||0)*Math.max(1000,unitTrainingDuration(unit)*1000),0);
+        update.run(JSON.stringify({Gold:0,Iron:0,Water:0,Solar:0}),cursor,row.id);
+      }
       return {healsAt,startsAt,queued:startsAt>now,cost:{Gold:0,Iron:0,Water:0,Solar:0}};
     })();
   }
