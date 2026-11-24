@@ -184,25 +184,28 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
       });
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Cannot claim side quest reward.");
-      setSideQuestMessage(t("Level reward collected! Resources added to Inventory and 100 tokens awarded.","Наградата за нивото е взета! Ресурсите са добавени в Инвентара и са начислени 100 жетона."));
+      setSideQuestMessage(t("Level reward collected! Resources added to Inventory and tokens awarded.","Наградата за нивото е взета! Ресурсите са добавени в Инвентара и жетоните са начислени."));
       setAlienSideQuests(previous=>previous.map(quest=>quest.level===level?{...quest,claimed:true}:quest));
       window.dispatchEvent(new Event("game-progress-updated"));
       await refresh();
     }catch(error){setSideQuestMessage(error.message);}
     finally{setSideQuestBusy(false);}
   };
+  const sideQuestTitles = [["First Contact","Първи контакт"],["Alien Signals","Чужди сигнали"],["Enemy Reconnaissance","Разузнаване на врага"],["First Resistance","Първа съпротива"],["Alien Outpost","Извънземният аванпост"],["Enemy Territory","Вражеска територия"],["Plasma Threat","Плазмената заплаха"],["Breaking the Defense","Пробив в защитата"],["Secret of the Green Crystals","Тайната на зелените кристали"],["Path to the Labyrinth","Пътят към Лабиринта"],["Alien Fortress","Извънземната крепост"],["Shadow of the Invasion","Сянката на нашествието"],["Crystal Citadel","Кристалната цитадела"],["Last Defensive Line","Последната отбранителна линия"],["Guardians of Mars","Пазителите на Марс"],["Into the Enemy Heart","В сърцето на врага"],["Protocol: Destruction","Протокол „Унищожение“"],["Last Bastion","Последният бастион"],["Gates of the Empire","Пред портите на империята"],["Fall of the Alien Ruler","Падането на извънземния владетел"]];
   const renderSideQuests = () => (
     <div className="quest-section">
       <h3>{t("Side Quests","Странични мисии")}</h3>
       <p>{t("Defeat alien bases at milestone levels to unlock one-time rewards.","Победи извънземните бази на определените нива, за да отключиш еднократни награди.")}</p>
       {sideQuestMessage&&<p role="status">{sideQuestMessage}</p>}
-      {[1,5,10,15,20].map(level=>{
+      {Array.from({length:20},(_,i)=>i+1).map(level=>{
         const quest=alienSideQuests.find(item=>Number(item.level)===level);
         const amount=level*1000;
+        const tokens=level===20?500:level>=15?250:level>=10?200:level>=6?150:100;
         return <div className="quest-box" key={level}>
-          <div className="quest-title">{t("Defeat Alien Base level","Победи извънземна база ниво")} {level}</div>
+          <div className="quest-title">{level}. {t(...sideQuestTitles[level-1])}</div>
+          <p>{t("Objective: defeat Alien Base level","Условие: победи извънземна база ниво")} {level} {t("at least once. Previous victories count.","поне веднъж. Предишните победи се зачитат.")}</p>
           <div className="quest-progress">{quest?.claimed?t("Completed — reward claimed","Завършена · наградата е взета"):quest?.completed?t("Completed — collect your reward","Завършена · вземи наградата"):t("Not completed","Не е изпълнена")}</div>
-          <div className="quest-rewards">{t("Reward","Награда")}: {amount.toLocaleString()} {t("each of Gold, Iron, Water and Solar in Inventory + 100 tokens","от всеки ресурс (злато, желязо, вода и слънчева енергия) в Инвентара + 100 жетона")}</div>
+          <div className="quest-rewards">{t("Reward","Награда")}: {amount.toLocaleString()} {t("each of Gold, Iron, Water and Solar in Inventory","от всеки ресурс (злато, желязо, вода и слънчева енергия) в Инвентара")} + {tokens} {t("tokens","жетона")}</div>
           {quest?.claimed?<button disabled>{t("Reward claimed","Наградата е взета")}</button>:
             quest?.completed?<button disabled={sideQuestBusy} onClick={()=>claimAlienSideQuest(level)}>{t("Claim reward","Вземи наградата")}</button>:
             <button disabled>{t("Not yet unlocked","Още не е отключена")}</button>}
