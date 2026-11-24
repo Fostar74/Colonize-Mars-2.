@@ -279,6 +279,7 @@ function Map() {
   const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
   const [playerSearch,setPlayerSearch]=useState("");
+  const [inactiveOnly,setInactiveOnly]=useState(false);
   const [mineSearchResource,setMineSearchResource]=useState("");
 
   // World coordinates are 1–100; each tile has a stable geographic location.
@@ -812,9 +813,12 @@ function Map() {
     }
   };
 
-  const playerMatches=playerSearch.trim().length>=3
-    ? castles.filter(base=>String(base.username||"").toLocaleLowerCase().includes(playerSearch.trim().toLocaleLowerCase())).sort((a,b)=>a.username.localeCompare(b.username))
-    : [];
+  // Inactive bases are already classified by the server using the 7-day activity threshold.
+  const playerMatches=castles.filter(base=>{
+    if(inactiveOnly && !Boolean(base.abandoned)) return false;
+    const query=playerSearch.trim().toLocaleLowerCase();
+    return query.length>=3 ? String(base.username||"").toLocaleLowerCase().includes(query) : inactiveOnly;
+  }).sort((a,b)=>String(a.username||"").localeCompare(String(b.username||"")));
   const selectSearchedPlayer=base=>{
     centerMapOn(Number(base.x),Number(base.y));
     setSelectedTarget({type:"castle",...base});
@@ -974,8 +978,12 @@ function Map() {
           <input type="text" value={playerSearch} onChange={e=>{setPlayerSearch(e.target.value);setMapError("");}} placeholder={t("Player name (at least 3 letters)","Име на играч (поне 3 букви)")} aria-label={t("Search players","Търси играчи")} />
           <button type="button" onClick={searchByUsername}>{t("Search","Търси")}</button>
         </div>
-        {playerSearch.trim().length>=3&&<div style={{marginTop:5,maxHeight:170,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
-          {playerMatches.length?playerMatches.map(base=><button type="button" key={base.username+":"+base.x+":"+base.y} onClick={()=>selectSearchedPlayer(base)} style={{textAlign:"left"}}>{base.username} · {base.x}:{base.y}</button>):<span>{t("No matching players found.","Няма намерени играчи.")}</span>}
+        <label style={{display:"flex",alignItems:"center",gap:6,marginTop:5}}>
+          <input type="checkbox" checked={inactiveOnly} onChange={event=>{setInactiveOnly(event.target.checked);setMapError("");}} />
+          {t("Inactive players (offline 7+ days)","Неактивни играчи (офлайн над 7 дни)")}
+        </label>
+        {(inactiveOnly||playerSearch.trim().length>=3)&&<div style={{marginTop:5,maxHeight:170,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
+          {playerMatches.length?playerMatches.map(base=><button type="button" key={base.username+":"+base.x+":"+base.y} onClick={()=>selectSearchedPlayer(base)} style={{textAlign:"left"}}>{base.username} · {base.x}:{base.y}{base.abandoned?" · "+t("Inactive","Неактивен"):""}</button>):<span>{t("No matching players found.","Няма намерени играчи.")}</span>}
         </div>}
         <div style={{marginTop:6}}>
           <input type="number" id="xCoord" placeholder="X (1–100)" style={{width:90}} />
