@@ -2333,15 +2333,17 @@ class DatabaseManager {
       const wounded={};
       for(const row of eventHospital)for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))wounded[unit]=(Number(wounded[unit])||0)+Number(count||0);
       for(const row of legacyHospital)for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))wounded[unit]=(Number(wounded[unit])||0)+Number(count||0);
-      const resources={Gold:10000,Iron:10000,Water:10000,Solar:10000};
       const rank=rankings.findIndex(row=>row.user_id===user_id)+1;
+      const amount=rank<=2?30000:rank===3?20000:10000;
+      const resources={Gold:amount,Iron:amount,Water:amount,Solar:amount};
       if(rank>0&&rank<=10){
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(user_id);
         db.prepare("UPDATE alien_rewards SET bonus_missions=bonus_missions+20 WHERE user_id=?").run(user_id);
         const old=this.getUserEquipment(user_id),inventory=[...(old?.gearInventory||[])],slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"],availableSlots=[...slots];
         for(let n=0;n<3;n++){
           const slotIndex=Math.floor(Math.random()*availableSlots.length),slot=availableSlots.splice(slotIndex,1)[0];
-          inventory.push({id:"mothership-"+event.id+"-"+user_id+"-"+n,name:"Alien Command Ship Relic · "+slot,slot,rarity:"Common",level:1,stats:[],bonusSlots:3,obtainedFrom:"Attack the Alien Command Ship · Rank "+rank});
+          const rarity="Rare",stars=3,rolled=rollEquipmentBonuses(slot,rarity,stars);
+          inventory.push({id:"mothership-"+event.id+"-"+user_id+"-"+n,name:"Plasma "+slot[0]+slot.slice(1).toLowerCase(),slot,rarity,stars,level:1,stats:rolled.stats,effects:rolled.effects,bonusSlots:stars,rarityBonus:rarityBonusPercent[rarity],maximumBonus:50,obtainedFrom:"Attack the Alien Command Ship · Rank "+rank});
         }
         this.saveUserEquipment(user_id,old?.equippedItems||{},inventory,old?.craftingPoints||{});
         db.prepare("INSERT INTO player_green_crystals(user_id,balance,total_earned) VALUES (?,1,1) ON CONFLICT(user_id) DO UPDATE SET balance=balance+1,total_earned=total_earned+1").run(user_id);
@@ -2361,8 +2363,8 @@ class DatabaseManager {
     for(const {id:userId} of db.prepare("SELECT id FROM users").all()){
       const rank=rankings.findIndex(row=>row.user_id===userId)+1;
       const personal=rank?`Your rank: ${rank}. / Твоето място: ${rank}.`:"You did not participate. / Не участва.",
-        winnerReward=rank>0&&rank<=10?"Green crystal ×1, 3 random Cyber Knight equipment pieces with 3 bonus slots each, +20 Cyber Knight missions. Bonus values will be announced separately. / Зелен кристал ×1, 3 случайни екипировки за Киберрицаря с по 3 слота за бонуси и +20 мисии на Киберрицаря. Стойностите на бонусите ще бъдат обявени допълнително.":"",
-        body=`ATTACK THE ALIEN COMMAND SHIP · FINAL RESULTS / АТАКУВАЙ КОМАНДНИЯ КОРАБ НА ИЗВЪНЗЕМНИТЕ · ФИНАЛНИ РЕЗУЛТАТИ\n\nFINAL RANKING / КЛАСИРАНЕ:\n${leaderboard}\n\nREWARDS / НАГРАДИ:\nEach participant: 10,000 each of Gold, Iron, Water and Solar. / Всеки участник: по 10 000 злато, желязо, вода и слънчева енергия.\nTop 10: ${winnerReward||"Green crystal ×1, 3 random Cyber Knight equipment pieces with 3 bonus slots each, +20 Cyber Knight missions. Bonus values will be announced separately. / Зелен кристал ×1, 3 случайни екипировки за Киберрицаря с по 3 слота за бонуси и +20 мисии на Киберрицаря. Стойностите на бонусите ще бъдат обявени допълнително."}\n\n${personal}`;
+        winnerReward=rank>0&&rank<=10?"Green crystal ×1, 3 random Rare Cyber Knight equipment pieces with 3 bonuses each, +20 Cyber Knight missions. / Зелен кристал ×1, 3 случайни редки предмета за Киберрицаря с по 3 бонуса и +20 мисии на Киберрицаря.":"",
+        body=`ATTACK THE ALIEN COMMAND SHIP · FINAL RESULTS / АТАКУВАЙ КОМАНДНИЯ КОРАБ НА ИЗВЪНЗЕМНИТЕ · ФИНАЛНИ РЕЗУЛТАТИ\n\nFINAL RANKING / КЛАСИРАНЕ:\n${leaderboard}\n\nREWARDS / НАГРАДИ:\nRanks 1–2: 30,000 each resource; rank 3: 20,000; other participants: 10,000. / Места 1–2: по 30 000 от всеки ресурс; място 3: по 20 000; останалите участници: по 10 000.\nTop 10: ${winnerReward||"Green crystal ×1, 3 random Rare Cyber Knight equipment pieces with 3 bonuses each, +20 Cyber Knight missions. / Зелен кристал ×1, 3 случайни редки предмета за Киберрицаря с по 3 бонуса и +20 мисии на Киберрицаря."}\n\n${personal}`;
       insertMessage.run(userId,userId,body,Date.now());
       notify.run(userId,Date.now());
     }
