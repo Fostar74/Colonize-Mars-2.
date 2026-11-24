@@ -1,4 +1,7 @@
 import labelsBg from "./labelsBg";
+import {protocolLabels} from "./shared/cyberKnightEquipment";
+const protocolAliases={...protocolLabels,"Rapid Deployment":["Hyperdrive Navigation","Хипердвигателна навигация"],"Resource Management":["Quantum Logistics","Квантова логистика"],"Mining Operations":["Deep Core Extraction","Дълбочинен добив"],"Advanced Recon":["Quantum Intelligence","Квантово разузнаване"],"Accelerated Training":["Accelerated Training","Ускорено обучение"]};
+const localizedLabel=(value,language)=>Object.hasOwn(protocolAliases,value)?protocolAliases[value][language==="bg"?1:0]:language==="bg"&&Object.hasOwn(labelsBg,value)?labelsBg[value]:value;
 import React, {createContext, useContext, useEffect, useState} from "react";
 
 const LanguageContext = createContext(null);
@@ -31,5 +34,5 @@ export function LanguageProvider({children}) {
 
 export function useLanguage() {
   const {language,choose} = useContext(LanguageContext);
-  return {language,choose,label:value=>language === "bg" && Object.hasOwn(labelsBg,value) ? labelsBg[value] : value,t:(english,bulgarian) => language === "bg" ? bulgarian : english};
+  return {language,choose,label:value=>localizedLabel(value,language),t:(english,bulgarian) => language === "bg" ? bulgarian : english};
 }
