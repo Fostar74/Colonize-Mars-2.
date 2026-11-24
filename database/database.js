@@ -2008,7 +2008,7 @@ class DatabaseManager {
       const result={recalled:true,battleSkipped:true,victory:false,rounds:0,report:[],survivors,
         defenderInitial:{...defenderArmy},defenderSurvivors:{...defenderArmy},
         loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0,cargoCapacity:0};
-      const returnAt=now+Math.max(1000,mission.arrives_at-now);
+      const returnAt=now+Math.max(0,now-mission.launched_at);
       db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?").run(now,returnAt,JSON.stringify(result),id);
       return {success:true,missionId:id,returnsAt:returnAt};
     })();
