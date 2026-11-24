@@ -194,7 +194,7 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
   const renderSideQuests = () => (
     <div className="quest-section">
       <h3>{t("Side Quests","Странични мисии")}</h3>
-      <p>{t("New independent side missions are being designed. They will have distinct objectives and will not be auto-completed by previous campaign victories.","Подготвяме нови самостоятелни странични мисии с различни условия. Предишните победи в кампанията няма да ги изпълняват автоматично.")}</p>
+      <p>{t("Coming soon","Очаквайте скоро")}</p>
     </div>
   );
 
