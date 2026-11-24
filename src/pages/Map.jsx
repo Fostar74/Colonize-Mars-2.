@@ -680,7 +680,7 @@ function Map() {
       }else if(isSupport){
         const latest=await fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
         if(latest.ok)setCampaign(await latest.json());
-        setMarchSuccess(t("Reinforcements dispatched to your ally.","Подкрепленията са изпратени към съюзника.")+" "+t("Arrival in","Пристигат след")+" "+Math.max(0,Math.ceil((Number(data.arrivesAt)-Date.now())/1000))+" "+t("seconds","секунди")+".");
+        setMarchSuccess(t("Reinforcements dispatched to your ally.","Подкрепленията са изпратени към съюзника.")+" "+t("Arrival in","Пристигат след")+" "+formatDuration(Number(data.arrivesAt)-Date.now())+".");
         window.dispatchEvent(new Event("game-progress-updated"));
       }else if(isGathering){
         setMapMines(data.mines||[]);
@@ -833,7 +833,7 @@ function Map() {
   };
   const attackRoutes=[...(campaign.missions||[]),...(campaign.playerMissions||[]).map(m=>({...m,playerBattle:true}))]
     .filter(m=>m.target&&m.origin&&!m.returned_at).map(m=>({
-      id:(m.playerBattle?"player-attack-":"attack-")+m.id,color:"#ff5252",from:m.result?m.target:m.origin,to:m.result?m.origin:m.target,
+      id:(m.playerBattle?"player-attack-":"attack-")+m.id,color:"#ff5252",from:m.result?(m.result.recalled?{x:Number(m.origin.x)+(Number(m.target.x)-Number(m.origin.x))*Math.max(0,Math.min(1,(m.resolved_at-m.launched_at)/Math.max(1,m.arrives_at-m.launched_at))),y:Number(m.origin.y)+(Number(m.target.y)-Number(m.origin.y))*Math.max(0,Math.min(1,(m.resolved_at-m.launched_at)/Math.max(1,m.arrives_at-m.launched_at)))}:m.target):m.origin,to:m.result?m.origin:m.target,
       start:m.result?m.resolved_at:m.launched_at,end:m.result?m.returns_at:m.arrives_at,
     }));
   const supportRoutes=(campaign.supportRoutes||[]).flatMap(m=>{
@@ -1346,14 +1346,14 @@ function Map() {
           {(campaignTab==="reports" || scoutMarches.length>0 || playerScoutMarches.some(m=>!m.report)) && <h3>{t("Reconnaissance","Разузнаване")}</h3>}
           {playerScoutMarches.filter(m=>!m.report).map(m=><article key={"player-scout-"+m.id} style={{padding:12,margin:"8px 0",border:"1px solid #50718b",borderRadius:8}}>
             <strong>🔎 {t("Espionage against","Шпионаж срещу")} {m.target.username} · {m.target.x}:{m.target.y}</strong>
-            <p>{t("Arriving in","Пристига след")} {Math.max(0,Math.ceil((m.arrives_at-clock)/1000))} {t("seconds","секунди")} · {m.quantity} × {localLabel("Rover Scout")}</p>
+            <p>{t("Arriving in","Пристига след")} {formatDuration(m.arrives_at-clock)} · {m.quantity} × {localLabel("Rover Scout")}</p>
           </article>)}
           {scoutMarches.map(mission=>{
             const returning=clock>=mission.arrives_at;
             const remaining=Math.max(0,Math.ceil(((returning?mission.returns_at:mission.arrives_at)-clock)/1000));
             return <details key={mission.id}>
               <summary>{t("Scout mission","Разузнавателен поход")} #{mission.id} · {mission.target.x}:{mission.target.y} · {mission.quantity} × {localLabel("Rover Scout")} · {
-                mission.returned_at ? t("Returned","Върнали се") : remaining===0 ? t("Updating…","Обновяване…") : `${returning?localLabel("Returning"):localLabel("Travelling")} · ${remaining} ${t("sec.","сек.")}`
+                mission.returned_at ? t("Returned","Върнали се") : remaining===0 ? t("Updating…","Обновяване…") : `${returning?localLabel("Returning"):localLabel("Travelling")} · ${formatDuration(remaining*1000)}`
               }</summary>
               {mission.report ? <ul>{Object.entries(mission.report).map(([unit,count])=><li key={unit}>{localLabel(unit)}: {count}</li>)}</ul>
                 : <p>{t("Report available on arrival.","Докладът ще е достъпен при пристигане.")}</p>}
@@ -1362,7 +1362,7 @@ function Map() {
           {campaignTab==="reports" && !scoutMarches.length && !playerScoutMarches.length && <p>{t("No scout missions yet.","Все още няма разузнавателни походи.")}</p>}
           {(alienMarches.length>0) && <h3>{campaignTab==="reports" ? t("Alien Mission Reports","Доклади от извънземни мисии") : t("Alien Attacks","Атаки срещу извънземни")}</h3>}
         {alienMarches.map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
-          <summary>{t("Mission #","Мисия №")}{m.id} {t("· Alien Lv","· Извънземна база ниво")} {m.level} · {m.result ? (m.result.victory?localLabel("VICTORY"):localLabel("DEFEAT")) : localLabel("Travelling")}{!m.returned_at && ` · ${m.result ? localLabel("Returning") : localLabel("Arrival")} · ${Math.max(0,Math.ceil(((m.result ? m.returns_at : m.arrives_at)-clock)/1000))}s` }</summary>
+          <summary>{t("Mission #","Мисия №")}{m.id} {t("· Alien Lv","· Извънземна база ниво")} {m.level} · {m.result ? (m.result.victory?localLabel("VICTORY"):localLabel("DEFEAT")) : localLabel("Travelling")}{!m.returned_at && ` · ${m.result ? localLabel("Returning") : localLabel("Arrival")} · ${formatDuration((m.result ? m.returns_at : m.arrives_at)-clock)}` }</summary>
           {campaignTab==="active" ? (m.result
             ? <p><strong>{t("Survivors:","Оцелели:")}</strong> {Object.entries(m.result.survivors||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString()}`).join(", ")||"0"}</p>
             : <>{m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}{m.formation?.length?<ul>{m.formation.map(({unit,count,row},index)=><li key={index}>{count.toLocaleString()} {localLabel(unit)} {t("· Row","· Ред")} {row}</li>)}</ul>:m.units&&<p>{t("Dispatched:","Изпратени:")} {Object.entries(m.units).map(([unit,count])=>`${count} ${localLabel(unit)}`).join(", ")}</p>}</>
@@ -1390,7 +1390,7 @@ function Map() {
               : (m.result.recalled?t("Attack recalled before arrival","Атаката е върната преди пристигане"):m.result.shielded?t("Target protected","Целта е под протекция"):m.result.victory?t("Victory","Победа"):t("Defeat","Загуба"))
             : t("Travelling","На път");
           return <details key={"player-"+m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
-            <summary>{m.incoming?t("Incoming attack from","Вражеска атака от")+" "+m.attacker_name:t("Attack on","Атака срещу")+" "+m.defender_name} · {m.target?.x}:{m.target?.y} · {outcome}{!m.returned_at&&` · ${m.result?t("Returning","Връщане"):t("Arrival","Пристигане")} · ${Math.max(0,Math.ceil(((m.result?m.returns_at:m.arrives_at)-clock)/1000))} ${t("sec.","сек.")}`}</summary>
+            <summary>{m.incoming?t("Incoming attack from","Вражеска атака от")+" "+m.attacker_name:t("Attack on","Атака срещу")+" "+m.defender_name} · {m.target?.x}:{m.target?.y} · {outcome}{!m.returned_at&&` · ${m.result?t("Returning","Връщане"):t("Arrival","Пристигане")} · ${formatDuration((m.result?m.returns_at:m.arrives_at)-clock)}`}</summary>
             {campaignTab==="active"&&!m.incoming&&!m.result&&m.arrives_at>clock&&<button disabled={marchLoading} onClick={async event=>{
               event.preventDefault();event.stopPropagation();setMarchLoading(true);setMarchNotice("");
               try{
