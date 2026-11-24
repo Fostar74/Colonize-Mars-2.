@@ -277,7 +277,7 @@ function CyberKnightPanel({ onClose }) {
       {activeModal === "dismantle" && selectedItem && (
         <div className="modal-window">
           <h3>{t("Dismantle","Разглоби")} {selectedItem.name}?</h3>
-          <p>{t("This round: 100% of invested upgrade points are refunded as Universal Forge points. The item will be permanently destroyed.","Този рунд: 100% от вложените точки за подобрения се връщат като универсални точки за изковаване. Предметът се унищожава окончателно.")}</p>
+          <p>{t("Dismantling returns 5 Universal Forge points per item level, regardless of rarity. The item will be permanently destroyed.","Претопяването връща по 5 универсални точки за изковаване за всяко ниво на предмета, независимо от рядкостта. Предметът се унищожава окончателно.")} <strong>{t("You will receive: ","Ще получиш: ")}{Math.max(0,Math.min(50,Math.floor(Number(selectedItem.level??selectedItem.levelRequirement??0)||0)))*5} Universal Forge</strong></p>
           <button disabled={crafting} onClick={handleDismantle}>{crafting?t("Processing…","Обработка…"):t("Confirm dismantling","Потвърди претопяването")}</button>
           <button onClick={() => setActiveModal(null)}>{t("Cancel","Отказ")}</button>
         </div>
