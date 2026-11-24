@@ -1073,10 +1073,12 @@ class DatabaseManager {
     return {level,xp:row.xp,nextLevelXp:level>=40?null:level*1000,skillPoints:Math.max(0,earned-spent),talents,catalog:this.talentCatalog()};
   }
   awardPlayerXp(userId,amount){
-    if(!Number.isSafeInteger(amount)||amount<1)return;
+    if(!Number.isSafeInteger(amount)||amount<1)return 0;
     db.prepare("INSERT OR IGNORE INTO player_talents(user_id) VALUES (?)").run(userId);
     const bonus=this.protocolBonus(userId,"Advanced Research")/100;
-    db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(Math.max(1,Math.floor(amount*(1+bonus))),userId);
+    const earned=Math.max(1,Math.floor(amount*(1+bonus)));
+    db.prepare("UPDATE player_talents SET xp=xp+? WHERE user_id=?").run(earned,userId);
+    return earned;
   }
   upgradePlayerTalent(userId,name){
     const activeProtocols = new Set(["Resource Management", "Accelerated Training", "Advanced Research", "Rapid Deployment", "Evasion Protocol", "Combat Recovery", "Precision Fire", "Reinforced Armor", "Infantry Command", "Mobile Warfare", "Heavy Artillery", "Mining Operations", "Battle Command", "Advanced Recon"]);
@@ -3279,6 +3281,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
           if(saved>0)wounded[unit]=saved;
         }
         result.wounded=wounded;
+        result.xpEarned=0;
         if(Object.keys(wounded).length)this.recordHospitalWounds(userId,"alien-base",mission.id,wounded,"waiting");
         if(result.victory){
           // Alien Base equipment is awarded only for a victory.
@@ -3302,7 +3305,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
             db.prepare("INSERT INTO player_red_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,redCrystals,redCrystals);
             result.redCrystals=redCrystals;
           }
-          this.awardPlayerXp(userId,mission.level*1000);
+          result.xpEarned=this.awardPlayerXp(userId,mission.level*1000);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
           db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
           db.prepare("UPDATE alien_rewards SET victories=victories+1 WHERE user_id=?").run(userId);
