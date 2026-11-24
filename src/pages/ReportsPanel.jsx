@@ -149,6 +149,7 @@ export default function ReportsPanel({onClose,onRead}) {
     <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"} · {t("Remaining alien defenders","Оставащи извънземни защитници")}: {m.result.defendersRemaining??0}</p>
     {equipment&&<><p>🎁 {t("Cyber Knight gear reward","Получена екипировка за Киберрицаря")}: <strong>{gearNames[String(equipment.slot||equipment.type||"").toUpperCase()]||equipment.name}</strong> · {localLabel(equipment.rarity)} · {"★".repeat(Number(equipment.stars)||1)}</p>{(equipment.effects||[]).length>0&&<ul>{equipment.effects.map((effect,index)=><li key={index}>{effectLabel(effect)}</li>)}</ul>}</>}
     {secondary&&<p>🎁 {t("Additional reward","Допълнителна награда")}: {secondary}</p>}
+    <p>⭐ <strong>{t("Experience earned (XP)","Получен опит (XP)")}:</strong> {m.result.xpEarned==null?t("Not recorded","Няма запис"):Number(m.result.xpEarned).toLocaleString()}</p>
     {Number(m.result.greenCrystals)>0&&<p>🎁 💚 {t("Green crystals","Зелени кристали")}: {Number(m.result.greenCrystals).toLocaleString()}</p>}
     {Number(m.result.redCrystals)>0&&<p>🎁 🔴 {t("Red crystals","Червени кристали")}: {Number(m.result.redCrystals).toLocaleString()}</p>}
     {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {list(m.result.wounded)}</p>}
