@@ -3300,7 +3300,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
             db.prepare("INSERT INTO player_red_crystals(user_id,balance,total_earned) VALUES (?,?,?) ON CONFLICT(user_id) DO UPDATE SET balance=balance+excluded.balance,total_earned=total_earned+excluded.total_earned").run(userId,redCrystals,redCrystals);
             result.redCrystals=redCrystals;
           }
-          this.awardPlayerXp(userId,mission.level*100);
+          this.awardPlayerXp(userId,mission.level*1000);
           db.prepare("INSERT INTO alien_campaign(user_id,highest_defeated) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET highest_defeated=MAX(highest_defeated,excluded.highest_defeated)").run(userId,mission.level);
           db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
           db.prepare("UPDATE alien_rewards SET victories=victories+1 WHERE user_id=?").run(userId);
