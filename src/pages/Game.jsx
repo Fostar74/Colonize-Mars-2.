@@ -153,6 +153,13 @@ function HospitalPanel() {
   const active=entries.find(entry=>entry.status==="healing");
   const total=entries.reduce((sum,entry)=>sum+Object.values(entry.wounded||{}).reduce((subtotal,count)=>subtotal+Number(count||0),0),0);
   const fmt=army=>Object.entries(army||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>Number(count).toLocaleString()+" "+label(unit)).join(" · ")||"0";
+  const remainingTime=healsAt=>{
+    const total=Math.max(0,Math.ceil((Number(healsAt)-tick)/1000));
+    const hours=Math.floor(total/3600);
+    const minutes=Math.floor((total%3600)/60);
+    const seconds=total%60;
+    return hours+" "+t("h","ч.")+" "+minutes+" "+t("min","мин.")+" "+seconds+" "+t("sec","сек.");
+  };
   const sourceName=source=>source==="player-defense"?t("Base Defense","Защита на базата"):source==="player-attack"?t("Player Attack","Атака срещу играч"):source==="alien-base"?t("Alien Base Mission","Мисия срещу извънземна база"):source==="mothership"?t("Attack the Alien Command Ship","Атакувай Командния кораб на извънземните"):t("Alien Invasion","Alien Invasion");
   const frame={color:"#38251c",padding:14,borderRadius:12,border:"3px solid #ab7149",background:"linear-gradient(145deg,#f3e4c8 0%,#e7c79d 48%,#d99463 100%)",boxShadow:"inset 0 0 0 2px rgba(255,255,255,.4)"};
   const card={margin:"10px 0",padding:12,background:"rgba(255,248,230,.84)",border:"1px solid #bb8b61",borderRadius:8};
@@ -165,7 +172,7 @@ function HospitalPanel() {
     {notice&&<p role="status" style={{padding:10,borderRadius:6,background:"rgba(255,255,255,.65)"}}>{notice}</p>}
     {active&&<section style={{...card,border:"2px solid #b05d35"}}>
       <strong>{t("Treatment in progress","Лечението продължава")}</strong>
-      <div>{t("Time remaining:","Оставащо време:")} {Math.max(0,Math.ceil((Number(active.heals_at)-tick)/1000))} {t("seconds","секунди")}</div>
+      <div>{t("Time remaining:","Оставащо време:")} {remainingTime(active.heals_at)}</div>
       <div>{fmt(active.wounded)}</div>
     </section>}
     {entries.map(entry=><article key={entry.id} style={card}>
@@ -178,7 +185,7 @@ function HospitalPanel() {
         <div>{t("Treatment cost: Free","Цена на лечението: Безплатно")}</div>
         <div>{t("Treatment time follows the unit training time.","Времето за лечение съответства на времето за обучение на войниците.")}</div>
       </div>}
-      {entry.status==="healing"&&<div>{t("Time remaining:","Оставащо време:")} {Math.max(0,Math.ceil((Number(entry.heals_at)-tick)/1000))} {t("seconds","секунди")}</div>}
+      {entry.status==="healing"&&<div>{t("Time remaining:","Оставащо време:")} {remainingTime(entry.heals_at)}</div>}
       {entry.status==="event"&&entry.recoveryAt&&<div>{t("Returns to the garrison after:","Войниците се връщат в гарнизона след:")} {new Date(entry.recoveryAt).toLocaleString()}</div>}
     </article>)}
     {!entries.length&&<div style={card}>{t("No wounded troops. Your garrison is ready.","Няма ранени войници. Гарнизонът е в готовност.")}</div>}
