@@ -9,8 +9,8 @@ const TRACKS = [
 ];
 
 const ALBUMS = [
-  { label: "The Legend of Cyber Knight", url: "https://www.youtube.com/results?search_query=Niko+Nova+The+Legend+of+Cyber+Knight+album" },
-  { label: "The Legend of Cyber Knight 2", url: "https://www.youtube.com/results?search_query=Niko+Nova+The+Legend+of+Cyber+Knight+2+album" }
+  { label: "The Legend of Cyber Knight", url: "https://www.youtube.com/playlist?list=OLAK5uy_leWTj9gVAEi4l3VWdoma1gvuqNrikvMg8" },
+  { label: "The Legend of Cyber Knight 2", url: "https://www.youtube.com/playlist?list=OLAK5uy_mySrUtbquz5ngyrLfxVfyvAprcqX9uVAI" }
 ];
 
 export default function MusicPlayer() {
