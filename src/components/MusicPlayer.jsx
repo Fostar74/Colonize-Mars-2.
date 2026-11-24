@@ -18,9 +18,9 @@ export default function MusicPlayer() {
   const { pathname } = useLocation();
   const audioRef = useRef(null);
   const [playing, setPlaying] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState("");
   const [trackIndex, setTrackIndex] = useState(2);
-  const [albumsOpen, setAlbumsOpen] = useState(false);
+  const [openAlbum, setOpenAlbum] = useState(null);
   const inGame = pathname === "/game" || pathname === "/map";
 
   useEffect(() => {
@@ -32,23 +32,34 @@ export default function MusicPlayer() {
   const playTrack = async (index) => {
     const audio = audioRef.current;
     if (!audio) return;
-    setError(false);
-    if (index !== trackIndex) {
-      audio.pause();
-      audio.src = TRACKS[index].src;
-      audio.load();
-      setTrackIndex(index);
-    } else if (!audio.paused) {
+    setError("");
+    const selected = TRACKS[index];
+    const currentSource = audio.getAttribute("src");
+    if (currentSource === selected.src && !audio.paused) {
       audio.pause();
       setPlaying(false);
       return;
     }
+    // Keep the audio source under DOM control. React must not reset src
+    // during a pending play() promise when the selected track changes.
+    if (currentSource !== selected.src) {
+      audio.pause();
+      audio.setAttribute("src", selected.src);
+      audio.load();
+    }
+    setTrackIndex(index);
     try {
       await audio.play();
       setPlaying(true);
-    } catch (_) {
+    } catch (reason) {
       setPlaying(false);
-      setError(true);
+      const code = audio.error?.code;
+      const message = reason?.name === "NotAllowedError"
+        ? t("Tap the song again to allow playback.","Натисни песента отново, за да разрешиш възпроизвеждането.")
+        : code === 4
+          ? t("Audio format or file is unavailable.","Аудиофайлът липсва или форматът не се поддържа.")
+          : t("The song could not be loaded. Please try again.","Песента не можа да се зареди. Опитай отново.");
+      setError(message);
     }
   };
 
@@ -62,33 +73,31 @@ export default function MusicPlayer() {
   });
 
   return <>
-    <audio ref={audioRef} src={TRACKS[trackIndex].src} preload="none" loop
+    <audio ref={audioRef} preload="none" loop
       onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-      onError={() => { setError(true); setPlaying(false); }} />
-    <div style={{ position:"fixed", right:12, bottom:"calc(150px + env(safe-area-inset-bottom))", zIndex:12000, display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6 }}>
-      <button type="button" onClick={() => setAlbumsOpen(value => !value)}
-        aria-expanded={albumsOpen} aria-label={t("Show album links","Покажи връзките към албумите")}
-        style={buttonStyle(false)}>
-        {albumsOpen ? "⌄⌄ " : "⌃⌃ "}{t("Albums","Албуми")}
-      </button>
-      {albumsOpen && <div style={{display:"flex",flexDirection:"column",gap:6,alignItems:"flex-end"}}>
-        {ALBUMS.map(album => <a key={album.label} href={album.url} target="_blank" rel="noopener noreferrer"
-          style={{...buttonStyle(false),textDecoration:"none",display:"block"}}>
-          ↗ {album.label}
-        </a>)}
-        <span style={{fontSize:11,color:"#c8d4df",maxWidth:220,textAlign:"right"}}>
-          {t("Find albums on YouTube","Намери албумите в YouTube")}
-        </span>
-      </div>}
-      {error && <span role="status" style={{maxWidth:240,padding:"6px 9px",borderRadius:7,background:"#281414",color:"#fff",fontSize:12}}>
-        {t("Music could not be played. Reload the game and try again.","Музиката не можа да се пусне. Презареди играта и опитай отново.")}
-      </span>}
-      {TRACKS.map((track,index) => <button key={track.src} type="button"
-        onClick={() => playTrack(index)} aria-pressed={playing && trackIndex===index}
-        style={buttonStyle(playing && trackIndex===index)}>
-        {playing && trackIndex===index ? "⏸ " : "▶ "}
-        {index===2 ? t("Music","Музика") : track.label}
-      </button>)}
+      onError={() => { setPlaying(false); setError(t("Audio file could not be loaded.","Аудиофайлът не може да се зареди.")); }} />
+    <div style={{ position:"fixed", right:0, bottom:"calc(150px + env(safe-area-inset-bottom))", zIndex:12000, display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, maxWidth:"90vw" }}>
+      {ALBUMS.map((album,index) => <div key={album.label} style={{display:"flex",alignItems:"center",justifyContent:"flex-end",maxWidth:"90vw"}}>
+        {openAlbum===index && <a href={album.url} target="_blank" rel="noopener noreferrer"
+          style={{...buttonStyle(false),minHeight:36,textDecoration:"none",display:"flex",alignItems:"center",marginRight:3}}>
+          {album.label} ↗
+        </a>}
+        <button type="button" onClick={() => setOpenAlbum(current => current===index?null:index)}
+          aria-expanded={openAlbum===index}
+          aria-label={t("Toggle album link: ","Покажи или скрий албума: ")+album.label}
+          title={album.label}
+          style={{...buttonStyle(false),minWidth:30,width:30,minHeight:36,padding:"4px 5px",borderRadius:"9px 0 0 9px"}}>
+          {openAlbum===index?"›":"‹"}
+        </button>
+      </div>)}
+      {error && <span role="status" style={{maxWidth:240,marginRight:12,padding:"6px 9px",borderRadius:7,background:"#281414",color:"#fff",fontSize:12}}>{error}</span>}
+      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,marginRight:12}}>
+        {TRACKS.map((track,index) => <button key={track.src} type="button"
+          onClick={() => playTrack(index)} aria-pressed={playing && trackIndex===index}
+          style={buttonStyle(playing && trackIndex===index)}>
+          {playing && trackIndex===index ? "⏸ " : "▶ "}{track.label}
+        </button>)}
+      </div>
     </div>
   </>;
 }
