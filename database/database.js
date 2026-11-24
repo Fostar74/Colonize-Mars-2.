@@ -2986,7 +2986,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, origin:march.origin, target:march.target, result:missionResult};
     });
     const knight=db.prepare("SELECT victories,knight_level,prestige,bonus_missions FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1,prestige:0,bonus_missions:0};
-    const sideQuests=[1,5,10,15,20].map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
+    const sideQuests=Array.from({length:20},(_,i)=>i+1).map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
     const knightBusy=missions.some(m=>m.returned_at===null) || !!db.prepare("SELECT 1 FROM mothership_attacks WHERE user_id=? AND resolved_at IS NULL LIMIT 1").get(userId);
     const supportRoutes=db.prepare(`SELECT r.id,r.launched_at,r.arrives_at,r.recall_at,s.username AS sender,t.username AS recipient
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
@@ -3339,16 +3339,17 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   claimAlienSideQuest(userId,milestone){
-    if(![1,5,10,15,20].includes(milestone))return {error:"Invalid side quest."};
+    if(!Number.isInteger(milestone)||milestone<1||milestone>20)return {error:"Invalid side quest."};
     return db.transaction(()=>{
       const highest=db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId)?.highest_defeated||0;
       if(highest<milestone)return {error:"Defeat the required alien base first."};
       const insert=db.prepare("INSERT OR IGNORE INTO alien_side_quests(user_id,milestone) VALUES (?,?)").run(userId,milestone);
       if(!insert.changes)return {error:"Side quest already claimed."};
-      this.creditTokens(userId,100);
+      const tokens=milestone===20?500:milestone>=15?250:milestone>=10?200:milestone>=6?150:100;
+      this.creditTokens(userId,tokens);
       const amount=milestone*1000;
       for(const name of ["Gold","Iron","Water","Solar"])this.addInventoryReward(userId,"resources",name,amount);
-      return {milestone,amount};
+      return {milestone,amount,tokens};
     })();
   }
 
