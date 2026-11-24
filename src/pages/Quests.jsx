@@ -11,6 +11,9 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
   const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState("main");
   const [loginRewards, setLoginRewards] = useState(null);
+  const [alienSideQuests, setAlienSideQuests] = useState([]);
+  const [sideQuestBusy, setSideQuestBusy] = useState(false);
+  const [sideQuestMessage, setSideQuestMessage] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginMessage, setLoginMessage] = useState("");
   const [tutorial, setTutorial] = useState([]);
@@ -31,6 +34,8 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
       const data = await response.json();
       const loginResponse = await fetch(base + "/daily-login/" + encodeURIComponent(userId), {headers:headers()});
       if(loginResponse.ok) setLoginRewards(await loginResponse.json());
+      const sideResponse = await fetch(base + "/alien-campaign/" + encodeURIComponent(userId), {headers:headers(),cache:"no-store"});
+      if(sideResponse.ok) {const sideData=await sideResponse.json();setAlienSideQuests(sideData.sideQuests||[]);}
       const tutorialResponse = await fetch(base + "/tutorial/" + encodeURIComponent(userId), {headers:headers()});
       if (tutorialResponse.ok) { const t=await tutorialResponse.json(); setTutorial(t.missions || []); }
       if (data.gameProgress) {
@@ -170,18 +175,39 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
     </div>
   );
 
+  const claimAlienSideQuest = async level => {
+    if(sideQuestBusy)return;
+    setSideQuestBusy(true);setSideQuestMessage("");
+    try {
+      const response=await fetch(base+"/alien-campaign/side-quest",{
+        method:"POST",headers:headers(),body:JSON.stringify({userId,milestone:level})
+      });
+      const data=await response.json();
+      if(!response.ok)throw Error(data.message||"Cannot claim side quest reward.");
+      setSideQuestMessage(t("Level reward collected! Resources added to Inventory and 100 tokens awarded.","Наградата за нивото е взета! Ресурсите са добавени в Инвентара и са начислени 100 жетона."));
+      setAlienSideQuests(previous=>previous.map(quest=>quest.level===level?{...quest,claimed:true}:quest));
+      window.dispatchEvent(new Event("game-progress-updated"));
+      await refresh();
+    }catch(error){setSideQuestMessage(error.message);}
+    finally{setSideQuestBusy(false);}
+  };
   const renderSideQuests = () => (
     <div className="quest-section">
       <h3>{t("Side Quests","Странични мисии")}</h3>
-
-      <div className="quest-box">
-        <div className="quest-title">{t("Gather from 1 independent map mine","Събери ресурси от една независима мина")}</div>
-        <div className="quest-progress">0 / 1</div>
-        <div className="quest-rewards">
-          {t("Boost x1 (2h) Forge Token x50","Бонус ×1 (2 ч.), жетони за изковаване ×50")}
-        </div>
-        <button disabled>{t("Coming soon","Очаквайте скоро")}</button>
-      </div>
+      <p>{t("Defeat alien bases at milestone levels to unlock one-time rewards.","Победи извънземните бази на определените нива, за да отключиш еднократни награди.")}</p>
+      {sideQuestMessage&&<p role="status">{sideQuestMessage}</p>}
+      {[1,5,10,15,20].map(level=>{
+        const quest=alienSideQuests.find(item=>Number(item.level)===level);
+        const amount=level*1000;
+        return <div className="quest-box" key={level}>
+          <div className="quest-title">{t("Defeat Alien Base level","Победи извънземна база ниво")} {level}</div>
+          <div className="quest-progress">{quest?.claimed?t("Completed — reward claimed","Завършена · наградата е взета"):quest?.completed?t("Completed — collect your reward","Завършена · вземи наградата"):t("Not completed","Не е изпълнена")}</div>
+          <div className="quest-rewards">{t("Reward","Награда")}: {amount.toLocaleString()} {t("each of Gold, Iron, Water and Solar in Inventory + 100 tokens","от всеки ресурс (злато, желязо, вода и слънчева енергия) в Инвентара + 100 жетона")}</div>
+          {quest?.claimed?<button disabled>{t("Reward claimed","Наградата е взета")}</button>:
+            quest?.completed?<button disabled={sideQuestBusy} onClick={()=>claimAlienSideQuest(level)}>{t("Claim reward","Вземи наградата")}</button>:
+            <button disabled>{t("Not yet unlocked","Още не е отключена")}</button>}
+        </div>;
+      })}
     </div>
   );
 
