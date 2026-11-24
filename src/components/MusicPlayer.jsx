@@ -21,6 +21,7 @@ export default function MusicPlayer() {
   const [error, setError] = useState("");
   const [trackIndex, setTrackIndex] = useState(2);
   const [openAlbums, setOpenAlbums] = useState([false, false]);
+  const [openTracks, setOpenTracks] = useState([false, false, false]);
   const playRequestRef = useRef(0);
   const inGame = pathname === "/game" || pathname === "/map";
 
@@ -94,13 +95,22 @@ export default function MusicPlayer() {
         </button>
       </div>)}
       {error && <span role="status" style={{maxWidth:240,marginRight:12,padding:"6px 9px",borderRadius:7,background:"#281414",color:"#fff",fontSize:12}}>{error}</span>}
-      <div style={{display:"flex",flexDirection:"column",alignItems:"flex-end",gap:6,marginRight:12}}>
-        {TRACKS.map((track,index) => <button key={track.src} type="button"
-          onClick={() => playTrack(index)} aria-pressed={playing && trackIndex===index}
-          style={buttonStyle(playing && trackIndex===index)}>
+      {TRACKS.map((track,index) => <div key={track.src}
+        style={{display:"flex",alignItems:"center",justifyContent:"flex-end",maxWidth:"90vw"}}>
+        {openTracks[index] && <button type="button" onClick={() => playTrack(index)}
+          aria-pressed={playing && trackIndex===index}
+          style={{...buttonStyle(playing && trackIndex===index),marginRight:3}}>
           {playing && trackIndex===index ? "⏸ " : "▶ "}{track.label}
-        </button>)}
-      </div>
+        </button>}
+        <button type="button"
+          onClick={() => setOpenTracks(current => current.map((opened,i) => i===index ? !opened : opened))}
+          aria-expanded={openTracks[index]}
+          aria-label={t("Show or hide song: ","Покажи или скрий песента: ")+track.label}
+          title={track.label}
+          style={{...buttonStyle(playing && trackIndex===index),minWidth:30,width:30,minHeight:36,padding:"4px 5px",borderRadius:"9px 0 0 9px",marginRight:0}}>
+          {openTracks[index]?"›":"‹"}
+        </button>
+      </div>)}
     </div>
   </>;
 }
