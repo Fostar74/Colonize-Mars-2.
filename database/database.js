@@ -3497,12 +3497,10 @@ Rewards are distributed per participating player, not once per alliance. / На�
       if(index<0)return {error:"Item not found."};
       const item=equipment.gearInventory[index];
       const slot=String(item.slot||item.type||"").toUpperCase();
-      const cost=craftingCosts[String(item.rarity).toLowerCase()];
-      if(!Number.isInteger(cost))return {error:"Unknown equipment rarity."};
-      // During this round return 100% of all forge upgrades as Universal
-      // points, since older upgrades did not record which wallet paid.
+      // Dismantling always returns five Universal Forge points per item level,
+      // regardless of rarity or which crafting wallet funded its upgrades.
       const level=Math.max(0,Math.min(50,Math.floor(Number(item.level??item.levelRequirement??0)||0)));
-      const refund=level*cost;
+      const refund=level*5;
       equipment.craftingPoints.Universal=(Number(equipment.craftingPoints.Universal)||0)+refund;
       equipment.gearInventory.splice(index,1);
       for(const [key,equipped] of Object.entries(equipment.equippedItems||{})){
