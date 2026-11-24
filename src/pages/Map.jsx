@@ -815,15 +815,15 @@ function Map() {
 
   // Inactive bases are already classified by the server using the 7-day activity threshold.
   const playerMatches=castles.filter(base=>{
-    if(inactiveOnly && !Boolean(base.abandoned)) return false;
+    if(inactiveOnly) return Boolean(base.abandoned);
     const query=playerSearch.trim().toLocaleLowerCase();
-    return query.length>=3 ? String(base.username||"").toLocaleLowerCase().includes(query) : inactiveOnly;
+    return query.length>=3 && String(base.username||"").toLocaleLowerCase().includes(query);
   }).sort((a,b)=>String(a.username||"").localeCompare(String(b.username||"")));
   const selectSearchedPlayer=base=>{
     centerMapOn(Number(base.x),Number(base.y));
     setSelectedTarget({type:"castle",...base});
     setMarchDraft(null);
-    setPlayerSearch(base.username);
+    if(!inactiveOnly) setPlayerSearch(base.username);
     setMapError("");
   };
   const searchByUsername=()=>{
@@ -979,11 +979,11 @@ function Map() {
           <button type="button" onClick={searchByUsername}>{t("Search","Търси")}</button>
         </div>
         <label style={{display:"flex",alignItems:"center",gap:6,marginTop:5}}>
-          <input type="checkbox" checked={inactiveOnly} onChange={event=>{setInactiveOnly(event.target.checked);setMapError("");}} />
+          <input type="checkbox" checked={inactiveOnly} onChange={event=>{setInactiveOnly(event.target.checked);setPlayerSearch("");setMapError("");}} />
           {t("Inactive players (offline 7+ days)","Неактивни играчи (офлайн над 7 дни)")}
         </label>
         {(inactiveOnly||playerSearch.trim().length>=3)&&<div style={{marginTop:5,maxHeight:170,overflowY:"auto",display:"flex",flexDirection:"column",gap:3}}>
-          {playerMatches.length?playerMatches.map(base=><button type="button" key={base.username+":"+base.x+":"+base.y} onClick={()=>selectSearchedPlayer(base)} style={{textAlign:"left"}}>{base.username} · {base.x}:{base.y}{base.abandoned?" · "+t("Inactive","Неактивен"):""}</button>):<span>{t("No matching players found.","Няма намерени играчи.")}</span>}
+          {playerMatches.length?playerMatches.map(base=><button type="button" key={base.username+":"+base.x+":"+base.y} onClick={()=>selectSearchedPlayer(base)} style={{textAlign:"left"}}>{base.username} · {base.x}:{base.y}{!inactiveOnly&&base.abandoned?" · "+t("Inactive","Неактивен"):""}</button>):<span>{t("No matching players found.","Няма намерени играчи.")}</span>}
         </div>}
         <div style={{marginTop:6}}>
           <input type="number" id="xCoord" placeholder="X (1–100)" style={{width:90}} />
