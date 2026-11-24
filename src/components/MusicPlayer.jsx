@@ -20,7 +20,8 @@ export default function MusicPlayer() {
   const [playing, setPlaying] = useState(false);
   const [error, setError] = useState("");
   const [trackIndex, setTrackIndex] = useState(2);
-  const [openAlbum, setOpenAlbum] = useState(null);
+  const [openAlbums, setOpenAlbums] = useState([false, false]);
+  const playRequestRef = useRef(0);
   const inGame = pathname === "/game" || pathname === "/map";
 
   useEffect(() => {
@@ -33,6 +34,7 @@ export default function MusicPlayer() {
     const audio = audioRef.current;
     if (!audio) return;
     setError("");
+    const requestId = ++playRequestRef.current;
     const selected = TRACKS[index];
     const currentSource = audio.getAttribute("src");
     if (currentSource === selected.src && !audio.paused) {
@@ -45,13 +47,14 @@ export default function MusicPlayer() {
     if (currentSource !== selected.src) {
       audio.pause();
       audio.setAttribute("src", selected.src);
-      audio.load();
+      // play() starts loading automatically; an explicit load() can abort playback.
     }
     setTrackIndex(index);
     try {
       await audio.play();
-      setPlaying(true);
+      if (requestId === playRequestRef.current) setPlaying(true);
     } catch (reason) {
+      if (requestId !== playRequestRef.current || reason?.name === "AbortError") return;
       setPlaying(false);
       const code = audio.error?.code;
       const message = reason?.name === "NotAllowedError"
@@ -75,18 +78,18 @@ export default function MusicPlayer() {
   return <>
     <audio ref={audioRef} preload="none" loop
       onPlay={() => setPlaying(true)} onPause={() => setPlaying(false)}
-      onError={() => { setPlaying(false); setError(t("Audio file could not be loaded.","Аудиофайлът не може да се зареди.")); }} />
+      onError={() => { if (audioRef.current?.networkState === 3) { setPlaying(false); setError(t("Audio file could not be loaded.","Аудиофайлът не може да се зареди.")); } }} />
     <div style={{ position:"fixed", right:0, bottom:"calc(150px + env(safe-area-inset-bottom))", zIndex:12000, display:"flex", flexDirection:"column", alignItems:"flex-end", gap:6, maxWidth:"90vw" }}>
       {ALBUMS.map((album,index) => <div key={album.label} style={{display:"flex",alignItems:"center",justifyContent:"flex-end",maxWidth:"90vw"}}>
-        {openAlbum===index && <a href={album.url} target="_blank" rel="noopener noreferrer"
+        {openAlbums[index] && <a href={album.url} target="_blank" rel="noopener noreferrer"
           style={{...buttonStyle(false),minHeight:36,textDecoration:"none",display:"flex",alignItems:"center",marginRight:3}}>
           {album.label} ↗
         </a>}
-        <button type="button" onClick={() => setOpenAlbum(current => current===index?null:index)}
+        <button type="button" onClick={() => setOpenAlbums(current => current.map((opened,i) => i===index ? !opened : opened))}
           aria-expanded={openAlbum===index}
           aria-label={t("Toggle album link: ","Покажи или скрий албума: ")+album.label}
           title={album.label}
-          style={{...buttonStyle(false),minWidth:30,width:30,minHeight:36,padding:"4px 5px",borderRadius:"9px 0 0 9px"}}>
+          style={{...buttonStyle(false),minWidth:30,width:30,minHeight:36,padding:"4px 5px",borderRadius:"9px 0 0 9px",marginRight:0}}>
           {openAlbum===index?"›":"‹"}
         </button>
       </div>)}
