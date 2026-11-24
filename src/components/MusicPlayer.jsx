@@ -86,11 +86,11 @@ export default function MusicPlayer() {
           {album.label} ↗
         </a>}
         <button type="button" onClick={() => setOpenAlbums(current => current.map((opened,i) => i===index ? !opened : opened))}
-          aria-expanded={openAlbum===index}
+          aria-expanded={openAlbums[index]}
           aria-label={t("Toggle album link: ","Покажи или скрий албума: ")+album.label}
           title={album.label}
           style={{...buttonStyle(false),minWidth:30,width:30,minHeight:36,padding:"4px 5px",borderRadius:"9px 0 0 9px",marginRight:0}}>
-          {openAlbum===index?"›":"‹"}
+          {openAlbums[index]?"›":"‹"}
         </button>
       </div>)}
       {error && <span role="status" style={{maxWidth:240,marginRight:12,padding:"6px 9px",borderRadius:7,background:"#281414",color:"#fff",fontSize:12}}>{error}</span>}
