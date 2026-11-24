@@ -133,7 +133,7 @@ export default function ReportsPanel({onClose,onRead}) {
     const reward=m.result.reward;
     const secondary=reward&&typeof reward==="object"&&!reward.item
       ?reward.type==="crafting"?t("Forge points","Точки за изковаване")+": "+reward.amount
-      :reward.type==="resources"?t("Resources","Ресурси")+": "+Number(reward.amount||0).toLocaleString()
+      :reward.type==="resources"?t("Resources deposited in Inventory","Ресурси, добавени в Инвентара")+": "+["Gold","Iron","Water","Solar"].map(key=>t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(reward.resources?.[key]??reward.amount??0).toLocaleString()).join(" · ")+" · "+t("Total","Общо")+": "+["Gold","Iron","Water","Solar"].reduce((sum,key)=>sum+Number(reward.resources?.[key]??reward.amount??0),0).toLocaleString()
       :reward.type==="army"?t("Troops","Войници")+": "+Number(reward.amount||0).toLocaleString()+" "+localLabel(reward.unit)
       :""
       :"";
