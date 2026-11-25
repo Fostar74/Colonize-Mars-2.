@@ -36,6 +36,17 @@ function migrateAllianceMines(db) {
         ON alliance_mine_marches(user_id) WHERE returned_at IS NULL;
       CREATE INDEX IF NOT EXISTS alliance_mine_marches_mine ON alliance_mine_marches(mine_id);
     `);
+    const walletColumns = db.prepare("PRAGMA table_info(alliance_wallets)").all();
+    if (!walletColumns.some(column => column.name === "construction_remainder")) {
+      db.exec("ALTER TABLE alliance_wallets ADD COLUMN construction_remainder INTEGER NOT NULL DEFAULT 0");
+      // Previous mine credits were stored as REAL AP. Round upward only when
+      // converting old fractions to the smallest representable construction unit.
+      db.exec(`UPDATE alliance_wallets SET construction_remainder=
+        CAST(CEIL((points-CAST(points AS INTEGER))*3600000) AS INTEGER)
+        WHERE typeof(points)='real';
+        UPDATE alliance_wallets SET points=CAST(points AS INTEGER)+construction_remainder/3600000,
+          construction_remainder=construction_remainder%3600000 WHERE typeof(points)='real'`);
+    }
     if (!db.prepare("PRAGMA table_info(resource_gathering_reports)").all().some(column => column.name === "source")) {
       db.exec("ALTER TABLE resource_gathering_reports ADD COLUMN source TEXT NOT NULL DEFAULT 'resource'");
     }

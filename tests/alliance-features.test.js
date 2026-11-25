@@ -12,7 +12,7 @@ const DatabaseManager = require("../database/database");
 const migrateAllianceMines = require("../database/allianceMineSchema");
 const { hour } = require("../database/allianceMineWork");
 
-test("alliance mine, protocol reset, and protected resources use persistent transactions", () => {
+test("alliance mine, protocol reset, and protected resources use persistent transactions", async t => {
   const game = new DatabaseManager();
   const sql = new SQLite(process.env.DATABASE_PATH);
   const originalNow = Date.now;
@@ -141,6 +141,66 @@ test("alliance mine, protocol reset, and protected resources use persistent tran
     assert.deepEqual(game.getPlayerScoutMissions(member.userId)[0].report.resources,{Gold:1001,Iron:0,Water:0,Solar:50});
     assert.equal(game.donateAlliance(member.userId,"Iron").error,undefined);
     assert.deepEqual(game.syncGame(member.userId).resources.Iron,9900);
+    await t.test("two hours of construction credited in 720 polls buys Protocol Reset exactly", () => {
+      const mine = game.getAllianceMine(member.userId).active;
+      sql.prepare("UPDATE alliance_wallets SET points=0,construction_remainder=0 WHERE user_id=?").run(member.userId);
+      setArmy(member.userId,{[troop]:25000});
+      const march = game.launchAllianceMineMarch(member.userId,mine.id,"construction",{[troop]:25000});
+      assert.equal(march.success,true);
+      for (let tick=1; tick<=720; tick++) {
+        now=march.arrivesAt+tick*10000;
+        game.settleAllianceMines();
+      }
+      assert.equal(points(member.userId),50000);
+      assert.equal(game.buyAllianceMarket(member.userId,"protocol_reset").inventory.items.protocol_reset,1);
+      assert.equal(points(member.userId),0);
+      assert.equal(sql.prepare("SELECT construction_remainder FROM alliance_wallets WHERE user_id=?").get(member.userId).construction_remainder,0);
+    });
+
+    await t.test("late processing gives the same PvP outcome and return as on-time processing", () => {
+      const scenario = (name, late) => {
+        const raider = newPlayer(name+"Raider");
+        const defender = newPlayer(name+"Defender");
+        setArmy(raider.userId,{[troop]:1000});
+        setArmy(defender.userId,{[troop]:1});
+        sql.prepare("INSERT INTO beginner_protection_forfeits(user_id,forfeited_at) VALUES (?,?)").run(defender.userId,now);
+        game.createAlliance(defender.userId,name+" Alliance");
+        const allianceId=game.allianceState(defender.userId).alliance.id;
+        const tile=[39,38,37,36,35].find(y=>!sql.prepare(`SELECT 1 FROM alliance_mines WHERE x=50 AND y=?
+          UNION ALL SELECT 1 FROM resource_mines WHERE x=50 AND y=?`).get(y,y));
+        const mineId=sql.prepare(`INSERT INTO alliance_mines(alliance_id,x,y,resource,status,work)
+          VALUES (?,50,?,'Gold','gathering',3600000000000)`).run(allianceId,tile).lastInsertRowid;
+        const attack=game.launchPlayerAttack(raider.userId,{[troop]:1000},null,{username:name+"Defender",...defender.position},false,true);
+        assert.ok(attack.arrivesAt,attack.error);
+        assert.equal(game.launchAllianceMineMarch(defender.userId,mineId,"gathering",{[troop]:1}).success,true);
+        const mineArrival=attack.arrivesAt-60000;
+        const cargoFull=mineArrival+30*3600;
+        sql.prepare("UPDATE alliance_mine_marches SET arrives_at=? WHERE mine_id=?").run(mineArrival,mineId);
+        const returnAt=attack.arrivesAt+(attack.arrivesAt-attack.launchedAt);
+        if(!late){
+          now=attack.arrivesAt;
+          game.settleAllianceMines();
+          assert.equal(army(defender.userId)[troop],0);
+        }
+        now=Math.max(cargoFull,returnAt)+1000;
+        // A map/report poll can settle the mine before anyone opens Campaigns.
+        game.getResourceGatheringReports(defender.userId);
+        const row=sql.prepare("SELECT * FROM player_missions WHERE id=?").get(attack.missionId);
+        assert.equal(row.resolved_at,attack.arrivesAt);
+        assert.equal(row.returned_at,returnAt);
+        assert.equal(army(raider.userId)[troop],1000);
+        assert.equal(army(defender.userId)[troop],1);
+        assert.equal(game.syncGame(defender.userId).resources.Gold,10030);
+        const result=JSON.parse(row.result);
+        assert.deepEqual(result.defenderInitial,{});
+        assert.equal(result.totalLoot,0);
+        const report=game.getResourceGatheringReports(defender.userId)[0];
+        assert.equal(report.returnedAt,cargoFull);
+        return result;
+      };
+      assert.deepEqual(scenario("Late",true),scenario("OnTime",false));
+    });
+
     migrateAllianceMines(sql);
     assert.equal(game.getResourceGatheringReports(member.userId).length,2);
     assert.deepEqual(sql.pragma("integrity_check"),[{integrity_check:"ok"}]);
@@ -157,9 +217,14 @@ test("the additive migration preserves existing report rows and can run twice", 
   const legacy = new SQLite(":memory:");
   try {
     legacy.exec(`CREATE TABLE resource_gathering_reports (id INTEGER PRIMARY KEY, amount INTEGER);
+      CREATE TABLE alliance_wallets (user_id INTEGER PRIMARY KEY, points INTEGER);
+      INSERT INTO alliance_wallets VALUES (1,50000), (2,17.25);
       INSERT INTO resource_gathering_reports VALUES (7,5000)`);
     migrateAllianceMines(legacy);
     migrateAllianceMines(legacy);
+    assert.deepEqual(legacy.prepare("SELECT * FROM alliance_wallets ORDER BY user_id").all(), [
+      {user_id:1,points:50000,construction_remainder:0},{user_id:2,points:17,construction_remainder:900000},
+    ]);
     assert.deepEqual(legacy.prepare("SELECT * FROM resource_gathering_reports").all(),
       [{id:7,amount:5000,source:"resource"}]);
   } finally {

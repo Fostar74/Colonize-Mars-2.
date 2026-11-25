@@ -40,6 +40,7 @@ function createGroups(army,types,formation){
   return groups;
 }
 function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
+  const random=options.random || Math.random;
   const defenderIsPlayer=options.playerDefense===true;
   const attackerIsAlien=options.attackerIsAlien===true;
   const playerSide=attackerIsAlien?1:0;
@@ -88,7 +89,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         if(group.count<=0||phase[group.category]!==step)continue;
         const enemies=sides[1-side].filter(g=>g.count>0&&group.range>=group.row+g.row-1&&(group.attackVs?.[g.category]??group.attack)>0);
         if(!enemies.length)continue;
-        const target=enemies[Math.floor(Math.random()*enemies.length)];
+        const target=enemies[Math.floor(random()*enemies.length)];
         const damage=group.count*(group.attackVs?.[target.category]??group.attack*effectiveness[group.category][target.category]);
         shots.push({side,group,target,damage,count:group.count});
       }
@@ -100,7 +101,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         const targetBonuses=playerBonusesForSide(1-shot.side)||{},dodgeMax=Math.max(0,Math.min(15,Number(targetBonuses.dodge)||0));
         if(dodgeMax>0){
           const minimum=Math.max(0,dodgeMax-5);
-          shot.evadedPercent=minimum+Math.floor(Math.random()*(dodgeMax-minimum+1));
+          shot.evadedPercent=minimum+Math.floor(random()*(dodgeMax-minimum+1));
         }
         shot.dodged=shot.evadedPercent>0;
         shot.appliedDamage=shot.damage*(1-shot.evadedPercent/100);

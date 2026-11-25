@@ -15,16 +15,13 @@ const eventSettlementTimer=setInterval(()=>{
   finally{settlingEndedEvents=false;}
 },15000);
 if(typeof eventSettlementTimer.unref==="function")eventSettlementTimer.unref();
-const allianceMineTimer=setInterval(()=>{
-  try{db.settleAllianceMines();}catch(error){console.error("Alliance mine settlement:",error);}
-},15000);
-allianceMineTimer.unref();
 function requireSession(req, res, next) {
   const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
   const session = match && sessions.get(match[1]);
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   const requestedId = req.params.userId ?? req.body?.userId;
   if (String(requestedId) !== String(session.userId)) return res.status(403).json({ message: "Access denied." });
+  db.advanceCampaignTimeline();
   db.markPlayerActive(session.userId);
   next();
 }
@@ -124,6 +121,7 @@ function requireSessionForMap(req, res, next) {
   const session = match && sessions.get(match[1]);
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   req.mapUserId=session.userId;
+  db.advanceCampaignTimeline();
   db.markPlayerActive(session.userId);
   next();
 }
