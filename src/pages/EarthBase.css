@@ -1,5 +1,6 @@
 .earth-chapter {
   min-height: 100dvh;
+  display: flow-root;
   background: radial-gradient(ellipse at 50% 20%, #15353c, #07151e 65%);
   color: #e6faff;
 }
@@ -176,7 +177,24 @@
   }
 }
 @media (orientation: landscape) and (max-height: 500px) {
-  .earth-viewport { height: max(230px, 58dvh); }
+  .earth-base { margin: 5px auto 0; }
+  .earth-base h1 { font-size: 1.4rem; }
+  .earth-base header { margin-bottom: 4px; }
+  .earth-chapter > .castle-top-bar { padding-block: 3px; }
+  .earth-chapter > .bottom-bar {
+    display: flex;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .earth-chapter > .bottom-bar button {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 5px 8px;
+    white-space: nowrap;
+  }
+  .earth-viewport { height: max(150px, calc(100dvh - 202px)); }
+  .earth-compact { margin-bottom: 64px; }
 }
 @media (prefers-reduced-motion: reduce) {
   .earth-scene .earth-site .earth-caption,
