@@ -1,16 +1,216 @@
-.earth-chapter {min-height:100dvh;background:radial-gradient(ellipse at 40% 30%,#314848,#17272d 58%,#101c26);color:#ecf5f1}
-.earth-base {width:min(94%,1000px);margin:12px auto 100px}
-.earth-base header {display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap;margin-bottom:14px}
-.earth-base h1 {margin:0;font-size:clamp(22px,4vw,36px)}
-.earth-base header span {color:#a9c9c4}
-.earth-perimeter {padding:10px;border:2px dashed #718a87;border-radius:14px;background:repeating-linear-gradient(135deg,#2f4140 0 23px,#334847 24px 25px,#2f4140 26px 46px)}
-.earth-perimeter:not([data-tier="0"]) {border-style:solid;border-color:#95ddbd;box-shadow:inset 0 0 0 calc(var(--tier)*2px) #366c60,0 0 calc(var(--tier)*5px) #68be9e77}
-.earth-defense,.earth-hospital {display:block;max-width:100%;margin:4px auto 12px;padding:8px 14px;border:1px solid #94d9bf;border-radius:6px;background:#203a38;color:#f1fff7}
-.earth-hospital {margin:12px 0}
-.earth-buildings {display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:8px}
-.earth-building {min-width:0;min-height:91px;display:grid;justify-items:center;align-content:center;gap:3px;padding:9px 4px;background:#16282ce8;border:1px solid #69817c;border-radius:7px;color:#eafffa;cursor:pointer;overflow-wrap:anywhere}
-.earth-building:hover,.earth-building:focus-visible {border-color:var(--building-color);background:#254149}
-.earth-building span:last-child {font-size:.78rem;color:#b8d8d0}
-.earth-model {width:35px;height:26px;margin-bottom:5px;display:grid;place-items:center;background:var(--building-color);color:#182c29;transform:skewY(-8deg);border-radius:3px;box-shadow:3px calc(3px + var(--tier)*1px) #0c181d,7px calc(4px + var(--tier)*2px) #597a75;font-weight:bold}
-.earth-building[data-tier="0"] .earth-model {opacity:.55;box-shadow:none}
-@media(max-width:620px){.earth-buildings{grid-template-columns:repeat(2,minmax(0,1fr))}.earth-base{margin-bottom:140px}.earth-building{min-height:68px}}
+.earth-chapter {
+  min-height: 100dvh;
+  display: flow-root;
+  background: radial-gradient(ellipse at 50% 20%, #15353c, #07151e 65%);
+  color: #e6faff;
+}
+.earth-base {
+  width: min(96%, 1400px);
+  margin: 10px auto 100px;
+  color: #e9fcff;
+}
+.earth-base header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: .5rem 1rem;
+  margin-bottom: .65rem;
+}
+.earth-base h1 { margin: 0; font-size: clamp(1.45rem, 4vw, 2.4rem); }
+.earth-base header span { color: #a7c8d2; font-size: .85rem; }
+.earth-options, .earth-map-controls { display: flex; flex-wrap: wrap; gap: 6px; }
+.earth-options button, .earth-options select, .earth-map-controls button {
+  min-height: 44px;
+  padding: 5px 10px;
+  color: inherit;
+  background: #071a24;
+  border: 1px solid #3e7787;
+  border-radius: 5px;
+  cursor: pointer;
+  font: inherit;
+}
+.earth-map-wrap { position: relative; }
+.earth-viewport {
+  height: clamp(350px, 68vh, 830px);
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  container-type: size;
+  background: #10292b;
+  border: 1px solid #3e7787;
+  border-radius: 12px;
+  touch-action: none;
+  overscroll-behavior: contain;
+  user-select: none;
+  cursor: grab;
+}
+.earth-viewport:active { cursor: grabbing; }
+.earth-scene {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform-origin: center;
+}
+.earth-terrain {
+  width: 100%;
+  height: 100%;
+  position: absolute;
+  inset: 0;
+  object-fit: fill;
+  pointer-events: none;
+}
+.earth-scene .earth-site {
+  position: absolute;
+  left: var(--site-x);
+  top: var(--site-y);
+  z-index: var(--site-depth);
+  transform: translate(-50%, -90%);
+  width: min(11.8%, 28cqh);
+  min-width: 44px;
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.earth-scene .earth-site-command { width: min(23%, 47cqh); }
+.earth-scene .earth-site-defense { width: min(20%, 43cqh); }
+.earth-scene .earth-site-launch { width: min(9%, 23cqh); pointer-events: none; }
+.earth-sprite {
+  width: 100%;
+  height: auto;
+  display: block;
+  pointer-events: none;
+}
+.earth-site .earth-caption {
+  display: grid;
+  justify-items: center;
+  gap: 2px;
+  color: #e5fbff;
+}
+.earth-scene .earth-caption {
+  position: absolute;
+  left: 50%;
+  bottom: 2%;
+  transform: translateX(-50%);
+  width: max-content;
+  max-width: 115%;
+  padding: .25em .55em;
+  font-size: clamp(8px, 1vw, 13px);
+  line-height: 1.06;
+  text-align: center;
+  background: #061f2ae8;
+  border: 1px solid #62d9dc;
+  border-radius: 6px 2px;
+  box-shadow: 0 0 10px #1be3e55c, inset 0 0 8px #1be3e529;
+  pointer-events: none;
+}
+.earth-caption > span { color: #a8edff; font-variant-numeric: tabular-nums; }
+.earth-site[data-blueprint="true"] .earth-caption { border-style: dashed; }
+.earth-site[data-active="true"] .earth-caption { border-color: var(--activity-color, #6bcaff); }
+.earth-site[data-active="true"] .earth-activity { color: var(--activity-color, #6bcaff); }
+.earth-site[data-activity="training"] { --activity-color: #ffc178; }
+.earth-site[data-activity="hospital"] { --activity-color: #87ffa9; }
+.earth-site[data-activity="construction"] { --activity-color: #b2a2ff; }
+.earth-scene[data-overview="true"] .earth-caption > span:not(.earth-activity) { display: none; }
+.earth-scene .earth-site:is(:hover, :focus-visible) { z-index: 150; }
+.earth-scene .earth-site:is(:hover, :focus-visible) .earth-caption > span { display: inline; }
+.earth-site:focus-visible, .earth-map-controls button:focus-visible { outline: 2px solid #aff; outline-offset: 2px; }
+.earth-scene[data-quality="high"] .earth-sprite { filter: drop-shadow(0 0 6px #41dbf652); }
+.earth-scene:not([data-quality="low"]) .earth-site[data-activity="construction"] .earth-caption {
+  animation: earth-construction 1.8s ease-in-out infinite alternate;
+}
+.earth-scene[data-quality="low"] .earth-caption { box-shadow: none; }
+.earth-scene[data-quality="high"] .earth-site-command::after {
+  content: "";
+  position: absolute;
+  inset: 12% 9% 18%;
+  background: linear-gradient(transparent 43%, #8bffff44 50%, transparent 57%) 0 -100% / 100% 48% no-repeat;
+  animation: earth-scan 7s linear infinite;
+  pointer-events: none;
+}
+@keyframes earth-scan {
+  to { background-position: 0 190%; }
+}
+@keyframes earth-construction {
+  to { box-shadow: 0 0 15px #b9a2ff; }
+}
+.earth-map-controls {
+  position: absolute;
+  z-index: 2;
+  right: 8px;
+  bottom: 8px;
+}
+.earth-map-controls button { min-width: 44px; font-size: .78rem; }
+.earth-compact {
+  display: grid;
+  gap: 8px;
+  padding: 8px;
+  background: #16282c;
+  border: 1px solid #69817c;
+  border-radius: 10px;
+}
+.earth-compact-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+.earth-compact .earth-site {
+  min-height: 64px;
+  width: 100%;
+  padding: 8px;
+  cursor: pointer;
+  background: #13242e;
+  border: 1px solid #527882;
+  border-radius: 6px;
+}
+.earth-compact .earth-site[data-blueprint="true"] { border-style: dashed; }
+@media (max-width: 640px) {
+  .earth-compact-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (max-width: 550px) and (orientation: portrait) {
+  .earth-viewport { height: clamp(350px, 63dvh, 590px); }
+  .earth-terrain { object-fit: cover; }
+  .earth-scene .earth-site { transform: translate(-50%, -77%); }
+  .earth-scene[data-mobile-overview="true"] .earth-site:not(.earth-site-command, [data-active="true"], :focus-visible) .earth-caption {
+    opacity: 0;
+  }
+}
+@media (orientation: landscape) and (max-height: 500px) {
+  .earth-base { margin: 5px auto 0; }
+  .earth-base h1 { font-size: 1.4rem; }
+  .earth-base header { margin-bottom: 4px; }
+  .earth-chapter > .castle-top-bar { padding-block: 3px; }
+  .earth-chapter > .bottom-bar {
+    display: flex;
+    justify-content: flex-start;
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+  .earth-chapter > .bottom-bar button {
+    flex: 0 0 auto;
+    min-height: 44px;
+    padding: 5px 8px;
+    white-space: nowrap;
+  }
+  .earth-viewport { height: max(150px, calc(100dvh - 202px)); }
+  .earth-compact { margin-bottom: 64px; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .earth-scene .earth-site .earth-caption,
+  .earth-scene .earth-site-command::after { animation: none !important; }
+}
+
+.earth-chapter > .top-resource-bar, .earth-chapter > .bottom-bar {
+  background: #071a24f5;
+  border-block: 1px solid #366672;
+  color: #e4faff;
+}
+.earth-chapter > .castle-top-bar { padding-inline: 2%; }
+.earth-chapter .castle-name-btn { background: #18353c; border: 1px solid #589fad; }
+.earth-chapter .castle-name-btn.has-building-help { background: #6c3b20; }
+.earth-chapter > .bottom-bar button:is(:hover, :focus-visible) { background: #163943; }
+.earth-chapter .popup {
+  border-color: #5297a8;
+  box-shadow: 0 0 28px #19adbb36;
+}

@@ -807,7 +807,8 @@ function Game() {
 
       <EarthBase progress={baseProgress} hospitalEntries={hospitalEntries}
         onBuilding={building=>{setQuestTarget({building,tab:"structures"});setShowPopup(true);}}
-        onHospital={()=>setShowHospital(true)} />
+        onHospital={()=>setShowHospital(true)}
+        onHeadquarters={()=>{setQuestTarget(null);setShowPopup(true);}} />
 
       <div className="bottom-bar">
         <button onClick={() => setShowCyberKnight(true)}>{t("Cyber Knight","Киберрицар")}</button>
