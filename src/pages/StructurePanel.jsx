@@ -1,3 +1,4 @@
+import {structureTypes} from "./EarthBase";
 import { useLanguage } from "../language";
 // Final StructurePanel.jsx with internal tab buttons restored
 import React, { useState, useEffect, useRef } from "react";
@@ -10,13 +11,6 @@ import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 const {unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,defenseGridLevels,unitTrainingDuration,unitUpgradeDetails} = unitEconomy;
-
-const structureTypes = {
-  Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
-  Economy: ["Cargo Depot", "Defense Grid", "Upgrade Lab", "Bio-Lab"],
-  Military: ["Training Center", "Combat Simulator", "Vehicle Bay", "Drone Factory"],
-  Order: ["Order"]
-};
 
 // These profiles start at the base stat, before the first purchased upgrade.
 function displayedUpgradeLevel(unit, level) {
@@ -118,11 +112,16 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
     catch (e) { setError(e.message); }
     finally { setBusy(""); }
   };
-  const requestBuildingHelp=async(kind="building")=>{
+  useEffect(()=>{
+    if(!allianceHelpMessage)return;
+    const timer=setTimeout(()=>setAllianceHelpMessage(""),5000);
+    return ()=>clearTimeout(timer);
+  },[allianceHelpMessage]);
+  const requestBuildingHelp=async()=>{
     setAllianceHelpBusy(true);setAllianceHelpMessage("");
     try{
-      const response=await request("/alliance/request-help",{kind});
-      setAllianceHelpMessage("Help request sent to your alliance. Members can now assist from Alliance → Help Requests.");
+      await request("/alliance/request-help",{kind:"all"});
+      setAllianceHelpMessage(t("Help requested for eligible jobs.","Поискана е помощ за допустимите задачи."));
       await refreshAllianceHelp();
       window.dispatchEvent(new Event("alliance-help-updated"));
     }catch(e){setAllianceHelpMessage(e.message);}
@@ -191,8 +190,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
         <strong>{t("🤝 Alliance Help — Buildings and Upgrades","🤝 Помощ от алианса — строежи и подобрения")}</strong>
         <p>{game.buildingJob ? <>{t("Ask your alliance to speed up","Поискай от алианса да ускори")} {localLabel(game.buildingJob.name)} {t("(Level","(Ниво")} {game.buildingJob.level}{t("). Each member can reduce the remaining construction time by 1 minute or 1%, whichever is greater, and earn 1 token.","). Всеки член може да намали оставащото време с 1 минута или 1%, което е повече, и да спечели 1 жетон.")}</> : t("Start a building or unit upgrade to request help. You can help alliance members at any time.","Започни строеж или подобрение на войска, за да поискаш помощ. Можеш да помагаш на членовете на алианса по всяко време.")}</p>
         <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
-          <button className="upgrade-btn" disabled={allianceHelpBusy||!game.buildingJob} onClick={()=>requestBuildingHelp("building")}>{allianceHelpBusy?localLabel("Sending..."):localLabel("Request Alliance Help")}</button>
-          <button className="upgrade-btn" disabled={allianceHelpBusy||!(game.upgradeJobs||[]).some(job=>job?.endsAt>Date.now())} onClick={()=>requestBuildingHelp("upgrade")}>{t("Request Upgrade Help","Поискай помощ за подобрение")}</button>
+          <button className="upgrade-btn" disabled={allianceHelpBusy||!(game.buildingJob?.endsAt>clock||(game.upgradeJobs||[]).some(job=>job?.endsAt>clock))} onClick={requestBuildingHelp}>{allianceHelpBusy?localLabel("Sending..."):t("Request Alliance Help","Поискай помощ от алианса")}</button>
           <button type="button" disabled={allianceHelpBusy||!eligibleAllianceHelp.length} onClick={helpAlliance}
             style={{background:eligibleAllianceHelp.length?"#bd3030":"#777",color:"#fff",border:"1px solid "+(eligibleAllianceHelp.length?"#ef7777":"#999"),borderRadius:5,padding:"8px 12px",fontWeight:"bold",cursor:eligibleAllianceHelp.length?"pointer":"not-allowed"}}>
             {allianceHelpBusy?localLabel("Helping..."):t("Help Alliance","Помогни на алианса")}{eligibleAllianceHelp.length?` (${eligibleAllianceHelp.length})`:""}

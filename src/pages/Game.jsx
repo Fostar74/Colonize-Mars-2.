@@ -15,14 +15,13 @@ import ReportsPanel from "./ReportsPanel";
 import InformationPanel from "./InformationPanel";
 
 import "./Game.css";
-import marsBackground from "../images/mars-background.jpg";
+import EarthBase from "./EarthBase";
 import labyrinthKnightArt from "../images/cyber-knight-expanded.jpg";
 import labyrinthMonsterArt from "../images/labyrinth-monster.svg";
 import labyrinthCavernArt from "../images/labyrinth-cavern.svg";
 import AVATARS from "../shared/avatarCatalog";
 // Restore the original Mars aircraft artwork on both desktop and mobile.
-const desktopColonyBackground = marsBackground;
-const mobileColonyBackground = marsBackground;
+
 
 const reportReadStorageKey = userId => `colonize-mars-read-battle-reports:${userId}`;
 const resolvedBattleReportIds = data => [
@@ -668,7 +667,8 @@ function Game() {
   };
 
   const [questTarget,setQuestTarget]=useState(null);
-  const onProgressChange = data => setResources(data.resources);
+  const [baseProgress,setBaseProgress]=useState(null);
+  const onProgressChange = data => {setResources(data.resources);setBaseProgress(data);};
 
   const refreshActiveHelpCount=async()=>{
     const uid=sessionStorage.getItem("userId");
@@ -735,6 +735,7 @@ function Game() {
         const progress = data.gameProgress;
         if (active && progress?.resources) {
           setResources(progress.resources);
+          setBaseProgress(progress);
           sessionStorage.setItem("resources", JSON.stringify(progress.resources));
           if (progress.structures) sessionStorage.setItem("structures", JSON.stringify(progress.structures));
         }
@@ -788,19 +789,7 @@ function Game() {
   };
 
   return (
-    <div
-      className="game-container game-colony-background"
-      style={{
-        "--mars-desktop-background": `url("${desktopColonyBackground}")`,
-        "--mars-mobile-background": `url("${mobileColonyBackground}")`,
-        "--mars-fallback-background": `url(${marsBackground})`,
-        backgroundImage: `url("${marsBackground}")`,
-        backgroundSize: "cover",
-        backgroundPosition: "center center",
-        backgroundRepeat: "no-repeat",
-        minHeight: "100dvh",
-      }}
-    >
+    <div className="game-container earth-chapter">
       <div className="top-resource-bar">
         <div>{t("Gold","Злато")}: {resources?.Gold ?? resources?.gold ?? "—"}</div>
         <div>{t("Iron","Желязо")}: {resources?.Iron ?? resources?.iron ?? "—"}</div>
@@ -815,6 +804,10 @@ function Game() {
         </button>
         <div className="utc-clock" aria-label={t("Server time in UTC","Сървърно време UTC")}><span>{t("Server time","Сървърно време")}</span><strong>{utcClock} UTC</strong></div>
       </div>
+
+      <EarthBase progress={baseProgress} hospitalEntries={hospitalEntries}
+        onBuilding={building=>{setQuestTarget({building,tab:"structures"});setShowPopup(true);}}
+        onHospital={()=>setShowHospital(true)} />
 
       <div className="bottom-bar">
         <button onClick={() => setShowCyberKnight(true)}>{t("Cyber Knight","Киберрицар")}</button>

@@ -1,3 +1,4 @@
+const {createMine,replenishMissingMines} = require("./externalMines");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
@@ -302,28 +303,7 @@ function initializeDatabase() {
     db.exec("CREATE INDEX IF NOT EXISTS resource_gathering_reports_user ON resource_gathering_reports(user_id,id)");
     if (!db.prepare("PRAGMA table_info(resource_mines)").all().some(column => column.name === "gathering_units")) db.exec("ALTER TABLE resource_mines ADD COLUMN gathering_units TEXT NOT NULL DEFAULT '{}' ");
     db.exec("CREATE INDEX IF NOT EXISTS resource_mines_claimed ON resource_mines(claimed_by,arrives_at)");
-    {
-      // Ensure ten mines of each resource on existing and new maps without moving existing mines.
-      const blocked = new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row => row.x + ":" + row.y));
-      for (const base of alienBases) blocked.add(base.x + ":" + base.y);
-      for (const mine of db.prepare("SELECT x,y FROM resource_mines").all()) blocked.add(mine.x + ":" + mine.y);
-      const chooseMineTile = () => {
-        for (let attempt = 0; attempt < 10000; attempt++) {
-          const x = 1 + Math.floor(Math.random() * 100), y = 1 + Math.floor(Math.random() * 100), key = x + ":" + y;
-          if (!blocked.has(key)) { blocked.add(key); return {x,y}; }
-        }
-        throw new Error("No free map tile is available for a resource mine.");
-      };
-      const insertMine = db.prepare("INSERT INTO resource_mines(resource,x,y,amount) VALUES (?,?,?,5000)");
-      const countMines = db.prepare("SELECT COUNT(*) AS count FROM resource_mines WHERE resource=?");
-      for (const resource of ["gold","iron","water","solar"]) {
-        const existing = Number(countMines.get(resource).count) || 0;
-        for (let count = existing; count < 10; count++) {
-          const tile = chooseMineTile();
-          insertMine.run(resource,tile.x,tile.y);
-        }
-      }
-    }
+    replenishMissingMines(db);
     db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
@@ -480,6 +460,7 @@ class DatabaseManager {
     // Shuffle all eligible coordinates so a fresh database never
     // deterministically assigns the same first position.
     const crypto = require("crypto");
+    for (const row of db.prepare("SELECT x,y FROM resource_mines").all()) occupied.add(row.x+":"+row.y);
     const candidates = [];
     for (let x = 1; x <= 100; x++) {
       for (let y = 1; y <= 100; y++) {
@@ -1633,20 +1614,32 @@ class DatabaseManager {
       return this.allianceState(userId);
     })();
   }
-  requestAllianceHelp(userId,kind="building"){
+  requestAllianceHelp(userId,kind="all"){
     return db.transaction(()=>{
-      const a=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
-      if(!a)return {error:"Join an alliance first."};
-      const current=this.syncGame(userId);
-      const job=kind==="upgrade"?current?.upgradeJobs?.find(j=>j?.endsAt>Date.now()):current?.buildingJob;
-      if(!job||job.endsAt<=Date.now())return {error:kind==="upgrade"?"No active unit upgrade to request help for.":"No active construction to request help for."};
-      const name=kind==="upgrade"?"Upgrade: "+job.unit+" "+job.stat:job.name;
-      const key=kind==="upgrade"?this.allianceUpgradeKey(job):this.allianceJobKey(job);
-      const old=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND (job_key=? OR (job_key IS NULL AND job_ends_at=?))").get(userId,name,job.level,key,job.endsAt);
-      if(old)return {error:"Help already requested for this job."};
-      const id=db.prepare("INSERT INTO alliance_help(requester_id,alliance_id,building_name,building_level,requested_at,job_ends_at,job_key) VALUES (?,?,?,?,?,?,?)").run(userId,a.alliance_id,name,job.level,Date.now(),job.endsAt,key).lastInsertRowid;
-      return {requestId:Number(id)};
-    })();
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance first."};
+      const now=Date.now(),current=this.syncGame(userId,now);
+      const jobs=[];
+      if(kind!=="upgrade"&&current?.buildingJob?.endsAt>now){
+        const job=current.buildingJob;
+        jobs.push({job,name:job.name,key:this.allianceJobKey(job)});
+      }
+      if(kind!=="building"){
+        for(const job of current?.upgradeJobs||[]){
+          if(job?.endsAt>now)jobs.push({job,name:"Upgrade: "+job.unit+" "+job.stat,key:this.allianceUpgradeKey(job)});
+        }
+      }
+      if(!jobs.length)return {error:"No active construction or unit upgrade to request help for."};
+      const existing=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND (job_key=? OR (job_key IS NULL AND job_ends_at=?))");
+      const insert=db.prepare("INSERT INTO alliance_help(requester_id,alliance_id,building_name,building_level,requested_at,job_ends_at,job_key) VALUES (?,?,?,?,?,?,?)");
+      const requestIds=[];
+      for(const {job,name,key} of jobs){
+        if(!existing.get(userId,name,job.level,key,job.endsAt)){
+          requestIds.push(Number(insert.run(userId,member.alliance_id,name,job.level,now,job.endsAt,key).lastInsertRowid));
+        }
+      }
+      return requestIds.length?{requestId:requestIds[0],requestIds}:{error:"Help already requested for eligible jobs."};
+    }).immediate();
   }
   helpAlliance(userId,requestId){
     if(!Number.isSafeInteger(requestId)||requestId<1)return {error:"Invalid help request."};
@@ -3694,45 +3687,44 @@ Rewards are distributed per participating player, not once per alliance. / На�
         const units=JSON.parse(mine.gathering_units||"{}");
         const cargo=Math.floor(calculateCargoCapacity(units));
         const collectedLimit=Math.min(Number(mine.amount)||0,cargo);
-        const finishAt=mine.gathering_started_at+Math.ceil(collectedLimit/mine.gathering_rate*3600000);
+        const finishAt=mine.gathering_started_at+Math.ceil(collectedLimit*3600000/mine.gathering_rate);
         if(now<finishAt) continue;
-        const depleted=collectedLimit>=Number(mine.amount);
+        const depleted=Number(mine.amount)>0&&collectedLimit===Number(mine.amount);
         const current=this.syncGame(mine.claimed_by);
-        if(current){
-          const key={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
-          current.resources[key]=(Number(current.resources[key])||0)+collectedLimit;
-          for(const [unit,count] of Object.entries(JSON.parse(mine.gathering_units||"{}"))){
-            current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
-          }
-          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
-            .run(JSON.stringify(current.resources),mine.claimed_by);
-          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mine.claimed_by);
-          db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
-            .run(mine.claimed_by,mine.id,mine.resource,collectedLimit,mine.gathering_units||"{}",now,depleted?"depleted":"cargo_full",mine.x,mine.y);
-          db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'gathering_return', ?, ?)")
-            .run(mine.claimed_by,key+" · "+collectedLimit.toLocaleString(),now);
+        if(!current)continue;
+        const key={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
+        current.resources[key]=(Number(current.resources[key])||0)+collectedLimit;
+        for(const [unit,count] of Object.entries(JSON.parse(mine.gathering_units||"{}"))){
+          current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
         }
+        db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+          .run(JSON.stringify(current.resources),mine.claimed_by);
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mine.claimed_by);
+        db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
+          .run(mine.claimed_by,mine.id,mine.resource,collectedLimit,mine.gathering_units||"{}",finishAt,depleted?"depleted":"cargo_full",mine.x,mine.y);
+        db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'gathering_return', ?, ?)")
+          .run(mine.claimed_by,key+" · "+collectedLimit.toLocaleString(),now);
         if(!depleted){
           db.prepare("UPDATE resource_mines SET amount=?,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=?")
             .run(Math.max(0,Number(mine.amount)-collectedLimit),mine.id);
           settled++;
           continue;
         }
-        const blocked=new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row=>row.x+":"+row.y));
-        for(const base of alienBases)blocked.add(base.x+":"+base.y);
-        for(const other of db.prepare("SELECT x,y FROM resource_mines WHERE id<>?").all(mine.id))blocked.add(other.x+":"+other.y);
-        let tile=null;
-        for(let attempt=0;attempt<10000&&!tile;attempt++){
-          const x=1+Math.floor(Math.random()*100),y=1+Math.floor(Math.random()*100);
-          if(!blocked.has(x+":"+y))tile={x,y};
-        }
-        if(!tile)throw new Error("No free map tile is available for a replacement resource mine.");
-        db.prepare("UPDATE resource_mines SET x=?,y=?,amount=5000,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=?")
-          .run(tile.x,tile.y,mine.id);
+        // The depletion report is persisted above, before replacing the map tile.
+        // Both changes and the player's payout share this transaction.
+        createMine(db,mine.resource);
+        db.prepare("DELETE FROM resource_mines WHERE id=? AND claimed_by=?").run(mine.id,mine.claimed_by);
+        settled++;
+      }
+      // Repair empty, unclaimed rows left by legacy withdrawals without paying twice.
+      const empty=db.prepare("SELECT id,resource FROM resource_mines WHERE claimed_by IS NULL AND amount=0").all();
+      for(const mine of empty){
+        createMine(db,mine.resource);
+        db.prepare("DELETE FROM resource_mines WHERE id=? AND claimed_by IS NULL").run(mine.id);
         settled++;
       }
       return settled;
-    })();
+    }).immediate();
   }
 
   getResourceGatheringReports(userId) {
@@ -3750,7 +3742,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
         const elapsed=Math.max(0,now-Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now));
         const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
         const gathered=mine.claimed_by&&mine.gathering_rate?Math.min(mine.amount,cargo,elapsed*mine.gathering_rate/3600000):0;
-        return {...mine,amount:Math.max(0,Math.floor(mine.amount-gathered))};
+        return {...mine,amount:Math.max(0,mine.amount-Math.floor(gathered))};
       });
     const activeMineCount=mines.filter(mine=>Number(mine.claimed_by)===Number(userId)).length;
     return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId)};
@@ -3795,7 +3787,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
 
   recallGathering(userId,mineId) {
     return db.transaction(()=>{
-      this.settleResourceMines();
+      const now=Date.now();
+      this.settleResourceMines(now);
       const mine=db.prepare("SELECT * FROM resource_mines WHERE id=? AND claimed_by=?").get(Number(mineId),Number(userId));
       if(!mine){
         const map=this.getMapResources(userId);
@@ -3803,7 +3796,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       }
       const current=this.syncGame(userId);
       if(!current)return {error:"Player not found."};
-      const now=Date.now(),startAt=Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now);
+      const startAt=Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now);
       const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
       const gathered=mine.gathering_rate?Math.min(Number(mine.amount)||0,cargo,Math.floor(Math.max(0,now-startAt)*Number(mine.gathering_rate)/3600000)):0;
       const resourceKey={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
