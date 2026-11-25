@@ -1,4 +1,6 @@
 export default {
+  "No active construction or unit upgrade to request help for.": "Няма активен строеж или подобрение, за което да поискаш помощ.",
+  "Help already requested for eligible jobs.": "Вече е поискана помощ за допустимите задачи.",
   "Economy": "Икономика",
   "Military": "Военни сгради",
   "Order": "Орден",
