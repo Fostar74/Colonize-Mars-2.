@@ -127,6 +127,9 @@ function MarketPanel() {
 function HospitalPanel() {
   const {t,label}=useLanguage();
   const [entries,setEntries]=useState([]);
+  const [ready,setReady]=useState({});
+  const [amounts,setAmounts]=useState({});
+  const pendingHospitalMobilizations=useRef(new Map());
   const [notice,setNotice]=useState("");
   const [busy,setBusy]=useState(false);
   const [tick,setTick]=useState(Date.now());
@@ -137,6 +140,7 @@ function HospitalPanel() {
     const response=await fetch(api+"/hospital/"+encodeURIComponent(userId),{headers,cache:"no-store"});
     const data=await response.json();if(!response.ok)throw Error(data.message||"Hospital unavailable.");
     setEntries(data.entries||[]);
+    setReady(data.ready||{});
   };
   useEffect(()=>{refresh().catch(error=>setNotice(error.message));const timer=setInterval(()=>{setTick(Date.now());refresh().catch(()=>{});},5000);return()=>clearInterval(timer);},[]);
   const treat=async()=>{
@@ -148,6 +152,23 @@ function HospitalPanel() {
       setNotice(data.queued?t("Treatment queued after the current batch.","Лечението е добавено след текущата опашка."):t("Treatment started. The recovery time is shown above.","Лечението започна. Времето за възстановяване е показано по-горе."));
       window.dispatchEvent(new Event("game-progress-updated"));
     }catch(error){setNotice(error.message);}finally{setBusy(false);}
+  };
+  const mobilize=async(unit)=>{
+    setBusy(true);setNotice("");
+    try{
+      const amount=Number(amounts[unit]||ready[unit]);
+      const key=unit+":"+amount;
+      if(!pendingHospitalMobilizations.current.has(key))pendingHospitalMobilizations.current.set(key,crypto.randomUUID());
+      const response=await fetch(api+"/hospital/mobilize",{method:"POST",headers,
+        body:JSON.stringify({userId,unit,amount,requestId:pendingHospitalMobilizations.current.get(key)})});
+      const data=await response.json();
+      if(response.status<500)pendingHospitalMobilizations.current.delete(key);
+      if(!response.ok)throw Error(data.message);
+      setReady(data.ready);
+      setAmounts(old=>({...old,[unit]:""}));
+      setNotice(t("Healed troops mobilized.","Излекуваните войници са мобилизирани."));
+      window.dispatchEvent(new Event("game-progress-updated"));
+    }catch(error){setNotice(label(error.message));}finally{setBusy(false);}
   };
   const waiting=entries.filter(entry=>entry.status==="waiting"&&["player-defense","player-attack","alien-base"].includes(entry.source));
   const active=entries.find(entry=>entry.status==="healing");
@@ -165,7 +186,7 @@ function HospitalPanel() {
   const card={margin:"10px 0",padding:12,background:"rgba(255,248,230,.84)",border:"1px solid #bb8b61",borderRadius:8};
   return <div style={frame}>
     <header style={{padding:"12px 14px",marginBottom:12,borderRadius:8,color:"#fff4df",background:"linear-gradient(90deg,#65331f,#a4492e,#65331f)",textAlign:"center"}}>
-      <div style={{fontSize:12,letterSpacing:2}}>{t("MARS BASE · MEDICAL DECK","МАРСИАНСКА БАЗА · МЕДИЦИНСКИ ОТСЕК")}</div>
+      <div style={{fontSize:12,letterSpacing:2}}>{t("EARTH BASE · MEDICAL DECK","БАЗА НА ЗЕМЯТА · МЕДИЦИНСКИ ОТСЕК")}</div>
       <h2 style={{margin:"5px 0"}}>✚ {t("Field Hospital","Полева болница")}</h2>
       <div>{t("Hospital capacity: Unlimited","Капацитет на болницата: Неограничен")} · {t("Wounded units:","Ранени войници:")} <strong>{total.toLocaleString()}</strong></div>
     </header>
@@ -174,6 +195,16 @@ function HospitalPanel() {
       <strong>{t("Treatment in progress","Лечението продължава")}</strong>
       <div>{t("Time remaining:","Оставащо време:")} {remainingTime(active.heals_at)}</div>
       <div>{fmt(active.wounded)}</div>
+    </section>}
+    {Object.keys(ready).length>0&&<section style={card}>
+      <h3>{t("Healed troops ready to mobilize","Излекувани войници за мобилизация")}</h3>
+      {Object.entries(ready).map(([unit,count])=><div key={unit}>
+        <label>{label(unit)} · {count}{" "}
+          <input aria-label={t("Quantity","Количество")+" "+label(unit)} type="number" min="1" max={count}
+            value={amounts[unit]??""} placeholder={String(count)} onChange={e=>setAmounts(old=>({...old,[unit]:e.target.value}))} />
+        </label>{" "}
+        <button type="button" disabled={busy} onClick={()=>mobilize(unit)}>{t("Mobilize","Мобилизирай")}</button>
+      </div>)}
     </section>}
     {entries.map(entry=><article key={entry.id} style={card}>
       <div style={{display:"flex",justifyContent:"space-between",gap:8,flexWrap:"wrap"}}>
@@ -564,7 +595,7 @@ function Game() {
         if(!active)return;
         const notices=data.notifications||[];
         const event=notices.find(item=>item.kind==="saturday_invasion_started");
-        const messages=notices.filter(item=>item.kind==="player_message"||item.kind==="game_message"||item.kind==="trade_message");
+        const messages=notices.filter(item=>item.kind==="player_message"||item.kind==="game_message"||item.kind==="trade_message"||item.kind==="side_quest_unlocked");
         if(event)setEventNotification(old=>old||event);
         setMessageNotifications(messages);
       }catch{}
@@ -783,6 +814,7 @@ function Game() {
   };
   const openBlueNotification=async notification=>{
     if(notification?.kind==="gathering_return")navigate("/map");
+    else if(notification?.kind==="side_quest_unlocked")setShowQuests(true);
     else setMessageRecipient("");
     await markNotificationRead(notification);
   };
@@ -969,8 +1001,8 @@ function Game() {
       </div>}
       {messageNotifications.length>0&&<div className="message-notification-alert" role="status">
         <span aria-hidden="true">✉️</span>
-        <span>{messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):messageNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):messageNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
-        <button type="button" onClick={()=>openBlueNotification(messageNotifications[0])}>{messageNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):t("View messages","Виж съобщенията")}</button>
+        <span>{messageNotifications[0].kind==="side_quest_unlocked"?t("A new side quest is available.","Отключена е нова странична мисия."):messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):messageNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):messageNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
+        <button type="button" onClick={()=>openBlueNotification(messageNotifications[0])}>{messageNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):messageNotifications[0].kind==="side_quest_unlocked"?t("View quests","Виж мисиите"):t("View messages","Виж съобщенията")}</button>
         <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>markNotificationRead(messageNotifications[0])}>×</button>
       </div>}
       {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}

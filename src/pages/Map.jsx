@@ -959,12 +959,6 @@ function Map() {
         <div id="map-menu-controls" hidden={!mapMenuOpen}>
         <div>{t("Alien campaign: defeated level","Извънземна кампания: победено ниво")} {campaign.highestDefeated}{t("/20 · Next: level","/20 · Следващо ниво")} {campaign.nextLevel} {t("· Attacks left:","· Оставащи атаки:")} {campaign.remaining??"—"}{t("/20 · Cyber Knight Lv","/20 · Киберрицар ниво")} {campaign.knightLevel||1}</div>
         <div style={{fontSize:12}}>{t("Instant Alien Base battles · Daily reset: 00:00 UTC","Мигновени битки с извънземните · Нулиране в 00:00 UTC")}</div>
-        {(campaign.sideQuests||[]).filter(q=>q.completed&&!q.claimed).map(q=><button key={q.level} onClick={async()=>{
-          const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
-          const r=await fetch(base+"/alien-campaign/side-quest",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:sessionStorage.getItem("userId"),milestone:q.level})});
-          const d=await r.json();setMapError(r.ok?"Side quest claimed! "+d.amount+" of each resource added to Inventory.":d.message);
-          if(r.ok)setCampaign(old=>({...old,sideQuests:old.sideQuests.map(x=>x.level===q.level?{...x,claimed:true}:x)}));
-        }}>{t("Side Quest: claim Level","Странична мисия: вземи наградата за ниво")} {q.level} {t("reward"," ")}</button>)}
         <div style={{margin:"8px 0",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span>{t("Object zoom","Мащаб на обектите")}: {Math.round(zoom*100)}%</span>
           <button type="button" onClick={()=>setZoom(z=>Math.max(.15,Math.round((z-.15)*100)/100))}>−</button>

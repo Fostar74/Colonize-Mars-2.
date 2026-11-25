@@ -36,6 +36,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
   const { t , label: localLabel} = useLanguage();
   const questDestination = useRef(null);
   const focusedQuest = useRef(null);
+  const pendingMobilizations = useRef(new Map());
   const [activeTab, setActiveTab] = useState(upgradesOnly ? "upgrades" : "structures");
   const [structures, setStructures] = useState(() => { try { return JSON.parse(sessionStorage.getItem("structures") || "{}"); } catch { return {}; } });
   const [resources, setResources] = useState(() => { try { return JSON.parse(sessionStorage.getItem("resources") || "{}"); } catch { return {}; } });
@@ -69,7 +70,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
       ...(payload ? { body: JSON.stringify({ userId, ...payload }) } : {})
     });
     const data = await response.json();
-    if (!response.ok) throw new Error(data.message || "Action failed");
+    if (!response.ok) throw Object.assign(new Error(data.message || "Action failed"),{status:response.status});
     return data;
   };
   const refreshAllianceHelp = async () => {
@@ -114,8 +115,16 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
   }, [userId]);
   const act = async (path, payload, label) => {
     setBusy(label); setError("");
-    try { apply(await request(path, payload)); }
-    catch (e) { setError(e.message); }
+    const key=path==="/barracks/mobilize"?JSON.stringify(payload):null;
+    if(key&&!pendingMobilizations.current.has(key))pendingMobilizations.current.set(key,crypto.randomUUID());
+    try {
+      const data=await request(path,key?{...payload,requestId:pendingMobilizations.current.get(key)}:payload);
+      if(key)pendingMobilizations.current.delete(key);
+      apply(data);
+    }catch(e){
+      if(key&&e.status>=400&&e.status<500)pendingMobilizations.current.delete(key);
+      setError(e.message);
+    }
     finally { setBusy(""); }
   };
   const requestBuildingHelp=async(kind="building")=>{
