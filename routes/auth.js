@@ -15,6 +15,10 @@ const eventSettlementTimer=setInterval(()=>{
   finally{settlingEndedEvents=false;}
 },15000);
 if(typeof eventSettlementTimer.unref==="function")eventSettlementTimer.unref();
+const allianceMineTimer=setInterval(()=>{
+  try{db.settleAllianceMines();}catch(error){console.error("Alliance mine settlement:",error);}
+},15000);
+allianceMineTimer.unref();
 function requireSession(req, res, next) {
   const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
   const session = match && sessions.get(match[1]);
@@ -140,6 +144,25 @@ router.post("/map/gathering/recall", requireSession, (req,res)=>{
     res.json(result);
   }catch(error){console.error("Recall gathering army:",error);res.status(500).json({message:"Could not recall the gathering army."});}
 });
+
+const allianceMineActions = {
+  place: (userId, body) => db.placeAllianceMine(userId, body.x, body.y, body.resource),
+  march: (userId, body) => db.launchAllianceMineMarch(userId, Number(body.mineId), body.mode, body.units),
+  withdraw: (userId, body) => db.withdrawAllianceMine(userId, Number(body.mineId)),
+};
+for (const [action, perform] of Object.entries(allianceMineActions)) {
+  router.post("/alliance/mine/"+action,requireSession,(req,res)=>{
+    try {
+      const userId=Number(req.body.userId);
+      const result=perform(userId,req.body);
+      if(result.error)return res.status(400).json({message:result.error});
+      res.json(action==="withdraw"?{...result,...db.getMapResources(userId)}:result);
+    } catch(error) {
+      console.error("Alliance mine action:",error);
+      res.status(500).json({message:"Alliance mine action failed."});
+    }
+  });
+}
 
 router.post("/upgrade-building", requireSession, (req, res) => {
   try {

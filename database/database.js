@@ -1,3 +1,5 @@
+const migrateAllianceMines = require("./allianceMineSchema");
+const {hour, constructionTarget, gatheringInterval, settleWork} = require("./allianceMineWork");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
@@ -49,9 +51,22 @@ function calculateCargoCapacity(survivors={}) {
     total + Math.max(0,Number(count)||0) * Number(unitCargoCapacity[unit]||0),0);
 }
 
+const resourceNames = ["Gold","Iron","Water","Solar"];
+
+function unprotectedResources(resources) {
+  return Object.fromEntries(resourceNames.map(key => [key, Math.max(0, Math.floor(Number(resources[key]) || 0) - 10000)]));
+}
+
+function readSpyReport(serialized) {
+  const report = JSON.parse(serialized);
+  if (report.resources && !report.resourcesUnprotected) report.resources = unprotectedResources(report.resources);
+  return report;
+}
+
 function calculateLoot(resources={},capacity=0) {
-  const keys=["Gold","Iron","Water","Solar"];
-  const available=Object.fromEntries(keys.map(key=>[key,Math.floor(Math.max(0,Math.floor(Number(resources[key])||0))*0.5)]));
+  const keys=resourceNames;
+  const available=unprotectedResources(resources);
+  for (const key of keys) available[key] = Math.floor(available[key] * 0.5);
   const loot=Object.fromEntries(keys.map(key=>[key,0]));
   let remaining=Math.min(Math.max(0,Math.floor(Number(capacity)||0)),Object.values(available).reduce((sum,n)=>sum+n,0));
   while(remaining>0){
@@ -74,6 +89,10 @@ function calculateLoot(resources={},capacity=0) {
     if(!moved)break;
   }
   return loot;
+}
+
+function activeAllianceMineTiles() {
+  return db.prepare("SELECT x,y FROM alliance_mines WHERE status<>'closed' AND alliance_id IS NOT NULL").all();
 }
 
 function disbandEmptyAlliance(allianceId){
@@ -306,6 +325,9 @@ function initializeDatabase() {
       // Ensure ten mines of each resource on existing and new maps without moving existing mines.
       const blocked = new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row => row.x + ":" + row.y));
       for (const base of alienBases) blocked.add(base.x + ":" + base.y);
+      if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='alliance_mines'").get()) {
+        for (const mine of activeAllianceMineTiles()) blocked.add(mine.x + ":" + mine.y);
+      }
       for (const mine of db.prepare("SELECT x,y FROM resource_mines").all()) blocked.add(mine.x + ":" + mine.y);
       const chooseMineTile = () => {
         for (let attempt = 0; attempt < 10000; attempt++) {
@@ -387,6 +409,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS alliance_wallets (user_id INTEGER PRIMARY KEY REFERENCES users(id), points INTEGER NOT NULL DEFAULT 0, donations_today INTEGER NOT NULL DEFAULT 0, donation_date TEXT NOT NULL DEFAULT '')");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_market_buffs (user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(user_id,kind))");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_history (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), requester_id INTEGER NOT NULL REFERENCES users(id), helper_id INTEGER NOT NULL REFERENCES users(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, reduction_ms INTEGER NOT NULL, helped_at INTEGER NOT NULL)");
+    migrateAllianceMines(db);
     db.transaction(()=>db.prepare("SELECT id FROM alliances WHERE NOT EXISTS (SELECT 1 FROM alliance_members WHERE alliance_id=alliances.id)").all().forEach(row=>disbandEmptyAlliance(row.id)))();
     console.log("Database initialized successfully");
   } catch (error) {
@@ -480,6 +503,7 @@ class DatabaseManager {
     // Shuffle all eligible coordinates so a fresh database never
     // deterministically assigns the same first position.
     const crypto = require("crypto");
+    for (const tile of activeAllianceMineTiles()) occupied.add(tile.x + ":" + tile.y);
     const candidates = [];
     for (let x = 1; x <= 100; x++) {
       for (let y = 1; y <= 100; y++) {
@@ -515,7 +539,8 @@ class DatabaseManager {
       const preferred = old && Number.isInteger(old.x) && Number.isInteger(old.y) ? old : null;
       let selected = null;
       if (preferred && preferred.x >= 1 && preferred.x <= 100 && preferred.y >= 1 && preferred.y <= 100 &&
-          !db.prepare("SELECT 1 FROM base_positions WHERE x = ? AND y = ?").get(preferred.x, preferred.y)) {
+          !db.prepare("SELECT 1 FROM base_positions WHERE x = ? AND y = ?").get(preferred.x, preferred.y) &&
+          !activeAllianceMineTiles().some(tile => tile.x === preferred.x && tile.y === preferred.y)) {
         selected = { x: preferred.x, y: preferred.y };
       } else {
         selected = this.chooseSpawn(occupied);
@@ -1203,8 +1228,8 @@ class DatabaseManager {
       }else{
         const row=db.prepare("SELECT * FROM player_scout_missions WHERE id=? AND user_id=? AND report IS NOT NULL").get(reportId,userId);
         if(!row)return {error:"Espionage report not found."};
-        const report=JSON.parse(row.report),target=JSON.parse(row.target||"{}");
-        body="🔎 Espionage / Шпионаж #"+row.id+" · "+target.username+" ("+target.x+":"+target.y+")\nScouts / Разузнавачи: "+row.quantity+" · Survivors / Оцелели: "+(report.survivors??0)+"\nResources / Ресурси: "+Object.entries(report.resources||{}).map(([k,v])=>k+": "+v).join(", ")+"\nDefenders / Защитници: "+formatArmy(report.army)+"\nBuildings / Сгради: "+Object.entries(report.structures||{}).map(([k,v])=>k+": "+v).join(", ");
+        const report=readSpyReport(row.report),target=JSON.parse(row.target||"{}");
+        body="🔎 Espionage / Шпионаж #"+row.id+" · "+target.username+" ("+target.x+":"+target.y+")\nScouts / Разузнавачи: "+row.quantity+" · Survivors / Оцелели: "+(report.survivors??0)+"\nUnprotected resources / Незащитени ресурси: "+Object.entries(report.resources||{}).map(([k,v])=>k+": "+v).join(", ")+"\nDefenders / Защитници: "+formatArmy(report.army)+"\nBuildings / Сгради: "+Object.entries(report.structures||{}).map(([k,v])=>k+": "+v).join(", ");
       }
       const now=Date.now();
       const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,'private')");
@@ -1473,11 +1498,12 @@ class DatabaseManager {
     }).immediate();
   }
   buyAllianceMarket(userId,item){
-    const catalog={gold:{cost:30},iron:{cost:30},water:{cost:30},solar:{cost:30},landing:{cost:100},attack:{cost:80},health:{cost:80},protection:{cost:150}};
+    const catalog={gold:{cost:30},iron:{cost:30},water:{cost:30},solar:{cost:30},landing:{cost:100},attack:{cost:80},health:{cost:80},protection:{cost:150},protocol_reset:{cost:50000}};
     const product=catalog[item];if(!Object.hasOwn(catalog,item))return {error:"Unknown market item."};
     return db.transaction(()=>{
       const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
       if(!member)return {error:"Join an alliance first."};
+      this.settleAllianceMines();
       const e=this.allianceEconomy(userId,member.alliance_id);
       if(e.points<product.cost)return {error:"Not enough alliance points."};
       const inventory=this.getInventory(userId);
@@ -1494,25 +1520,46 @@ class DatabaseManager {
     })();
   }
   useInventoryItem(userId,item,amount){
-    const catalog={landing:"token",attack:"buff",health:"buff",protection:"buff"};
+    const catalog={landing:"token",attack:"buff",health:"buff",protection:"buff",protocol_reset:"reset"};
     if(!Object.hasOwn(catalog,item))return {error:"This item cannot be used."};
     if(!Number.isSafeInteger(amount)||amount<1||amount>10000)return {error:"Enter a valid item quantity."};
     return db.transaction(()=>{
       const inventory=this.getInventory(userId);
       if(Number(inventory.items[item]||0)<amount)return {error:"You do not have that many items."};
+      if(item==="protocol_reset"){
+        if(amount!==1)return {error:"Activate one Protocol Reset at a time."};
+        this.resolvePlayerMissions(userId);
+        this.resolveAlienMissions(userId);
+        this.getMothershipEvent(userId);
+        this.resolveSaturdayAllianceInvasions();
+        this.syncGame(userId);
+        if(this.hasActiveCombatMission(userId))return {error:"Protocol Reset is unavailable during active combat missions."};
+        if(!Object.values(this.playerTalents(userId).talents).some(tier=>Number(tier)>0))return {error:"No Commander Protocol points are allocated."};
+        db.prepare("UPDATE player_talents SET talents='{}' WHERE user_id=?").run(userId);
+      }
       inventory.items[item]-=amount;
       if(inventory.items[item]<=0)delete inventory.items[item];
       db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
       if(item==="landing")this.creditTokens(userId,amount);
-      else{
+      else if(catalog[item]==="buff"){
         const duration=(item==="protection"?86400000:3600000)*amount;
         const now=Date.now();
         db.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,?,?) ON CONFLICT(user_id,kind) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at-?)+?")
           .run(userId,item,now+duration,duration,duration);
       }
       return {item,amount,inventory:this.getInventory(userId)};
-    })();
+    }).immediate();
   }
+  hasActiveCombatMission(userId) {
+    return !!db.prepare(`SELECT 1 WHERE
+      EXISTS (SELECT 1 FROM alien_missions WHERE user_id=@userId AND returned_at IS NULL)
+      OR EXISTS (SELECT 1 FROM player_missions WHERE
+        (attacker_id=@userId AND returned_at IS NULL) OR (defender_id=@userId AND resolved_at IS NULL))
+      OR EXISTS (SELECT 1 FROM mothership_attacks WHERE user_id=@userId AND resolved_at IS NULL)
+      OR EXISTS (SELECT 1 FROM saturday_invasion_attacks WHERE user_id=@userId AND resolved_at IS NULL)
+      OR EXISTS (SELECT 1 FROM player_scout_missions WHERE user_id=@userId AND returned_at IS NULL)`).get({userId});
+  }
+
   saveAllianceDescription(userId,description){
     if(typeof description!=="string"||description.trim().length>600)return {error:"Alliance profile message must be 600 characters or fewer."};
     const membership=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
@@ -1539,7 +1586,7 @@ class DatabaseManager {
     const reinforcements=db.prepare("SELECT r.id,r.sender_id,r.recipient_id,r.units,r.launched_at,r.arrives_at,r.recall_at,r.returned_at,s.username AS sender,t.username AS recipient FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id WHERE r.alliance_id=? AND r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?) ORDER BY r.id DESC LIMIT 100").all(membership.id,userId,userId).map(r=>({...r,units:JSON.parse(r.units)}));
     const bank=db.prepare("SELECT green_balance,red_balance FROM alliance_crystal_bank WHERE alliance_id=?").get(membership.id)||{green_balance:0,red_balance:0};
     const crystals={green:Number(db.prepare("SELECT balance FROM player_green_crystals WHERE user_id=?").get(userId)?.balance||0),red:Number(db.prepare("SELECT balance FROM player_red_crystals WHERE user_id=?").get(userId)?.balance||0)};
-    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,crystals,crystalBank:{green:Number(bank.green_balance||0),red:Number(bank.red_balance||0)},economy:this.allianceEconomy(userId,membership.id),...this.allianceDirectory(userId)};
+    return {alliance:membership,allianceMine:this.getAllianceMine(userId),members,applications,requests,helpHistory,helpStats,reinforcements,crystals,crystalBank:{green:Number(bank.green_balance||0),red:Number(bank.red_balance||0)},economy:this.allianceEconomy(userId,membership.id),...this.allianceDirectory(userId)};
   }
   createAlliance(userId,name){
     if(typeof name!=="string"||name.trim().length<3||name.trim().length>32)return {error:"Alliance name must be 3–32 characters."};
@@ -1616,6 +1663,7 @@ class DatabaseManager {
         }
       }
       if(target.role==="Co-Leader"&&actor.role!=="Leader"&&userId!==targetId)return {error:"Only leader can remove co-leader."};
+      if(this.getAllianceMineMarch(targetId))this.withdrawAllianceMine(targetId);
       this.syncGame(targetId);
       db.prepare("DELETE FROM alliance_members WHERE user_id=?").run(targetId);
       const disbanded=disbandEmptyAlliance(actor.alliance_id);
@@ -1777,7 +1825,8 @@ class DatabaseManager {
           db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(targetArmy),mission.target_user_id);
         }
         if(report.success){
-          report.resources=JSON.parse(target.resources);
+          report.resources=unprotectedResources(JSON.parse(target.resources));
+          report.resourcesUnprotected=true;
           report.army=targetArmy;
           report.structures=JSON.parse(target.structures);
         }else if(!target||!targetRuntime)report.error="Target unavailable";
@@ -1793,7 +1842,7 @@ class DatabaseManager {
 
   getPlayerScoutMissions(userId) {
     return db.prepare("SELECT * FROM player_scout_missions WHERE user_id=? ORDER BY id DESC LIMIT 30").all(userId)
-      .map(({origin,target,report,...mission})=>({...mission,origin:JSON.parse(origin),target:JSON.parse(target),report:report?JSON.parse(report):null}));
+      .map(({origin,target,report,...mission})=>({...mission,origin:JSON.parse(origin),target:JSON.parse(target),report:report?readSpyReport(report):null}));
   }
 
   getFormations(userId) {
@@ -1902,6 +1951,7 @@ class DatabaseManager {
   resolvePlayerMissions(userId) {
     return db.transaction(()=>{
       const now=Date.now();
+      this.settleAllianceMines(now);
       const returning=db.prepare("SELECT * FROM player_missions WHERE (attacker_id=? OR defender_id=?) AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?")
         .all(userId,userId,now);
       for(const mission of returning){
@@ -3012,7 +3062,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerScoutMissions:this.getPlayerScoutMissions(userId),playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,gatheringReports,mothershipEvent};
+    return {scoutMissions,playerScoutMissions:this.getPlayerScoutMissions(userId),playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),allianceMineMarch:this.getAllianceMineMarch(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,gatheringReports,mothershipEvent};
   }
 
   getAlienStationStatus(userId){
@@ -3680,6 +3730,164 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
 
+  getAllianceMineMarch(userId) {
+    return db.prepare(`SELECT m.id,m.mode,m.origin_x,m.origin_y,m.launched_at,m.arrives_at,
+      m.work,m.gathered,m.capacity,a.id AS mineId,a.x,a.y,a.resource
+      FROM alliance_mine_marches m JOIN alliance_mines a ON a.id=m.mine_id
+      WHERE m.user_id=? AND m.returned_at IS NULL`).get(userId) || null;
+  }
+
+  getAllianceMine(userId, includeMap=false) {
+    this.settleAllianceMines();
+    const member = db.prepare(`SELECT a.id,a.leader_id FROM alliance_members m
+      JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?`).get(userId);
+    const mine = member && db.prepare("SELECT * FROM alliance_mines WHERE alliance_id=? AND status<>'closed'").get(member.id);
+    const contributions = member ? db.prepare(`SELECT u.id,u.username,SUM(m.work)/${hour}.0 AS points
+      FROM alliance_mine_marches m JOIN alliance_mines a ON a.id=m.mine_id
+      JOIN users u ON u.id=m.user_id WHERE a.alliance_id=? AND m.work>0
+      GROUP BY u.id ORDER BY points DESC,u.id`).all(member.id) : [];
+    const state = {
+      active: mine ? {...mine, constructionPoints:mine.work/hour} : null,
+      canPlace: !!member && member.leader_id===userId && !mine,
+      march: this.getAllianceMineMarch(userId),
+      contributions,
+      constructionGoal: constructionTarget/hour,
+    };
+    if (!includeMap) return state;
+    const allianceMines = db.prepare(`SELECT id,x,y,resource,status,alliance_id FROM alliance_mines
+      WHERE status<>'closed' AND alliance_id IS NOT NULL ORDER BY id`).all()
+      .map(tile => ({...tile, ally:tile.alliance_id===member?.id, resource:tile.resource.toLowerCase()}));
+    return {allianceMine:state, allianceMines};
+  }
+
+  notifyAllianceMine(allianceId, kind, now) {
+    db.prepare(`INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at)
+      SELECT m.user_id,?,a.name,? FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id
+      WHERE a.id=?`).run(kind,now,allianceId);
+  }
+
+  placeAllianceMine(userId, x, y, resource) {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x<1 || x>100 || y<1 || y>100 || !resourceNames.includes(resource)) {
+      return {error:"Choose valid mine coordinates and a resource."};
+    }
+    return db.transaction(() => {
+      this.settleAllianceMines();
+      const alliance = db.prepare("SELECT id FROM alliances WHERE leader_id=?").get(userId);
+      if (!alliance) return {error:"Only the alliance leader can place a mine."};
+      if (db.prepare("SELECT 1 FROM alliance_mines WHERE alliance_id=? AND status<>'closed'").get(alliance.id)) {
+        return {error:"Your alliance already has an active mine."};
+      }
+      const occupied = db.prepare(`SELECT 1 FROM base_positions WHERE x=@x AND y=@y
+        UNION ALL SELECT 1 FROM resource_mines WHERE x=@x AND y=@y
+        UNION ALL SELECT 1 FROM alliance_mines WHERE x=@x AND y=@y AND status<>'closed' AND alliance_id IS NOT NULL
+        UNION ALL SELECT 1 FROM game_progress WHERE json_valid(castle_data)
+          AND json_extract(castle_data,'$.x')=@x AND json_extract(castle_data,'$.y')=@y LIMIT 1`).get({x,y});
+      if (occupied || (x===50 && y===50) || [...alienBases,...spaceStations].some(tile => tile.x===x && tile.y===y)) {
+        return {error:"Select an empty map tile."};
+      }
+      db.prepare("INSERT INTO alliance_mines(alliance_id,resource,x,y,status) VALUES(?,?,?,?,'construction')").run(alliance.id,resource,x,y);
+      this.notifyAllianceMine(alliance.id,"alliance_mine_started",Date.now());
+      return {success:true,...this.getMapResources(userId)};
+    }).immediate();
+  }
+
+  launchAllianceMineMarch(userId, mineId, mode, units) {
+    return db.transaction(() => {
+      this.settleAllianceMines();
+      const mine = db.prepare(`SELECT a.* FROM alliance_mines a JOIN alliance_members m ON m.alliance_id=a.alliance_id
+        WHERE a.id=? AND m.user_id=? AND a.status<>'closed'`).get(mineId,userId);
+      if (!mine || mine.status!==mode) return {error:"This alliance mine is unavailable for that mission."};
+      if (this.getAllianceMineMarch(userId)) return {error:"You already have an active alliance mine march."};
+      const origin = db.prepare("SELECT x,y FROM base_positions WHERE user_id=?").get(userId);
+      const current = this.syncGame(userId);
+      if (!origin || !current) return {error:"Your base could not be found."};
+      const {playerTypes} = require("../shared/combatEngine");
+      if (!units || typeof units!=="object" || Array.isArray(units) || Object.entries(units).some(([unit,count]) =>
+        !Object.hasOwn(playerTypes,unit) || !Number.isSafeInteger(count) || count<0 || count>Number(current.army[unit]||0))) {
+        return {error:"Invalid troop selection."};
+      }
+      const selected = Object.fromEntries(Object.entries(units).filter(([,count]) => count>0));
+      const population = armyPopulation(selected);
+      if (population<1 || population>marchLimit) return {error:"Select troops with a total population between 1 and 50,000."};
+      const capacity = Math.floor(calculateCargoCapacity(selected));
+      if (mode==="gathering" && capacity<1) return {error:"Select troops with cargo capacity."};
+      const now = Date.now();
+      const distance = Math.hypot(origin.x-mine.x,origin.y-mine.y);
+      const arrivesAt = now + Math.max(10000,armyTravelDuration(distance*1000,selected,this.protocolBonus(userId,"Rapid Deployment")));
+      for (const [unit,count] of Object.entries(selected)) current.army[unit] -= count;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      db.prepare(`INSERT INTO alliance_mine_marches
+        (mine_id,user_id,mode,units,population,capacity,origin_x,origin_y,launched_at,arrives_at,credited_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(mine.id,userId,mode,JSON.stringify(selected),population,capacity,origin.x,origin.y,now,arrivesAt,arrivesAt);
+      return {success:true,arrivesAt,...this.getMapResources(userId)};
+    }).immediate();
+  }
+
+  returnAllianceMineMarch(mine, march, reason, now) {
+    const claimed = db.prepare("UPDATE alliance_mine_marches SET returned_at=? WHERE id=? AND returned_at IS NULL").run(now,march.id);
+    if (!claimed.changes) return;
+    const current = this.syncGame(march.user_id,now);
+    if (!current) throw new Error("Alliance mine march has no base progress.");
+    for (const [unit,count] of Object.entries(JSON.parse(march.units))) current.army[unit] = (Number(current.army[unit])||0)+count;
+    db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),march.user_id);
+    if (march.mode==="gathering") {
+      current.resources[mine.resource] = (Number(current.resources[mine.resource])||0)+march.gathered;
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+        .run(JSON.stringify(current.resources),march.user_id);
+      db.prepare(`INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y,source)
+        VALUES (?,?,?,?,?,?,?,?,?,'alliance')`).run(march.user_id,mine.id,mine.resource,march.gathered,march.units,now,reason,mine.x,mine.y);
+      db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'gathering_return',?,?)")
+        .run(march.user_id,mine.resource+" · "+march.gathered,now);
+    }
+  }
+
+  settleAllianceMines(now=Date.now()) {
+    return db.transaction(() => {
+      const mines = db.prepare(`SELECT * FROM alliance_mines WHERE status<>'closed' AND alliance_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM alliance_mine_marches WHERE mine_id=alliance_mines.id AND returned_at IS NULL)`).all();
+      for (const mine of mines) {
+        const marches = db.prepare("SELECT * FROM alliance_mine_marches WHERE mine_id=? AND returned_at IS NULL ORDER BY id").all(mine.id);
+        const {credits,remaining,finished,at} = settleWork(mine,marches,now);
+        if (mine.status==="construction") {
+          for (const {march,amount} of credits) {
+            if (amount>0) {
+              db.prepare("UPDATE alliance_mine_marches SET work=work+?,credited_at=? WHERE id=?").run(amount,at,march.id);
+              db.prepare(`INSERT INTO alliance_wallets(user_id,points) VALUES (?,?)
+                ON CONFLICT(user_id) DO UPDATE SET points=ROUND(points+excluded.points,9)`).run(march.user_id,amount/hour);
+            }
+            if (finished) this.returnAllianceMineMarch(mine,march,"completed",at);
+          }
+          db.prepare("UPDATE alliance_mines SET work=?,status=? WHERE id=?")
+            .run(constructionTarget-remaining,finished?"gathering":"construction",mine.id);
+          if (finished) this.notifyAllianceMine(mine.alliance_id,"alliance_mine_completed",at);
+        } else {
+          for (const {march,amount} of credits) {
+            march.gathered += amount;
+            if (amount>0) db.prepare("UPDATE alliance_mine_marches SET gathered=? WHERE id=?").run(march.gathered,march.id);
+            if (finished || march.gathered>=march.capacity) {
+              const fullAt = march.arrives_at + march.capacity * gatheringInterval;
+              const depleted = finished && fullAt>=at;
+              this.returnAllianceMineMarch(mine,march,depleted?"depleted":"cargo_full",depleted?at:fullAt);
+            }
+          }
+          db.prepare("UPDATE alliance_mines SET amount=?,status=? WHERE id=?").run(remaining,finished?"closed":"gathering",mine.id);
+        }
+      }
+    }).immediate();
+  }
+
+  withdrawAllianceMine(userId, mineId) {
+    return db.transaction(() => {
+      const now = Date.now();
+      this.settleAllianceMines(now);
+      const march = db.prepare("SELECT * FROM alliance_mine_marches WHERE user_id=? AND returned_at IS NULL").get(userId);
+      if (!march || (mineId!==undefined && march.mine_id!==mineId)) return {error:"You have no active army at this alliance mine."};
+      const mine = db.prepare("SELECT * FROM alliance_mines WHERE id=?").get(march.mine_id);
+      this.returnAllianceMineMarch(mine,march,"recalled",now);
+      return {success:true};
+    }).immediate();
+  }
+
   mineCapacity(userId) {
     const tier=Number(this.playerTalents(userId).talents["Mining Operations"]||0);
     return 4 + [0,1,3,5][Math.max(0,Math.min(3,tier))];
@@ -3720,6 +3928,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
         }
         const blocked=new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row=>row.x+":"+row.y));
         for(const base of alienBases)blocked.add(base.x+":"+base.y);
+        for(const tile of activeAllianceMineTiles()) blocked.add(tile.x + ":" + tile.y);
         for(const other of db.prepare("SELECT x,y FROM resource_mines WHERE id<>?").all(mine.id))blocked.add(other.x+":"+other.y);
         let tile=null;
         for(let attempt=0;attempt<10000&&!tile;attempt++){
@@ -3737,8 +3946,12 @@ Rewards are distributed per participating player, not once per alliance. / На�
 
   getResourceGatheringReports(userId) {
     this.settleResourceMines();
-    return db.prepare("SELECT id,mine_id AS mineId,resource,amount,units,returned_at AS returnedAt,reason,x,y FROM resource_gathering_reports WHERE user_id=? ORDER BY id DESC LIMIT 50")
-      .all(Number(userId)).map(report=>({...report,units:JSON.parse(report.units||"{}")}));
+    this.settleAllianceMines();
+    return db.prepare(`SELECT id,mine_id AS mineId,resource,amount,units,returned_at AS returnedAt,reason,x,y,source
+      FROM resource_gathering_reports WHERE user_id=@userId AND (source='alliance' OR id IN (
+        SELECT id FROM resource_gathering_reports WHERE user_id=@userId AND source='resource' ORDER BY id DESC LIMIT 50))
+      ORDER BY id DESC`)
+      .all({userId:Number(userId)}).map(report=>({...report,units:JSON.parse(report.units||"{}")}));
   }
 
   getMapResources(userId) {
@@ -3753,7 +3966,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
         return {...mine,amount:Math.max(0,Math.floor(mine.amount-gathered))};
       });
     const activeMineCount=mines.filter(mine=>Number(mine.claimed_by)===Number(userId)).length;
-    return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId)};
+    return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId),...this.getAllianceMine(userId,true)};
   }
 
   startGathering(userId,mineId,selectedArmy) {

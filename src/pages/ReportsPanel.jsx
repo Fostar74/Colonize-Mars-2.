@@ -169,9 +169,9 @@ export default function ReportsPanel({onClose,onRead}) {
   </article>;
   const gatheringReport=report=>{
     const resource={gold:t("Gold","Злато"),iron:t("Iron","Желязо"),water:t("Water","Вода"),solar:t("Solar","Слънчева енергия")}[String(report.resource).toLowerCase()]||report.resource;
-    const title=report.reason==="depleted"?t("Mine depleted · army returned","Мината се изчерпа · армията се прибра"):t("Army recalled from mine","Армията се прибра от мината");
+    const title=report.reason==="depleted"?t("Mine depleted · army returned","Мината се изчерпа · армията се прибра"):report.reason==="cargo_full"?t("Cargo full · army returned","Товарът е пълен · армията се прибра"):t("Army recalled from mine","Армията се прибра от мината");
     return <article key={"gathering-"+report.id} style={card}>
-      <h3>{title} · {t("Mine","Мина")} #{report.mineId} ({coordinateLink(report.x,report.y)})</h3>
+      <h3>{title} · {report.source==="alliance"?localLabel("Alliance Mine"):t("Mine","Мина")} #{report.mineId} ({coordinateLink(report.x,report.y)})</h3>
       <p>{t("Resources collected","Източен ресурс")}: {Number(report.amount||0).toLocaleString()} {resource}</p>
       {army(t("Army returned","Върната армия"),report.units)}
       <p>{new Date(report.returnedAt).toLocaleString()}</p>
@@ -184,7 +184,7 @@ export default function ReportsPanel({onClose,onRead}) {
     {m.report.abandoned&&<p style={{color:"#c5c5c5",fontWeight:700}}>{t("Abandoned base — inactive for at least 7 days","Необитаема база — неактивна поне 7 дни")}</p>}
     <p>{t("Sent scouts","Изпратени разузнавачи")}: {m.quantity.toLocaleString()} · {t("Your losses","Твои загуби")}: {Number(m.report.attackerLost||0).toLocaleString()} · {t("Enemy scout losses","Загуби на противниковите разузнавачи")}: {Number(m.report.defenderLost||0).toLocaleString()} · {t("Survivors","Оцелели")}: {Number(m.report.survivors??m.quantity).toLocaleString()}</p>
     {m.report.success===false?<p><strong>{t("All your scouts died during espionage. No survivor returned to report.","При шпионажа всичките ви шпиони загинаха и не се завърна оцелял, за да докладва.")}</strong></p>:<>
-      {m.report.resources&&<p><strong>{t("Resources","Ресурси")}:</strong> {Object.entries(m.report.resources).map(([name,n])=>localLabel(name)+": "+Number(n).toLocaleString()).join(" · ")}</p>}
+      {m.report.resources&&<p><strong>{t("Unprotected resources","Незащитени ресурси")}:</strong> {Object.entries(m.report.resources).map(([name,n])=>localLabel(name)+": "+Number(n).toLocaleString()).join(" · ")}</p>}
       {m.report.army&&<p><strong>{t("Defending army","Защитна армия")}:</strong> {list(m.report.army)}</p>}
       {m.report.structures&&<div><strong>{t("Buildings and levels","Сгради и нива")}:</strong><ul>{Object.entries(m.report.structures).map(([name,level])=><li key={name}>{localLabel(name)}: {t("Level","Ниво")} {level}</li>)}</ul></div>}
     </>}

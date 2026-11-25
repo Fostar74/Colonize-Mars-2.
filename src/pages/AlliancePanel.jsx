@@ -1,3 +1,4 @@
+import { useNavigate } from "react-router-dom";
 import AllianceResearch from "./AllianceResearch";
 import { useLanguage } from "../language";
 import LinkifiedText from "../shared/LinkifiedText";
@@ -12,6 +13,7 @@ const getUserId=()=>sessionStorage.getItem("userId");
 const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 export default function AlliancePanel({supportTarget,playerAction}){
   const { t , label: localLabel} = useLanguage();
+  const navigate=useNavigate();
  const playerName=player=>playerAction ? playerAction(player) : player.username;
  const [reinforceRecipient,setReinforceRecipient]=useState(supportTarget?.id || ""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
  const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[description,setDescription]=useState(""),[tab,setTab]=useState(supportTarget ? "reinforcements" : "members");
@@ -55,7 +57,7 @@ export default function AlliancePanel({supportTarget,playerAction}){
     </>}
    </section>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-    {Object.entries({members:"Members",applications:"Applications",research:"Alliance Research",market:"Donation & Market"}).map(([key,label])=>
+    {Object.entries({members:"Members",applications:"Applications",research:"Alliance Research",market:"Donation & Market",mine:"Alliance Mine"}).map(([key,label])=>
       <button key={key} onClick={()=>setTab(key)} style={{background:tab===key?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{localLabel(label)}</button>)}
    </div>
    {tab==="members"&&<div>
@@ -100,6 +102,27 @@ export default function AlliancePanel({supportTarget,playerAction}){
    </div>}
    {tab==="research"&&<AllianceResearch economy={state.economy} role={state.alliance.role} busy={busy}
      start={kind=>action("bonus/upgrade",{kind})}/>}
+   {tab==="mine"&&state.allianceMine&&<section>
+    <h4>{localLabel("Alliance Mine")}</h4>
+    {state.allianceMine.active ? <p>
+      {localLabel(state.allianceMine.active.resource)} · {state.allianceMine.active.x}:{state.allianceMine.active.y} · {
+        state.allianceMine.active.status==="construction"
+          ? t("Construction points","Строителни точки")+" "+state.allianceMine.active.constructionPoints.toLocaleString(undefined,{maximumFractionDigits:2})+" / "+state.allianceMine.constructionGoal.toLocaleString()
+          : t("Shared resources remaining","Оставащи общи ресурси")+" "+state.allianceMine.active.amount.toLocaleString()
+      }
+    </p> : <p>{state.allianceMine.canPlace
+      ? t("Select an empty map tile to place an alliance mine.","Избери свободно поле на картата, за да поставиш алиансна мина.")
+      : t("Your alliance has no active mine.","Алиансът ти няма активна мина.")}</p>}
+    {(state.allianceMine.active||state.allianceMine.canPlace)&&<button type="button" onClick={()=>{
+      const active=state.allianceMine.active;
+      if(active)sessionStorage.setItem("mapReportTarget",JSON.stringify({x:active.x,y:active.y}));
+      navigate("/map");
+    }}>{t("Open map","Отвори картата")}</button>}
+    <h4>{t("Total construction contributions","Общ принос към строежите")}</h4>
+    {state.allianceMine.contributions.length ? <ul>{state.allianceMine.contributions.map(member=><li key={member.id}>
+      {member.username} · {member.points.toLocaleString(undefined,{maximumFractionDigits:2})} {t("points","точки")}
+    </li>)}</ul> : <p>{t("No contributions yet.","Все още няма принос.")}</p>}
+   </section>}
    {tab==="market"&&<div>
     <h3>{t("Alliance Donation & Market","Дарения и пазар")}</h3>
     <h4>{t("Alliance Space Base Crystals","Кристали за космическата база")}</h4>
@@ -110,7 +133,7 @@ export default function AlliancePanel({supportTarget,playerAction}){
       <input aria-label={localLabel("Crystal donation amount")} type="number" min="1" step="1" value={crystalAmount} onChange={e=>setCrystalAmount(e.target.value)} placeholder={localLabel("Amount")}/>
       <button type="button" disabled={busy||!Number.isSafeInteger(Number(crystalAmount))||Number(crystalAmount)<1} onClick={donateCrystals}>{t("Donate to Alliance","Дари на алианса")}</button>
     </div>
-    <p>{t("Alliance Points:","Точки на алианса:")} <strong>{state.economy?.points||0}</strong> {t("· Donations left today (resets at 00:00 UTC):","· Оставащи дарения днес (нулиране в 00:00 UTC):")} {state.economy?.donationsRemaining??20}/20</p>
+    <p>{t("Alliance Points:","Точки на алианса:")} <strong>{Number(state.economy?.points||0).toLocaleString(undefined,{maximumFractionDigits:2})}</strong> {t("· Donations left today (resets at 00:00 UTC):","· Оставащи дарения днес (нулиране в 00:00 UTC):")} {state.economy?.donationsRemaining??20}/20</p>
     <h4>{t("Donate 100 resources (+10 Alliance Points)","Дари 100 ресурса (+10 точки на алианса)")}</h4>
     {["Gold","Iron","Water","Solar"].map(resource=><button key={resource} disabled={busy||!state.economy?.donationsRemaining} style={{margin:4}} onClick={()=>action("donate",{resource})}>{t("Donate 100","Дари 100")} {localLabel(resource)}</button>)}
     <h4>{t("Alliance Treasury","Хазна на алианса")}</h4>
@@ -126,9 +149,9 @@ export default function AlliancePanel({supportTarget,playerAction}){
     </div>
     {Number.isSafeInteger(Number(exchangeAmount))&&Number(exchangeAmount)>0&&Number(exchangeAmount)%5===0&&<p>{t("You receive","Получаваш")}: {Number(exchangeAmount)*0.8} {localLabel(exchangeTo)} · {t("Alliance donation","Дарение за алианса")}: {Number(exchangeAmount)*0.2} {localLabel(exchangeFrom)}</p>}
     <h4>{t("Alliance Market","Пазар на алианса")}</h4>
-    {Object.entries({gold:["500 Gold",30],iron:["500 Iron",30],water:["500 Water",30],solar:["500 Solar",30],landing:["1 Mars Landing Token",100],attack:["+10% Army Attack (1h)",80],health:["+10% Army Health (1h)",80],protection:["Plasma Shield (24h)",150]}).map(([item,[label,cost]])=><div key={item} style={{marginBottom:8}}>
+    {Object.entries({gold:["500 Gold",30],iron:["500 Iron",30],water:["500 Water",30],solar:["500 Solar",30],landing:["1 Mars Landing Token",100],attack:["+10% Army Attack (1h)",80],health:["+10% Army Health (1h)",80],protection:["Plasma Shield (24h)",150],protocol_reset:["Protocol Reset",50000]}).map(([item,[label,cost]])=><div key={item} style={{marginBottom:8}}>
       <img src={{gold:goldIcon,iron:ironIcon,water:waterIcon,solar:solarIcon}[item] || baseIcon} alt="" width="28" height="28" style={{verticalAlign:"middle",marginRight:8}} />
-      {localLabel(label)} — {cost} {t("AP","ТА")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
+      {localLabel(label)} — {cost.toLocaleString()} {t("AP","ТА")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
     </div>)}
     <p style={{fontSize:12}}>{t("Purchased items are added to Inventory and stay inactive until you use them. Use attack and health boosts for Alien Base missions; protection blocks incoming player attacks for one day. Using another boost while one is active adds its duration.","Купените предмети отиват в инвентара и остават неактивни, докато не ги използваш. Бонусите за атака и живот важат за походи срещу извънземни бази; щитът спира атаките от играчи за един ден. Ако използваш още един бонус, докато действа предишен, срокът му се удължава.")}</p>
     {(state.economy?.buffs||[]).filter(buff=>buff.kind==="attack"||buff.kind==="health"||buff.kind==="protection").map(buff=><p key={buff.kind}>
