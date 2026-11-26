@@ -83,6 +83,20 @@ test("external mines replenish independently and alliance help includes all acti
     assert.equal(restart.status,0,restart.stderr);
     assert.deepEqual(db.prepare("SELECT * FROM resource_mines ORDER BY id").all(),before);
     assert.equal(game.settleResourceMines(now),0);
+    const pending=game.listPlayerNotifications(player).notifications.filter(notice=>notice.kind==="gathering_return");
+    assert.equal(pending.length,2);
+    assert.equal(new Set(pending.map(notice=>notice.id)).size,2);
+    const notification=pending[0];
+    assert.equal(game.markPlayerNotificationRead(player2,notification.id).success,false);
+    assert.equal(game.markPlayerNotificationRead(player,notification.id).success,true);
+    const readAt=db.prepare("SELECT read_at FROM player_notifications WHERE id=?");
+    const acknowledgedAt=readAt.get(notification.id).read_at;
+    now+=1;
+    assert.equal(game.markPlayerNotificationRead(player,notification.id).success,true);
+    assert.equal(readAt.get(notification.id).read_at,acknowledgedAt);
+    assert.deepEqual(game.listPlayerNotifications(player).notifications
+      .filter(notice=>notice.kind==="gathering_return").map(notice=>notice.id),[pending[1].id]);
+    assert.equal(game.getResourceGatheringReports(player).length,2);
     assert.equal(game.syncGame(player).army["Explorer Trooper"],100);
     assert.equal(game.syncGame(player2).army["Explorer Trooper"],100);
   }finally{
