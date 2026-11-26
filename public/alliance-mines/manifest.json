@@ -1,0 +1,4 @@
+{
+  "construction": ["gold", "iron", "water", "solar"],
+  "completed": ["gold", "iron", "water", "solar"]
+}

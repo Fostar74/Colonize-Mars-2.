@@ -2,13 +2,18 @@ const {fight}=require("./combatEngine");
 
 describe("Commander Protocol battle accounting",()=>{
   afterEach(()=>jest.restoreAllMocks());
-  test("dodge is applied only to incoming alien volleys",()=>{
-    jest.spyOn(Math,"random").mockReturnValue(0);
-    const result=fight({"Explorer Trooper":100},{"Alien Infantry":20},null,{dodge:15});
-    const alienShots=result.report.flatMap(r=>r.events).filter(e=>e.attacker==="Alien Base");
-    expect(alienShots.length).toBeGreaterThan(0);
-    expect(alienShots.every(e=>e.dodged&&e.damage===0)).toBe(true);
-    expect(result.survivors["Explorer Trooper"]).toBe(100);
+  test("evasion reduces incoming alien volleys without reducing outgoing damage",()=>{
+    const army={"Explorer Trooper":100};
+    const aliens={"Alien Infantry":20};
+    const options={random:()=>0};
+    const baseline=fight(army,aliens,null,{},options).report[0].events;
+    const evasion=fight(army,aliens,null,{dodge:15},options).report[0].events;
+    const incoming=baseline.find(event=>event.attacker==="Alien Base");
+    expect(evasion.find(event=>event.attacker==="Alien Base")).toMatchObject({
+      damage:Math.round(incoming.damage*0.9), dodged:true, evadedPercent:10
+    });
+    expect(evasion.find(event=>event.attacker==="Player"))
+      .toEqual(baseline.find(event=>event.attacker==="Player"));
   });
   test("regeneration never exceeds initial deployed army",()=>{
     jest.spyOn(Math,"random").mockReturnValue(0.9);

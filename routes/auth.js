@@ -11,20 +11,26 @@ let settlingEndedEvents=false;
 const eventSettlementTimer=setInterval(()=>{
   if(settlingEndedEvents)return;
   settlingEndedEvents=true;
-  try{db.settleEndedEvents();}catch(error){console.error("Event hospital recovery:",error);}
+  try{db.settleResourceMines();db.settleEndedEvents();}catch(error){console.error("Event hospital recovery:",error);}
   finally{settlingEndedEvents=false;}
 },15000);
 if(typeof eventSettlementTimer.unref==="function")eventSettlementTimer.unref();
-function requireSession(req, res, next) {
+function requireAuthenticatedPlayer(req, res, next) {
   const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
   const session = match && sessions.get(match[1]);
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   const requestedId = req.params.userId ?? req.body?.userId;
   if (String(requestedId) !== String(session.userId)) return res.status(403).json({ message: "Access denied." });
-  db.markPlayerActive(session.userId);
   next();
 }
 
+function requireSession(req, res, next) {
+  requireAuthenticatedPlayer(req, res, () => {
+    db.advanceCampaignTimeline();
+    db.markPlayerActive(Number(req.params.userId ?? req.body?.userId));
+    next();
+  });
+}
 
 router.post("/register", async (req, res) => {
   const { email, password, username } = req.body;
@@ -120,6 +126,7 @@ function requireSessionForMap(req, res, next) {
   const session = match && sessions.get(match[1]);
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   req.mapUserId=session.userId;
+  db.advanceCampaignTimeline();
   db.markPlayerActive(session.userId);
   next();
 }
@@ -140,6 +147,25 @@ router.post("/map/gathering/recall", requireSession, (req,res)=>{
     res.json(result);
   }catch(error){console.error("Recall gathering army:",error);res.status(500).json({message:"Could not recall the gathering army."});}
 });
+
+const allianceMineActions = {
+  place: (userId, body) => db.placeAllianceMine(userId, body.x, body.y, body.resource),
+  march: (userId, body) => db.launchAllianceMineMarch(userId, Number(body.mineId), body.mode, body.units),
+  withdraw: (userId, body) => db.withdrawAllianceMine(userId, Number(body.mineId)),
+};
+for (const [action, perform] of Object.entries(allianceMineActions)) {
+  router.post("/alliance/mine/"+action,requireSession,(req,res)=>{
+    try {
+      const userId=Number(req.body.userId);
+      const result=perform(userId,req.body);
+      if(result.error)return res.status(400).json({message:result.error});
+      res.json(action==="withdraw"?{...result,...db.getMapResources(userId)}:result);
+    } catch(error) {
+      console.error("Alliance mine action:",error);
+      res.status(500).json({message:"Alliance mine action failed."});
+    }
+  });
+}
 
 router.post("/upgrade-building", requireSession, (req, res) => {
   try {
@@ -235,15 +261,28 @@ router.route("/messages/:scope/:userId")
     const result=db.sendMessage(Number(req.params.userId),req.params.scope,req.body.recipient,req.body.body);
     res.status(result.error?400:201).json(result.error?{message:result.error}:result);
   });
-router.get("/notifications/:userId",requireSession,(req,res)=>{
-  try{res.json(db.listPlayerNotifications(Number(req.params.userId)));}
+router.get("/alliance/messages/:userId",requireAuthenticatedPlayer,(req,res)=>{
+  try{
+    const result=db.listMessages(Number(req.params.userId),"alliance");
+    res.set("Cache-Control","no-store").status(result.error?403:200).json(result.error?{message:result.error}:result);
+  }catch(error){console.error("Alliance messages:",error);res.status(500).json({message:"Could not load alliance messages."});}
+});
+router.post("/alliance/messages/:userId/read",requireAuthenticatedPlayer,(req,res)=>{
+  try{
+    const result=db.acknowledgeAllianceMessages(Number(req.params.userId),req.body?.ids);
+    res.status(result.error?400:200).json(result.error?{message:result.error}:result);
+  }catch(error){console.error("Alliance message acknowledgment:",error);res.status(500).json({message:"Could not update alliance messages."});}
+});
+router.get("/notifications/:userId",requireAuthenticatedPlayer,(req,res)=>{
+  try{res.set("Cache-Control","no-store").json(db.listPlayerNotifications(Number(req.params.userId)));}
   catch(error){console.error("Player notifications:",error);res.status(500).json({message:"Notifications unavailable."});}
 });
-router.post("/notifications/:userId/read",requireSession,(req,res)=>{
+router.post("/notifications/:userId/read",requireAuthenticatedPlayer,(req,res)=>{
   try{
-    const notificationId=Number(req.body.notificationId);
+    const notificationId=Number(req.body?.notificationId);
     if(!Number.isSafeInteger(notificationId)||notificationId<1)return res.status(400).json({message:"Choose a valid notification."});
-    res.json(db.markPlayerNotificationRead(Number(req.params.userId),notificationId));
+    const result=db.markPlayerNotificationRead(Number(req.params.userId),notificationId);
+    res.status(result.success?200:404).json(result);
   }catch(error){console.error("Mark notification read:",error);res.status(500).json({message:"Could not update notification."});}
 });
 
@@ -311,7 +350,7 @@ router.post("/alliance/market/exchange",requireSession,(req,res)=>{
   }catch(e){console.error(e);res.status(500).json({message:"Resource exchange failed."});}
 });
 router.post("/alliance/request-help",requireSession,(req,res)=>{
-  try{const result=db.requestAllianceHelp(Number(req.body.userId),req.body.kind==="upgrade"?"upgrade":"building");if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
+  try{const result=db.requestAllianceHelp(Number(req.body.userId),["building","upgrade"].includes(req.body.kind)?req.body.kind:"all");if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot request help."});}
 });
 router.post("/alliance/help",requireSession,(req,res)=>{
   try{const result=db.helpAlliance(Number(req.body.userId),Number(req.body.requestId));if(result.error)return res.status(400).json({message:result.error});res.json(result);}catch(e){console.error(e);res.status(500).json({message:"Cannot help construction."});}

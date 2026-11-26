@@ -8,9 +8,9 @@ import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
-const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance }) => {
+const Quests = ({ initialTab="main", onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance }) => {
   const { t , label: localLabel} = useLanguage();
-  const [activeTab, setActiveTab] = useState("main");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loginRewards, setLoginRewards] = useState(null);
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginMessage, setLoginMessage] = useState("");

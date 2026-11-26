@@ -1,3 +1,9 @@
+const migrateAllianceMines = require("./allianceMineSchema");
+const {hour, constructionTarget, constructionApUnit, firstTime, gatheringStart, cargoFullAt, settleWork} = require("./allianceMineWork");
+const marketProducts = require("../src/shared/allianceMarket");
+const {boostedDuration} = require("./marketBoosts");
+const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCombat");
+const {createMine,replenishMissingMines} = require("./externalMines");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
@@ -51,9 +57,31 @@ function calculateCargoCapacity(survivors={}) {
     total + Math.max(0,Number(count)||0) * Number(unitCargoCapacity[unit]||0),0);
 }
 
+const resourceNames = ["Gold","Iron","Water","Solar"];
+
+function unprotectedResources(resources) {
+  return Object.fromEntries(resourceNames.map(key => [key, Math.max(0, Math.floor(Number(resources[key]) || 0) - 10000)]));
+}
+
+function readSpyReport(serialized) {
+  const report = JSON.parse(serialized);
+  if (report.resources && !report.resourcesUnprotected) report.resources = unprotectedResources(report.resources);
+  return report;
+}
+
+function missionRandom(mission) {
+  let state = require("crypto").createHash("sha256")
+    .update(`${mission.id}:${mission.attacker_id}:${mission.defender_id}:${mission.launched_at}`).digest().readUInt32LE(0);
+  return () => {
+    state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
+    return state / 4294967296;
+  };
+}
+
 function calculateLoot(resources={},capacity=0) {
-  const keys=["Gold","Iron","Water","Solar"];
-  const available=Object.fromEntries(keys.map(key=>[key,Math.floor(Math.max(0,Math.floor(Number(resources[key])||0))*0.5)]));
+  const keys=resourceNames;
+  const available=unprotectedResources(resources);
+  for (const key of keys) available[key] = Math.floor(available[key] * 0.5);
   const loot=Object.fromEntries(keys.map(key=>[key,0]));
   let remaining=Math.min(Math.max(0,Math.floor(Number(capacity)||0)),Object.values(available).reduce((sum,n)=>sum+n,0));
   while(remaining>0){
@@ -76,6 +104,10 @@ function calculateLoot(resources={},capacity=0) {
     if(!moved)break;
   }
   return loot;
+}
+
+function activeAllianceMineTiles() {
+  return db.prepare("SELECT x,y FROM alliance_mines WHERE status<>'closed' AND alliance_id IS NOT NULL").all();
 }
 
 function disbandEmptyAlliance(allianceId){
@@ -304,28 +336,7 @@ function initializeDatabase() {
     db.exec("CREATE INDEX IF NOT EXISTS resource_gathering_reports_user ON resource_gathering_reports(user_id,id)");
     if (!db.prepare("PRAGMA table_info(resource_mines)").all().some(column => column.name === "gathering_units")) db.exec("ALTER TABLE resource_mines ADD COLUMN gathering_units TEXT NOT NULL DEFAULT '{}' ");
     db.exec("CREATE INDEX IF NOT EXISTS resource_mines_claimed ON resource_mines(claimed_by,arrives_at)");
-    {
-      // Ensure ten mines of each resource on existing and new maps without moving existing mines.
-      const blocked = new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row => row.x + ":" + row.y));
-      for (const base of alienBases) blocked.add(base.x + ":" + base.y);
-      for (const mine of db.prepare("SELECT x,y FROM resource_mines").all()) blocked.add(mine.x + ":" + mine.y);
-      const chooseMineTile = () => {
-        for (let attempt = 0; attempt < 10000; attempt++) {
-          const x = 1 + Math.floor(Math.random() * 100), y = 1 + Math.floor(Math.random() * 100), key = x + ":" + y;
-          if (!blocked.has(key)) { blocked.add(key); return {x,y}; }
-        }
-        throw new Error("No free map tile is available for a resource mine.");
-      };
-      const insertMine = db.prepare("INSERT INTO resource_mines(resource,x,y,amount) VALUES (?,?,?,5000)");
-      const countMines = db.prepare("SELECT COUNT(*) AS count FROM resource_mines WHERE resource=?");
-      for (const resource of ["gold","iron","water","solar"]) {
-        const existing = Number(countMines.get(resource).count) || 0;
-        for (let count = existing; count < 10; count++) {
-          const tile = chooseMineTile();
-          insertMine.run(resource,tile.x,tile.y);
-        }
-      }
-    }
+    replenishMissingMines(db);
     db.exec("CREATE TABLE IF NOT EXISTS player_tokens (user_id INTEGER PRIMARY KEY REFERENCES users(id), balance INTEGER NOT NULL DEFAULT 0, last_free_spin INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS wheel_spins (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), spun_at INTEGER NOT NULL, reward_id INTEGER NOT NULL, free INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS ranking_points (user_id INTEGER PRIMARY KEY REFERENCES users(id), construction_points INTEGER NOT NULL DEFAULT 0)");
@@ -353,6 +364,14 @@ function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS messages_sender ON player_messages(sender_id,id);
       CREATE INDEX IF NOT EXISTS messages_recipient ON player_messages(recipient_id,id);
       CREATE INDEX IF NOT EXISTS messages_alliance ON player_messages(alliance_id,id);`);
+    db.exec(`CREATE TABLE IF NOT EXISTS alliance_message_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL REFERENCES player_messages(id) ON DELETE CASCADE,
+      read_at INTEGER,
+      UNIQUE(message_id,recipient_id)
+    );
+    CREATE INDEX IF NOT EXISTS alliance_message_unread ON alliance_message_receipts(recipient_id,id) WHERE read_at IS NULL;`);
     db.exec("CREATE TABLE IF NOT EXISTS trade_message_notifications (trade_id INTEGER PRIMARY KEY REFERENCES interbase_trades(id), message_id INTEGER NOT NULL REFERENCES player_messages(id))");
     db.exec(`CREATE TABLE IF NOT EXISTS player_notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -388,7 +407,25 @@ function initializeDatabase() {
     )`);
     db.exec("CREATE TABLE IF NOT EXISTS alliance_wallets (user_id INTEGER PRIMARY KEY REFERENCES users(id), points INTEGER NOT NULL DEFAULT 0, donations_today INTEGER NOT NULL DEFAULT 0, donation_date TEXT NOT NULL DEFAULT '')");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_market_buffs (user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(user_id,kind))");
+    db.exec(`CREATE TABLE IF NOT EXISTS market_boost_windows (
+      user_id INTEGER NOT NULL REFERENCES users(id), effect TEXT NOT NULL, percent INTEGER NOT NULL,
+      starts_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(user_id,effect,percent,starts_at)
+    ); CREATE INDEX IF NOT EXISTS market_boost_period ON market_boost_windows(user_id,effect,expires_at);`);
+    if (!labyrinthColumns.includes("bonus_battles")) db.exec("ALTER TABLE labyrinth_players ADD COLUMN bonus_battles INTEGER NOT NULL DEFAULT 0");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_history (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), requester_id INTEGER NOT NULL REFERENCES users(id), helper_id INTEGER NOT NULL REFERENCES users(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, reduction_ms INTEGER NOT NULL, helped_at INTEGER NOT NULL)");
+    migrateAllianceMines(db);
+    db.exec(`
+      CREATE INDEX IF NOT EXISTS player_missions_due ON player_missions(arrives_at) WHERE resolved_at IS NULL;
+      CREATE INDEX IF NOT EXISTS player_missions_return_due ON player_missions(returns_at) WHERE resolved_at IS NOT NULL AND returned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS alien_missions_due ON alien_missions(arrives_at) WHERE resolved_at IS NULL;
+      CREATE INDEX IF NOT EXISTS alien_missions_return_due ON alien_missions(returns_at) WHERE resolved_at IS NOT NULL AND returned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS mothership_attacks_due ON mothership_attacks(arrives_at) WHERE resolved_at IS NULL;
+      CREATE INDEX IF NOT EXISTS reinforcements_due ON alliance_reinforcements(arrives_at) WHERE delivered_at IS NULL AND recall_at IS NULL AND returned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS reinforcements_return_due ON alliance_reinforcements(recall_at) WHERE recall_at IS NOT NULL AND returned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS player_scout_missions_due ON player_scout_missions(CASE WHEN report IS NULL THEN arrives_at ELSE returns_at END) WHERE returned_at IS NULL;
+      CREATE INDEX IF NOT EXISTS scout_missions_due ON scout_missions(CASE WHEN report IS NULL THEN arrives_at ELSE returns_at END) WHERE returned_at IS NULL;
+    `);
+
     db.transaction(()=>db.prepare("SELECT id FROM alliances WHERE NOT EXISTS (SELECT 1 FROM alliance_members WHERE alliance_id=alliances.id)").all().forEach(row=>disbandEmptyAlliance(row.id)))();
     console.log("Database initialized successfully");
   } catch (error) {
@@ -484,6 +521,8 @@ class DatabaseManager {
     // Shuffle all eligible coordinates so a fresh database never
     // deterministically assigns the same first position.
     const crypto = require("crypto");
+    for (const tile of activeAllianceMineTiles()) occupied.add(tile.x + ":" + tile.y);
+    for (const row of db.prepare("SELECT x,y FROM resource_mines").all()) occupied.add(row.x+":"+row.y);
     const candidates = [];
     for (let x = 1; x <= 100; x++) {
       for (let y = 1; y <= 100; y++) {
@@ -519,7 +558,8 @@ class DatabaseManager {
       const preferred = old && Number.isInteger(old.x) && Number.isInteger(old.y) ? old : null;
       let selected = null;
       if (preferred && preferred.x >= 1 && preferred.x <= 100 && preferred.y >= 1 && preferred.y <= 100 &&
-          !db.prepare("SELECT 1 FROM base_positions WHERE x = ? AND y = ?").get(preferred.x, preferred.y)) {
+          !db.prepare("SELECT 1 FROM base_positions WHERE x = ? AND y = ?").get(preferred.x, preferred.y) &&
+          !activeAllianceMineTiles().some(tile => tile.x === preferred.x && tile.y === preferred.y)) {
         selected = { x: preferred.x, y: preferred.y };
       } else {
         selected = this.chooseSpawn(occupied);
@@ -588,8 +628,9 @@ class DatabaseManager {
   }
 
   syncGame(userId, now = Date.now()) {
+    if (arguments.length === 1 && !db.inTransaction) this.advanceCampaignTimeline(now);
     return db.transaction(() => {
-      const allianceBonuses = this.activeAllianceBonuses(userId);
+      const allianceBonuses = this.activeAllianceBonuses(userId,now);
       const row = this.progressQueries.getProgress.get(userId);
       if (!row) return null;
       const state = this.runtime(userId);
@@ -616,13 +657,16 @@ class DatabaseManager {
       const economyBonus = this.protocolBonus(userId, "Resource Management") / 100;
       const productionCarry = JSON.parse(state.production_carry || "{}");
       const productionMultiplier = (1 + economyBonus) * (1 + allianceBonuses.growth / 100);
+      const productionEnd = state.production_at + elapsedTicks * 10000;
+      const boostedTicks = elapsedTicks ? boostedDuration(state.production_at,productionEnd,
+        this.marketBoostWindows(userId,"production",state.production_at,productionEnd))/10000 : 0;
       const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
       for (const [resource, name] of Object.entries(rates)) {
         const level = Number(structures[name] || 0);
         if (level > 0 && elapsedTicks > 0) {
           // Preserve sub-unit production between 10-second ticks; otherwise frequent polling
           // silently discards most of the Resource Management protocol bonus.
-          const produced = level * elapsedTicks * productionMultiplier + (Number(productionCarry[resource]) || 0);
+          const produced = level * boostedTicks * productionMultiplier + (Number(productionCarry[resource]) || 0);
           const whole = Math.floor(produced + 1e-9);
           productionCarry[resource] = Math.max(0, Math.round((produced - whole) * 1000000) / 1000000);
           resources[resource] = (Number(resources[resource]) || 0) + whole;
@@ -1080,11 +1124,11 @@ class DatabaseManager {
     const row=db.prepare("SELECT COALESCE(xp,0) AS xp FROM player_talents WHERE user_id=?").get(userId);
     return this.playerLevel(Number(row?.xp||0));
   }
-  beginnerProtectionUntil(userId){
+  beginnerProtectionUntil(userId,now=Date.now()){
     const row=db.prepare("SELECT CAST(strftime('%s',created_at) AS INTEGER)*1000 AS registered FROM users WHERE id=?").get(userId);
     if(!row?.registered||db.prepare("SELECT 1 FROM beginner_protection_forfeits WHERE user_id=?").get(userId))return 0;
     const expires=Number(row.registered)+7*86400000;
-    return expires>Date.now()?expires:0;
+    return expires>now?expires:0;
   }
   playerTalents(userId){
     db.prepare("INSERT OR IGNORE INTO player_talents(user_id) VALUES (?)").run(userId);
@@ -1225,32 +1269,63 @@ class DatabaseManager {
       }else{
         const row=db.prepare("SELECT * FROM player_scout_missions WHERE id=? AND user_id=? AND report IS NOT NULL").get(reportId,userId);
         if(!row)return {error:"Espionage report not found."};
-        const report=JSON.parse(row.report),target=JSON.parse(row.target||"{}");
-        body="🔎 Espionage / Шпионаж #"+row.id+" · "+target.username+" ("+target.x+":"+target.y+")\nScouts / Разузнавачи: "+row.quantity+" · Survivors / Оцелели: "+(report.survivors??0)+"\nResources / Ресурси: "+Object.entries(report.resources||{}).map(([k,v])=>k+": "+v).join(", ")+"\nDefenders / Защитници: "+formatArmy(report.army)+"\nBuildings / Сгради: "+Object.entries(report.structures||{}).map(([k,v])=>k+": "+v).join(", ");
+        const report=readSpyReport(row.report),target=JSON.parse(row.target||"{}");
+        body="🔎 Espionage / Шпионаж #"+row.id+" · "+target.username+" ("+target.x+":"+target.y+")\nScouts / Разузнавачи: "+row.quantity+" · Survivors / Оцелели: "+(report.survivors??0)+"\nUnprotected resources / Незащитени ресурси: "+Object.entries(report.resources||{}).map(([k,v])=>k+": "+v).join(", ")+"\nDefenders / Защитници: "+formatArmy(report.army)+"\nBuildings / Сгради: "+Object.entries(report.structures||{}).map(([k,v])=>k+": "+v).join(", ");
       }
       const now=Date.now();
-      const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,'private')");
-      const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'player_message',?,?)");
-      if(scope==="private"){insert.run(userId,recipient.id,null,body,now);notify.run(recipient.id,"",now);}
-      else{
-        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,NULL,?,?,?,'alliance')").run(userId,member.alliance_id,body,now);
-        for(const row of db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId))notify.run(row.user_id,"alliance",now);
-      }
+      if(scope==="private"){
+        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,body,sent_at,message_type) VALUES (?,?,?,?,'private')")
+          .run(userId,recipient.id,body,now);
+        db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'player_message','',?)")
+          .run(recipient.id,now);
+      }else this.storeAllianceMessage(userId,member.alliance_id,body,now,"alliance");
       return {success:true};
     })();
   }
 
+  storeAllianceMessage(userId, allianceId, body, now, type){
+    const message=db.prepare("INSERT INTO player_messages(sender_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?)")
+      .run(userId,allianceId,body,now,type);
+    // A message body is shared. Receipts contain only delivery and read state.
+    return db.prepare(`INSERT INTO alliance_message_receipts(recipient_id,message_id)
+      SELECT user_id,? FROM alliance_members WHERE alliance_id=? AND user_id<>?`)
+      .run(message.lastInsertRowid,allianceId,userId).changes;
+  }
+
   listMessages(userId, scope){
     if(!["private","trade","alliance"].includes(scope))return {error:"Unknown message channel."};
-    const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
-    if(scope==="alliance"&&!member)return {error:"Join an alliance to view its chat."};
-    const filter=scope==="alliance" ? "m.alliance_id=?" : scope==="trade" ? "m.recipient_id=? AND m.message_type='trade'" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type IN ('private','system')";
-    const params=scope==="alliance" ? [member.alliance_id] : scope==="trade" ? [userId] : [userId,userId];
+    if(scope==="alliance"){
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance to view its chat."};
+      // Unscoped historical private copies do not identify their original alliance.
+      // Keep them in their original inboxes. Already scoped shared rows remain visible here.
+      const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,
+        sender.username AS sender,m.message_type AS messageType,
+        CASE WHEN receipt.read_at IS NULL THEN receipt.id END AS unreadId
+        FROM player_messages m JOIN users sender ON sender.id=m.sender_id
+        LEFT JOIN alliance_message_receipts receipt ON receipt.message_id=m.id AND receipt.recipient_id=@userId
+        WHERE m.alliance_id=@allianceId AND m.recipient_id IS NULL AND (
+          receipt.id IS NOT NULL AND receipt.read_at IS NULL OR
+          m.id IN (SELECT id FROM player_messages WHERE alliance_id=@allianceId ORDER BY id DESC LIMIT 50)
+        ) ORDER BY m.id DESC`).all({userId,allianceId:member.alliance_id});
+      return {messages};
+    }
+    const filter=scope==="trade" ? "m.recipient_id=? AND m.message_type='trade'" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type IN ('private','system')";
+    const params=scope==="trade" ? [userId] : [userId,userId];
     const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,m.message_type AS messageType,
       CASE WHEN m.message_type='system' THEN 'Game System' ELSE sender.username END AS sender,recipient.username AS recipient FROM player_messages m
       JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
       WHERE ${filter} ORDER BY m.id DESC LIMIT 50`).all(...params);
     return {messages};
+  }
+
+  acknowledgeAllianceMessages(userId, ids){
+    if(!Array.isArray(ids)||ids.length<1||ids.length>200||ids.some(id=>!Number.isSafeInteger(id)||id<1))
+      return {error:"Choose valid alliance message receipts."};
+    db.prepare(`UPDATE alliance_message_receipts SET read_at=?
+      WHERE recipient_id=? AND read_at IS NULL AND id IN (SELECT value FROM json_each(?))`)
+      .run(Date.now(),userId,JSON.stringify(ids));
+    return {success:true};
   }
 
   sendMessage(userId, scope, recipient, body){
@@ -1266,33 +1341,36 @@ class DatabaseManager {
       if(scope==="broadcast"&&!["Leader","Co-Leader"].includes(member.role))return {error:"Only the alliance leader or co-leader can send a mass message."};
       const target=scope==="private" && typeof recipient==="string" && this.findUserByUsername(recipient.trim());
       if(scope==="private"&&(!target||target.id===userId))return {error:"Choose another existing player."};
-      const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'player_message', ?, ?)");
       if(scope==="broadcast"){
-        const recipients=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId);
-        if(!recipients.length)return {error:"Your alliance has no other members to notify."};
-        const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?, ?, NULL, ?, ?,'private')");
-        for(const row of recipients){insert.run(userId,row.user_id,content,now);notify.run(row.user_id,"alliance",now);}
-        return {message:"Alliance message sent to "+recipients.length+" members."};
+        if(!db.prepare("SELECT 1 FROM alliance_members WHERE alliance_id=? AND user_id<>?").get(member.alliance_id,userId))
+          return {error:"Your alliance has no other members to notify."};
+        const count=this.storeAllianceMessage(userId,member.alliance_id,content,now,"alliance_broadcast");
+        return {message:"Alliance message sent to "+count+" members."};
       }
-      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,?)")
-        .run(userId,target?.id||null,member?.alliance_id||null,content,now,scope);
-      if(scope==="private")notify.run(target.id,"",now);
-      if(scope==="alliance"){
-        const recipients=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId);
-        for(const row of recipients)notify.run(row.user_id,"alliance",now);
+      if(scope==="alliance")this.storeAllianceMessage(userId,member.alliance_id,content,now,"alliance");
+      else {
+        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,body,sent_at,message_type) VALUES (?,?,?,?,'private')")
+          .run(userId,target.id,content,now);
+        db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'player_message','',?)")
+          .run(target.id,now);
       }
       return {message:"Message sent."};
-    })();
+    }).immediate();
   }
 
   listPlayerNotifications(userId){
     const notifications=db.prepare("SELECT id,kind,alliance_name AS allianceName,created_at AS createdAt FROM player_notifications WHERE recipient_id=? AND read_at IS NULL ORDER BY id LIMIT 20").all(userId);
-    return {notifications};
+    const allianceUnreadIds=db.prepare(`SELECT receipt.id FROM alliance_message_receipts receipt
+      JOIN player_messages message ON message.id=receipt.message_id
+      JOIN alliance_members member ON member.user_id=receipt.recipient_id AND member.alliance_id=message.alliance_id
+      WHERE receipt.recipient_id=? AND receipt.read_at IS NULL ORDER BY receipt.id`).pluck().all(userId);
+    return {notifications,allianceUnreadIds};
   }
 
   markPlayerNotificationRead(userId, notificationId){
-    const result=db.prepare("UPDATE player_notifications SET read_at=? WHERE id=? AND recipient_id=? AND read_at IS NULL").run(Date.now(),notificationId,userId);
-    return {success:result.changes>0};
+    const result=db.prepare("UPDATE player_notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND recipient_id=? RETURNING id")
+      .get(Date.now(),notificationId,userId);
+    return {success:Boolean(result)};
   }
 
   rankings(userId){
@@ -1347,21 +1425,23 @@ class DatabaseManager {
     if(String(request.job_key||"").startsWith("upgrade:"))return current?.upgradeJobs?.find(job=>job?.endsAt!=null&&this.allianceRequestMatches(request,job))||null;
     return current?.buildingJob||null;
   }
-  settleAllianceReinforcements(userId){
-    const now=Date.now();
-    const returning=db.prepare("SELECT id,sender_id,units FROM alliance_reinforcements WHERE sender_id=? AND recall_at IS NOT NULL AND returned_at IS NULL AND recall_at<=?").all(userId,now);
+  settleAllianceReinforcements(userId,now=Date.now()){
+    if (!this.advancingCampaignTimeline) this.advanceCampaignTimeline(now);
+    const returning=db.prepare("SELECT id,sender_id,units,recall_at FROM alliance_reinforcements WHERE sender_id=? AND recall_at IS NOT NULL AND returned_at IS NULL AND recall_at<=?").all(userId,now);
     for(const mission of returning){
-      const progress=this.syncGame(mission.sender_id);if(!progress)continue;
+      const progress=this.syncGame(mission.sender_id,mission.recall_at);
+      if(!progress)throw new Error("Reinforcements have no sender progress");
       for(const [unit,n] of Object.entries(JSON.parse(mission.units)))progress.army[unit]=(Number(progress.army[unit])||0)+n;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),mission.sender_id);
-      db.prepare("UPDATE alliance_reinforcements SET returned_at=? WHERE id=? AND returned_at IS NULL").run(now,mission.id);
+      db.prepare("UPDATE alliance_reinforcements SET returned_at=? WHERE id=? AND returned_at IS NULL").run(mission.recall_at,mission.id);
     }
-    const arrivals=db.prepare("SELECT id,recipient_id,units FROM alliance_reinforcements WHERE recipient_id=? AND recall_at IS NULL AND returned_at IS NULL AND delivered_at IS NULL AND arrives_at<=?").all(userId,now);
+    const arrivals=db.prepare("SELECT id,recipient_id,units,arrives_at FROM alliance_reinforcements WHERE recipient_id=? AND recall_at IS NULL AND returned_at IS NULL AND delivered_at IS NULL AND arrives_at<=?").all(userId,now);
     for(const mission of arrivals){
-      const progress=this.syncGame(mission.recipient_id);if(!progress)continue;
+      const progress=this.syncGame(mission.recipient_id,mission.arrives_at);
+      if(!progress)throw new Error("Reinforcements have no recipient progress");
       for(const [unit,n] of Object.entries(JSON.parse(mission.units)))progress.army[unit]=(Number(progress.army[unit])||0)+n;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(progress.army),mission.recipient_id);
-      db.prepare("UPDATE alliance_reinforcements SET delivered_at=? WHERE id=? AND delivered_at IS NULL AND returned_at IS NULL").run(now,mission.id);
+      db.prepare("UPDATE alliance_reinforcements SET delivered_at=? WHERE id=? AND delivered_at IS NULL AND returned_at IS NULL").run(mission.arrives_at,mission.id);
     }
   }
   sendAllianceReinforcement(userId,recipientId,units){
@@ -1399,9 +1479,9 @@ class DatabaseManager {
       return {missionId,returnsAt:now+travelMs};
     })();
   }
-  activeAllianceBonuses(userId){
+  activeAllianceBonuses(userId,now=Date.now()){
     const membership = db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
-    const levels = membership ? this.researchState(membership.alliance_id).bonuses : {};
+    const levels = membership ? this.researchState(membership.alliance_id,now).bonuses : {};
     return {
       ...Object.fromEntries(["attack","health","growth","speed","discount"].map(kind => [kind, research.bonusPerLevel * (levels[kind] || 0)])),
       units: Object.fromEntries(research.units.map(unit => [unit, {
@@ -1410,12 +1490,12 @@ class DatabaseManager {
       }]))
     };
   }
-  researchState(allianceId) {
+  researchState(allianceId,now=Date.now()) {
     return db.transaction(() => {
       const treasury = db.prepare("SELECT bonuses FROM alliance_treasury WHERE alliance_id=?").get(allianceId);
       const bonuses = treasury ? JSON.parse(treasury.bonuses) : {};
       const job = db.prepare("SELECT kind,level,ends_at AS endsAt FROM alliance_research_jobs WHERE alliance_id=?").get(allianceId);
-      if (!job || job.endsAt > Date.now()) return { bonuses, researchJob: job || null };
+      if (!job || job.endsAt > now) return { bonuses, researchJob: job || null };
       db.prepare("DELETE FROM alliance_research_jobs WHERE alliance_id=?").run(allianceId);
       if (job.kind === "growth") {
         const members = db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=?").all(allianceId);
@@ -1432,7 +1512,10 @@ class DatabaseManager {
     const wallet=db.prepare("SELECT points,donations_today,donation_date FROM alliance_wallets WHERE user_id=?").get(userId);
     const today=new Date().toISOString().slice(0,10);
     const treasury=db.prepare("SELECT resources FROM alliance_treasury WHERE alliance_id=?").get(allianceId);
-    const buffs=db.prepare("SELECT kind,expires_at FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,Date.now());
+    const now=Date.now();
+    const buffs=db.prepare("SELECT kind,expires_at FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,now);
+    buffs.push(...db.prepare(`SELECT effect || '_' || percent AS kind,expires_at FROM market_boost_windows
+      WHERE user_id=? AND starts_at<=? AND expires_at>?`).all(userId,now,now));
     return {points:wallet.points,donationsRemaining:20-(wallet.donation_date===today?wallet.donations_today:0),treasury:JSON.parse(treasury.resources),...this.researchState(allianceId),buffs};
   }
   donateAlliance(userId,resource){
@@ -1497,46 +1580,82 @@ class DatabaseManager {
     }).immediate();
   }
   buyAllianceMarket(userId,item){
-    const catalog={gold:{cost:30},iron:{cost:30},water:{cost:30},solar:{cost:30},landing:{cost:100},attack:{cost:80},health:{cost:80},protection:{cost:150}};
-    const product=catalog[item];if(!Object.hasOwn(catalog,item))return {error:"Unknown market item."};
+    if(!Object.hasOwn(marketProducts,item))return {error:"Unknown market item."};
+    const product=marketProducts[item];
     return db.transaction(()=>{
       const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
       if(!member)return {error:"Join an alliance first."};
+      this.settleAllianceMines();
       const e=this.allianceEconomy(userId,member.alliance_id);
       if(e.points<product.cost)return {error:"Not enough alliance points."};
       const inventory=this.getInventory(userId);
-      if(["gold","iron","water","solar"].includes(item)){
-        const resource=item[0].toUpperCase()+item.slice(1);
-        inventory.resources[resource]=(inventory.resources[resource]||0)+500;
-        db.prepare("UPDATE inventory_reserves SET resources=? WHERE user_id=?").run(JSON.stringify(inventory.resources),userId);
-      }else{
-        inventory.items[item]=(inventory.items[item]||0)+1;
-        db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
-      }
+      inventory.items[item]=(inventory.items[item]||0)+1;
+      db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
       db.prepare("UPDATE alliance_wallets SET points=points-? WHERE user_id=?").run(product.cost,userId);
       return {item,inventory:this.getInventory(userId),economy:this.allianceEconomy(userId,member.alliance_id)};
-    })();
+    }).immediate();
+  }
+  marketBoostWindows(userId,effect,start,end){
+    return db.prepare("SELECT percent,starts_at,expires_at FROM market_boost_windows WHERE user_id=? AND effect=? AND starts_at<? AND expires_at>?")
+      .all(userId,effect,end,start);
   }
   useInventoryItem(userId,item,amount){
-    const catalog={landing:"token",attack:"buff",health:"buff",protection:"buff"};
-    if(!Object.hasOwn(catalog,item))return {error:"This item cannot be used."};
+    const catalog={landing:"token",attack:"buff",health:"buff",protection:"buff",protocol_reset:"reset"};
+    if(item!=="landing"&&!Object.hasOwn(marketProducts,item))return {error:"This item cannot be used."};
+    const {effect,percent,tokens}=marketProducts[item]||{};
+    if(effect&&amount!==1)return {error:"Activate one item at a time."};
     if(!Number.isSafeInteger(amount)||amount<1||amount>10000)return {error:"Enter a valid item quantity."};
     return db.transaction(()=>{
+      this.advanceCampaignTimeline();
       const inventory=this.getInventory(userId);
       if(Number(inventory.items[item]||0)<amount)return {error:"You do not have that many items."};
+      if(item==="protocol_reset"){
+        if(amount!==1)return {error:"Activate one Protocol Reset at a time."};
+        this.resolvePlayerMissions(userId);
+        this.resolveAlienMissions(userId);
+        this.getMothershipEvent(userId);
+        this.resolveSaturdayAllianceInvasions();
+        this.syncGame(userId);
+        if(this.hasActiveCombatMission(userId))return {error:"Protocol Reset is unavailable during active combat missions."};
+        if(!Object.values(this.playerTalents(userId).talents).some(tier=>Number(tier)>0))return {error:"No Commander Protocol points are allocated."};
+        db.prepare("UPDATE player_talents SET talents='{}' WHERE user_id=?").run(userId);
+      }
+      if (percent) {
+        const now=Date.now();
+        if (db.prepare("SELECT 1 FROM market_boost_windows WHERE user_id=? AND effect=? AND percent=? AND expires_at>?").get(userId,effect,percent,now))
+          return {error:"This booster is already active."};
+        db.prepare("INSERT INTO market_boost_windows(user_id,effect,percent,starts_at,expires_at) VALUES (?,?,?,?,?)")
+          .run(userId,effect,percent,now,now+8*hour);
+      } else if (effect==="alien") {
+        db.prepare("INSERT INTO alien_rewards(user_id,bonus_missions) VALUES (?,1) ON CONFLICT(user_id) DO UPDATE SET bonus_missions=bonus_missions+1").run(userId);
+      } else if (effect==="labyrinth") {
+        const status=this.getLabyrinthStatus(userId);
+        if (!status.unlocked || status.medicineFound) return {error:"Labyrinth battle is unavailable."};
+        db.prepare("UPDATE labyrinth_players SET bonus_battles=bonus_battles+1 WHERE user_id=?").run(userId);
+      }
       inventory.items[item]-=amount;
       if(inventory.items[item]<=0)delete inventory.items[item];
       db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
-      if(item==="landing")this.creditTokens(userId,amount);
-      else{
+      if(item==="landing"||tokens)this.creditTokens(userId,amount*(tokens||1));
+      else if(catalog[item]==="buff"){
         const duration=(item==="protection"?86400000:3600000)*amount;
         const now=Date.now();
         db.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,?,?) ON CONFLICT(user_id,kind) DO UPDATE SET expires_at=MAX(expires_at,excluded.expires_at-?)+?")
           .run(userId,item,now+duration,duration,duration);
       }
       return {item,amount,inventory:this.getInventory(userId)};
-    })();
+    }).immediate();
   }
+  hasActiveCombatMission(userId) {
+    return !!db.prepare(`SELECT 1 WHERE
+      EXISTS (SELECT 1 FROM alien_missions WHERE user_id=@userId AND returned_at IS NULL)
+      OR EXISTS (SELECT 1 FROM player_missions WHERE
+        (attacker_id=@userId AND returned_at IS NULL) OR (defender_id=@userId AND resolved_at IS NULL))
+      OR EXISTS (SELECT 1 FROM mothership_attacks WHERE user_id=@userId AND resolved_at IS NULL)
+      OR EXISTS (SELECT 1 FROM saturday_invasion_attacks WHERE user_id=@userId AND resolved_at IS NULL)
+      OR EXISTS (SELECT 1 FROM player_scout_missions WHERE user_id=@userId AND returned_at IS NULL)`).get({userId});
+  }
+
   saveAllianceDescription(userId,description){
     if(typeof description!=="string"||description.trim().length>600)return {error:"Alliance profile message must be 600 characters or fewer."};
     const membership=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
@@ -1563,7 +1682,7 @@ class DatabaseManager {
     const reinforcements=db.prepare("SELECT r.id,r.sender_id,r.recipient_id,r.units,r.launched_at,r.arrives_at,r.recall_at,r.returned_at,s.username AS sender,t.username AS recipient FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id WHERE r.alliance_id=? AND r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?) ORDER BY r.id DESC LIMIT 100").all(membership.id,userId,userId).map(r=>({...r,units:JSON.parse(r.units)}));
     const bank=db.prepare("SELECT green_balance,red_balance FROM alliance_crystal_bank WHERE alliance_id=?").get(membership.id)||{green_balance:0,red_balance:0};
     const crystals={green:Number(db.prepare("SELECT balance FROM player_green_crystals WHERE user_id=?").get(userId)?.balance||0),red:Number(db.prepare("SELECT balance FROM player_red_crystals WHERE user_id=?").get(userId)?.balance||0)};
-    return {alliance:membership,members,applications,requests,helpHistory,helpStats,reinforcements,crystals,crystalBank:{green:Number(bank.green_balance||0),red:Number(bank.red_balance||0)},economy:this.allianceEconomy(userId,membership.id),...this.allianceDirectory(userId)};
+    return {alliance:membership,allianceMine:this.getAllianceMine(userId),members,applications,requests,helpHistory,helpStats,reinforcements,crystals,crystalBank:{green:Number(bank.green_balance||0),red:Number(bank.red_balance||0)},economy:this.allianceEconomy(userId,membership.id),...this.allianceDirectory(userId)};
   }
   createAlliance(userId,name){
     if(typeof name!=="string"||name.trim().length<3||name.trim().length>32)return {error:"Alliance name must be 3–32 characters."};
@@ -1640,6 +1759,7 @@ class DatabaseManager {
         }
       }
       if(target.role==="Co-Leader"&&actor.role!=="Leader"&&userId!==targetId)return {error:"Only leader can remove co-leader."};
+      if(this.getAllianceMineMarch(targetId))this.withdrawAllianceMine(targetId);
       this.syncGame(targetId);
       db.prepare("DELETE FROM alliance_members WHERE user_id=?").run(targetId);
       const disbanded=disbandEmptyAlliance(actor.alliance_id);
@@ -1657,20 +1777,32 @@ class DatabaseManager {
       return this.allianceState(userId);
     })();
   }
-  requestAllianceHelp(userId,kind="building"){
+  requestAllianceHelp(userId,kind="all"){
     return db.transaction(()=>{
-      const a=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
-      if(!a)return {error:"Join an alliance first."};
-      const current=this.syncGame(userId);
-      const job=kind==="upgrade"?current?.upgradeJobs?.find(j=>j?.endsAt>Date.now()):current?.buildingJob;
-      if(!job||job.endsAt<=Date.now())return {error:kind==="upgrade"?"No active unit upgrade to request help for.":"No active construction to request help for."};
-      const name=kind==="upgrade"?"Upgrade: "+job.unit+" "+job.stat:job.name;
-      const key=kind==="upgrade"?this.allianceUpgradeKey(job):this.allianceJobKey(job);
-      const old=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND (job_key=? OR (job_key IS NULL AND job_ends_at=?))").get(userId,name,job.level,key,job.endsAt);
-      if(old)return {error:"Help already requested for this job."};
-      const id=db.prepare("INSERT INTO alliance_help(requester_id,alliance_id,building_name,building_level,requested_at,job_ends_at,job_key) VALUES (?,?,?,?,?,?,?)").run(userId,a.alliance_id,name,job.level,Date.now(),job.endsAt,key).lastInsertRowid;
-      return {requestId:Number(id)};
-    })();
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance first."};
+      const now=Date.now(),current=this.syncGame(userId,now);
+      const jobs=[];
+      if(kind!=="upgrade"&&current?.buildingJob?.endsAt>now){
+        const job=current.buildingJob;
+        jobs.push({job,name:job.name,key:this.allianceJobKey(job)});
+      }
+      if(kind!=="building"){
+        for(const job of current?.upgradeJobs||[]){
+          if(job?.endsAt>now)jobs.push({job,name:"Upgrade: "+job.unit+" "+job.stat,key:this.allianceUpgradeKey(job)});
+        }
+      }
+      if(!jobs.length)return {error:"No active construction or unit upgrade to request help for."};
+      const existing=db.prepare("SELECT id FROM alliance_help WHERE requester_id=? AND building_name=? AND building_level=? AND (job_key=? OR (job_key IS NULL AND job_ends_at=?))");
+      const insert=db.prepare("INSERT INTO alliance_help(requester_id,alliance_id,building_name,building_level,requested_at,job_ends_at,job_key) VALUES (?,?,?,?,?,?,?)");
+      const requestIds=[];
+      for(const {job,name,key} of jobs){
+        if(!existing.get(userId,name,job.level,key,job.endsAt)){
+          requestIds.push(Number(insert.run(userId,member.alliance_id,name,job.level,now,job.endsAt,key).lastInsertRowid));
+        }
+      }
+      return requestIds.length?{requestId:requestIds[0],requestIds}:{error:"Help already requested for eligible jobs."};
+    }).immediate();
   }
   helpAlliance(userId,requestId){
     if(!Number.isSafeInteger(requestId)||requestId<1)return {error:"Invalid help request."};
@@ -1801,7 +1933,8 @@ class DatabaseManager {
           db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(targetArmy),mission.target_user_id);
         }
         if(report.success){
-          report.resources=JSON.parse(target.resources);
+          report.resources=unprotectedResources(JSON.parse(target.resources));
+          report.resourcesUnprotected=true;
           report.army=targetArmy;
           report.structures=JSON.parse(target.structures);
         }else if(!target||!targetRuntime)report.error="Target unavailable";
@@ -1818,7 +1951,7 @@ class DatabaseManager {
 
   getPlayerScoutMissions(userId) {
     return db.prepare("SELECT * FROM player_scout_missions WHERE user_id=? ORDER BY id DESC LIMIT 30").all(userId)
-      .map(({origin,target,report,...mission})=>({...mission,origin:JSON.parse(origin),target:JSON.parse(target),report:report?JSON.parse(report):null}));
+      .map(({origin,target,report,...mission})=>({...mission,origin:JSON.parse(origin),target:JSON.parse(target),report:report?readSpyReport(report):null}));
   }
 
   getFormations(userId) {
@@ -1870,6 +2003,7 @@ class DatabaseManager {
   }
 
     launchPlayerAttack(userId, selectedArmy, formation, targetCoords, includeCyberKnight=false, confirmProtectionLoss=false) {
+    this.advanceCampaignTimeline();
     if (!targetCoords || typeof targetCoords.username !== "string") return {error:"Choose a player base on the map."};
     const target = db.prepare(`SELECT u.id,u.username,b.x,b.y,m.alliance_id
       FROM users u JOIN base_positions b ON b.user_id=u.id
@@ -1925,98 +2059,158 @@ class DatabaseManager {
     })();
   }
 
-  resolvePlayerMissions(userId) {
-    return db.transaction(()=>{
-      const now=Date.now();
-      const returning=db.prepare("SELECT * FROM player_missions WHERE (attacker_id=? OR defender_id=?) AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?")
-        .all(userId,userId,now);
-      for(const mission of returning){
-        const result=JSON.parse(mission.result||"{}");
-        const current=this.syncGame(mission.attacker_id);
-        if(current){
-          for(const [unit,count] of Object.entries(result.survivors||{})) current.army[unit]=(Number(current.army[unit])||0)+count;
-          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mission.attacker_id);
-        }
-        db.prepare("UPDATE player_missions SET returned_at=? WHERE id=?").run(now,mission.id);
-      }
-      const due=db.prepare("SELECT * FROM player_missions WHERE (attacker_id=? OR defender_id=?) AND resolved_at IS NULL AND arrives_at<=? ORDER BY id")
-        .all(userId,userId,now);
-      for(const mission of due){
-        const data=JSON.parse(mission.army);
-        const attacker=this.syncGame(mission.attacker_id);
-        const defender=this.syncGame(mission.defender_id);
-        if(!attacker||!defender){
-          const failed={victory:false,rounds:0,report:[],survivors:data.units||{},defenderSurvivors:{},defendersRemaining:0,error:"A player base is unavailable."};
-          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?").run(now,now+Math.max(1000,mission.arrives_at-mission.launched_at),JSON.stringify(failed),mission.id);
-          continue;
-        }
-        const shield=db.prepare("SELECT expires_at FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(mission.defender_id,now);
-        if(shield||this.beginnerProtectionUntil(mission.defender_id)){
-          const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
-          const shielded={victory:false,rounds:0,report:[],survivors:data.units||{},defenderInitial:defender.army||{},defenderSurvivors:defender.army||{},
-            defendersRemaining:Object.values(defender.army||{}).reduce((sum,count)=>sum+Number(count||0),0),
-            loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0,cargoCapacity:0,shielded:true};
-          db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?")
-            .run(now,now+travelMs,JSON.stringify(shielded),mission.id);
-          continue;
-        }
-        const defence=this.getFormations(mission.defender_id);
-        const defenseRows=defence.defenseSlot ? defence.defensePresets[defence.defenseSlot] : null;
-        const fallback=defaultFormation(true);
-        const defenseFormation=Object.entries(defender.army).filter(([,count])=>Number(count)>0).map(([unit,count])=>({
-          unit,count,row:defenseRows?.[unit]||fallback[unit]||1
-        }));
-        const {fight,playerTypes}=require("../shared/combatEngine");
-        const validDefenders=Object.fromEntries(Object.entries(defender.army).filter(([unit,count])=>playerTypes[unit]&&Number(count)>0));
-        const attackerGear=data.includeCyberKnight?this.equipmentBonuses(mission.attacker_id):equipmentCombatBonuses({}),defenderGear=this.equipmentBonuses(mission.defender_id);
-        const attackerProtocols=this.protocolCombatBonuses(mission.attacker_id,attackerGear,defenderGear),defenderProtocols=this.protocolCombatBonuses(mission.defender_id,defenderGear,attackerGear);
-        const attackerAlliance=data.allianceCombat||attacker.allianceBonuses||{},defenderAlliance=defender.allianceBonuses||{};
-        const attackerCombat={...attackerProtocols,unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{},unitResearch:attackerAlliance.units||{},allAttack:Number(attackerAlliance.attack)||0,allHealth:Number(attackerAlliance.health)||0,unitEffects:attackerGear.unitEffects,enemyDebuffs:attackerGear.enemyDebuffs};
-        const defenderCombat={...defenderProtocols,unitResearch:defenderAlliance.units||{},allAttack:Number(defenderAlliance.attack)||0,allHealth:Number(defenderAlliance.health)||0,unitEffects:defenderGear.unitEffects,enemyDebuffs:defenderGear.enemyDebuffs};
-        const result=fight(data.units||{},validDefenders,data.formation,attackerCombat,{
-          playerDefense:true,
-          defenderUnitUpgrades:defender.unitUpgrades||{},
-          defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit]),
-          defenderBonuses:defenderCombat
-        });
-        result.cyberKnightLevel=data.includeCyberKnight?data.cyberKnightLevel:null;
-        const defenderWounded={};
-        for(const [unit,count] of Object.entries(validDefenders)){
-          const killed=Math.max(0,Number(count||0)-Number(result.defenderSurvivors?.[unit]||0));
-          const saved=Math.floor(killed*0.30);
-          if(saved>0)defenderWounded[unit]=saved;
-        }
-        result.defenderInitial={...validDefenders};
-        result.defenderWounded=defenderWounded;
-        if(Object.keys(defenderWounded).length)this.recordHospitalWounds(mission.defender_id,"player-defense",mission.id,defenderWounded,"waiting");
-        const attackerWounded={};
-        for(const [unit,count] of Object.entries(data.units||{})){
-          const saved=Math.floor(Math.max(0,Number(count||0)-Number(result.survivors?.[unit]||0))*0.30);
-          if(saved>0)attackerWounded[unit]=saved;
-        }
-        result.attackerWounded=attackerWounded;
-        if(Object.keys(attackerWounded).length)this.recordHospitalWounds(mission.attacker_id,"player-attack",mission.id,attackerWounded,"waiting");
-        const cargo=calculateCargoCapacity(result.survivors||{});
-        const loot=result.victory ? calculateLoot(defender.resources,cargo) : {Gold:0,Iron:0,Water:0,Solar:0};
-        result.cargoCapacity=cargo;
-        result.loot=loot;
-        result.totalLoot=Object.values(loot).reduce((sum,amount)=>sum+amount,0);
-        if(result.totalLoot>0){
-          for(const resource of ["Gold","Iron","Water","Solar"]){
-            defender.resources[resource]=(Number(defender.resources[resource])||0)-loot[resource];
-            attacker.resources[resource]=(Number(attacker.resources[resource])||0)+loot[resource];
+  resolvePlayerMissions(_userId, now=Date.now()) {
+    return this.advanceCampaignTimeline(now);
+  }
+
+  advanceCampaignTimeline(now=Date.now()) {
+    if (this.advancingCampaignTimeline) return;
+    return db.transaction(() => {
+      this.advancingCampaignTimeline = true;
+      try {
+        let settledResourceMines = 0;
+        const nextEvent = db.prepare(`SELECT MIN(at) AS at FROM (
+          SELECT MIN(arrives_at) AS at FROM player_missions WHERE resolved_at IS NULL
+          UNION ALL SELECT MIN(returns_at) FROM player_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL
+          UNION ALL SELECT MIN(arrives_at) FROM alien_missions WHERE resolved_at IS NULL
+          UNION ALL SELECT MIN(returns_at) FROM alien_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL
+          UNION ALL SELECT MIN(arrives_at) FROM mothership_attacks WHERE resolved_at IS NULL
+          UNION ALL SELECT MIN(arrives_at) FROM alliance_reinforcements WHERE delivered_at IS NULL AND recall_at IS NULL AND returned_at IS NULL
+          UNION ALL SELECT MIN(recall_at) FROM alliance_reinforcements WHERE recall_at IS NOT NULL AND returned_at IS NULL
+          UNION ALL SELECT MIN(CASE WHEN report IS NULL THEN arrives_at ELSE returns_at END)
+            FROM player_scout_missions WHERE returned_at IS NULL
+          UNION ALL SELECT MIN(CASE WHEN report IS NULL THEN arrives_at ELSE returns_at END)
+            FROM scout_missions WHERE returned_at IS NULL
+          UNION ALL SELECT MIN(attack.arrives_at) FROM saturday_invasion_attacks attack
+            JOIN saturday_invasion_runs run ON run.id=attack.run_id
+            JOIN saturday_invasion_seasons season ON season.week_start=run.week_start
+            WHERE run.status='active' AND season.settled=0 AND attack.resolved_at IS NULL
+        )`);
+        for (let at=nextEvent.get().at; at!==null && at<=now; at=nextEvent.get().at) {
+          this.settleAllianceMines(at);
+          settledResourceMines += this.settleResourceMines(at);
+          const defenders=db.prepare(`SELECT recipient_id AS user_id FROM alliance_reinforcements
+            WHERE arrives_at<=? AND delivered_at IS NULL AND recall_at IS NULL AND returned_at IS NULL
+            UNION SELECT sender_id FROM alliance_reinforcements WHERE recall_at<=? AND returned_at IS NULL`).all(at,at);
+          for (const {user_id} of defenders) this.settleAllianceReinforcements(user_id,at);
+          const aliens=db.prepare(`SELECT DISTINCT user_id FROM alien_missions WHERE
+            (resolved_at IS NULL AND arrives_at<=?) OR (resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?)`).all(at,at);
+          for (const {user_id} of aliens) this.resolveAlienMissions(user_id,at);
+          const ships=db.prepare("SELECT DISTINCT event_id FROM mothership_attacks WHERE resolved_at IS NULL AND arrives_at<=?").all(at);
+          for (const {event_id} of ships) this.resolveMothershipAttacks(event_id,at);
+          // Base arrivals and returns at the same instant are available for defense.
+          const scouts=db.prepare(`SELECT user_id FROM player_scout_missions WHERE returned_at IS NULL
+            AND CASE WHEN report IS NULL THEN arrives_at ELSE returns_at END<=?
+            UNION SELECT user_id FROM scout_missions WHERE returned_at IS NULL
+            AND CASE WHEN report IS NULL THEN arrives_at ELSE returns_at END<=?`).all(at,at);
+          for (const {user_id} of scouts) {
+            if (!this.syncGame(user_id,at)) throw new Error("Scout march has no player progress");
           }
-          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(attacker.resources),mission.attacker_id);
-          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(defender.resources),mission.defender_id);
+          this.settlePlayerMissionsAt(at);
+          if (db.prepare(`SELECT 1 FROM saturday_invasion_attacks attack
+            JOIN saturday_invasion_runs run ON run.id=attack.run_id AND run.status='active'
+            JOIN saturday_invasion_seasons season ON season.week_start=run.week_start AND season.settled=0
+            WHERE attack.resolved_at IS NULL AND attack.arrives_at<=? LIMIT 1`).get(at)) {
+            this.resolveSaturdayAllianceInvasions(at,true);
+          }
         }
-        for(const [unit,count] of Object.entries(result.defenderSurvivors||{})) defender.army[unit]=count;
-        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(defender.army),mission.defender_id);
-        const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
-        db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?")
-          .run(now,now+travelMs,JSON.stringify(result),mission.id);
+        this.settleAllianceMines(now);
+        return settledResourceMines + this.settleResourceMines(now);
+      } finally {
+        this.advancingCampaignTimeline = false;
       }
-      return true;
-    })();
+    }).immediate();
+  }
+
+  settlePlayerMissionsAt(now) {
+    const returning=db.prepare("SELECT * FROM player_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=? ORDER BY returns_at,id").all(now);
+    for(const mission of returning){
+      const result=JSON.parse(mission.result||"{}");
+      const current=this.syncGame(mission.attacker_id,mission.returns_at);
+      if(current){
+        for(const [unit,count] of Object.entries(result.survivors||{})) current.army[unit]=(Number(current.army[unit])||0)+count;
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mission.attacker_id);
+      }
+      db.prepare("UPDATE player_missions SET returned_at=? WHERE id=?").run(mission.returns_at,mission.id);
+    }
+    const due=db.prepare("SELECT * FROM player_missions WHERE resolved_at IS NULL AND arrives_at<=? ORDER BY arrives_at,id").all(now);
+    for(const mission of due){
+      const at=mission.arrives_at;
+      const data=JSON.parse(mission.army);
+      const attacker=this.syncGame(mission.attacker_id,at);
+      const defender=this.syncGame(mission.defender_id,at);
+      if(!attacker||!defender){
+        const failed={victory:false,rounds:0,report:[],survivors:data.units||{},defenderSurvivors:{},defendersRemaining:0,error:"A player base is unavailable."};
+        db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?").run(at,at+Math.max(1000,mission.arrives_at-mission.launched_at),JSON.stringify(failed),mission.id);
+        continue;
+      }
+      const shield=db.prepare("SELECT expires_at FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(mission.defender_id,at);
+      if(shield||this.beginnerProtectionUntil(mission.defender_id,at)){
+        const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
+        const shielded={victory:false,rounds:0,report:[],survivors:data.units||{},defenderInitial:defender.army||{},defenderSurvivors:defender.army||{},
+          defendersRemaining:Object.values(defender.army||{}).reduce((sum,count)=>sum+Number(count||0),0),
+          loot:{Gold:0,Iron:0,Water:0,Solar:0},totalLoot:0,cargoCapacity:0,shielded:true};
+        db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?")
+          .run(at,at+travelMs,JSON.stringify(shielded),mission.id);
+        continue;
+      }
+      const defence=this.getFormations(mission.defender_id);
+      const defenseRows=defence.defenseSlot ? defence.defensePresets[defence.defenseSlot] : null;
+      const fallback=defaultFormation(true);
+      const defenseFormation=Object.entries(defender.army).filter(([,count])=>Number(count)>0).map(([unit,count])=>({
+        unit,count,row:defenseRows?.[unit]||fallback[unit]||1
+      }));
+      const {fight,playerTypes}=require("../shared/combatEngine");
+      const validDefenders=Object.fromEntries(Object.entries(defender.army).filter(([unit,count])=>playerTypes[unit]&&Number(count)>0));
+      const attackerGear=data.includeCyberKnight?this.equipmentBonuses(mission.attacker_id):equipmentCombatBonuses({}),defenderGear=this.equipmentBonuses(mission.defender_id);
+      const attackerProtocols=this.protocolCombatBonuses(mission.attacker_id,attackerGear,defenderGear),defenderProtocols=this.protocolCombatBonuses(mission.defender_id,defenderGear,attackerGear);
+      const attackerAlliance=data.allianceCombat||attacker.allianceBonuses||{},defenderAlliance=defender.allianceBonuses||{};
+      const attackerCombat={...attackerProtocols,unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{},unitResearch:attackerAlliance.units||{},allAttack:Number(attackerAlliance.attack)||0,allHealth:Number(attackerAlliance.health)||0,unitEffects:attackerGear.unitEffects,enemyDebuffs:attackerGear.enemyDebuffs};
+      const defenderCombat={...defenderProtocols,unitResearch:defenderAlliance.units||{},allAttack:Number(defenderAlliance.attack)||0,allHealth:Number(defenderAlliance.health)||0,unitEffects:defenderGear.unitEffects,enemyDebuffs:defenderGear.enemyDebuffs};
+      const result=fight(data.units||{},validDefenders,data.formation,attackerCombat,{
+        playerDefense:true,
+        random:missionRandom(mission),
+        defenderUnitUpgrades:defender.unitUpgrades||{},
+        defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit]),
+        defenderBonuses:defenderCombat
+      });
+      result.cyberKnightLevel=data.includeCyberKnight?data.cyberKnightLevel:null;
+      const defenderWounded={};
+      for(const [unit,count] of Object.entries(validDefenders)){
+        const killed=Math.max(0,Number(count||0)-Number(result.defenderSurvivors?.[unit]||0));
+        const saved=Math.floor(killed*0.30);
+        if(saved>0)defenderWounded[unit]=saved;
+      }
+      result.defenderInitial={...validDefenders};
+      result.defenderWounded=defenderWounded;
+      if(Object.keys(defenderWounded).length)this.recordHospitalWounds(mission.defender_id,"player-defense",mission.id,defenderWounded,"waiting",null,at);
+      const attackerWounded={};
+      for(const [unit,count] of Object.entries(data.units||{})){
+        const saved=Math.floor(Math.max(0,Number(count||0)-Number(result.survivors?.[unit]||0))*0.30);
+        if(saved>0)attackerWounded[unit]=saved;
+      }
+      result.attackerWounded=attackerWounded;
+      if(Object.keys(attackerWounded).length)this.recordHospitalWounds(mission.attacker_id,"player-attack",mission.id,attackerWounded,"waiting",null,at);
+      const cargo=calculateCargoCapacity(result.survivors||{});
+      const loot=result.victory ? calculateLoot(defender.resources,cargo) : {Gold:0,Iron:0,Water:0,Solar:0};
+      result.cargoCapacity=cargo;
+      result.loot=loot;
+      result.totalLoot=Object.values(loot).reduce((sum,amount)=>sum+amount,0);
+      if(result.totalLoot>0){
+        for(const resource of ["Gold","Iron","Water","Solar"]){
+          defender.resources[resource]=(Number(defender.resources[resource])||0)-loot[resource];
+          attacker.resources[resource]=(Number(attacker.resources[resource])||0)+loot[resource];
+        }
+        db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(attacker.resources),mission.attacker_id);
+        db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(defender.resources),mission.defender_id);
+      }
+      for(const [unit,count] of Object.entries(result.defenderSurvivors||{})) defender.army[unit]=count;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(defender.army),mission.defender_id);
+      const travelMs=Math.max(1000,mission.arrives_at-mission.launched_at);
+      db.prepare("UPDATE player_missions SET resolved_at=?,returns_at=?,result=?,seen_at=NULL,attacker_seen_at=NULL,defender_seen_at=NULL WHERE id=?")
+        .run(at,at+travelMs,JSON.stringify(result),mission.id);
+    }
+    return true;
   }
 
   recallPlayerAttack(userId, missionId) {
@@ -2180,6 +2374,7 @@ class DatabaseManager {
   tradeBetweenBases() { return {error:"Instant transfers are disabled. Use the marketplace offer and acceptance flow."}; }
 
   settleEndedEvents(now=Date.now()) {
+    this.advanceCampaignTimeline(now);
     const events=db.prepare(`SELECT id,ends_at FROM mothership_events
       WHERE (ends_at<=? AND rewards_distributed=0)
         OR id IN (SELECT event_id FROM mothership_attacks WHERE resolved_at IS NULL AND arrives_at<=?)`).all(now,now);
@@ -2206,19 +2401,19 @@ class DatabaseManager {
     return cost;
   }
 
-  recordHospitalWounds(userId,source,sourceId,wounded,status="waiting",recoveryAt=null) {
+  recordHospitalWounds(userId,source,sourceId,wounded,status="waiting",recoveryAt=null,createdAt=Date.now()) {
     const cleaned=Object.fromEntries(Object.entries(wounded||{}).map(([unit,count])=>[unit,Math.max(0,Math.floor(Number(count)||0))]).filter(([,count])=>count>0));
     if(!Object.keys(cleaned).length)return null;
     const cost={Gold:0,Iron:0,Water:0,Solar:0};
     const result=db.prepare("INSERT INTO hospital_entries(user_id,source,source_id,wounded,status,healing_cost,created_at,heals_at) VALUES (?,?,?,?,?,?,?,?)")
-      .run(userId,source,sourceId,JSON.stringify(cleaned),status,JSON.stringify(cost),Date.now(),recoveryAt);
+      .run(userId,source,sourceId,JSON.stringify(cleaned),status,JSON.stringify(cost),createdAt,recoveryAt);
     return Number(result.lastInsertRowid);
   }
 
   recoverEventHospital(source,sourceId,now=Date.now()) {
     const rows=db.prepare("SELECT * FROM hospital_entries WHERE source=? AND source_id=? AND status='event'").all(source,sourceId);
     for(const row of rows){
-      const current=this.syncGame(row.user_id);if(!current)continue;
+      const current=this.syncGame(row.user_id,now);if(!current)continue;
       for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),row.user_id);
       db.prepare("UPDATE hospital_entries SET status='healed',recovered_at=? WHERE id=? AND status='event'").run(now,row.id);
@@ -2247,9 +2442,16 @@ class DatabaseManager {
           end-=count*duration;
         }
         if(!Object.keys(ready).length)continue;
-        const reserve=db.prepare(`INSERT INTO hospital_mobilization(user_id,unit,quantity) VALUES (?,?,?)
-          ON CONFLICT(user_id,unit) DO UPDATE SET quantity=quantity+excluded.quantity`);
-        for(const [unit,count] of Object.entries(ready))reserve.run(userId,unit,count);
+        if(["player-defense","player-attack","alien-base"].includes(row.source)){
+          const reserve=db.prepare(`INSERT INTO hospital_mobilization(user_id,unit,quantity) VALUES (?,?,?)
+            ON CONFLICT(user_id,unit) DO UPDATE SET quantity=quantity+excluded.quantity`);
+          for(const [unit,count] of Object.entries(ready))reserve.run(userId,unit,count);
+        }else{
+          const current=this.syncGame(userId,now);
+          if(!current)continue;
+          for(const [unit,count] of Object.entries(ready))current.army[unit]=(Number(current.army[unit])||0)+count;
+          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+        }
         if(Object.keys(remaining).length)db.prepare("UPDATE hospital_entries SET wounded=? WHERE id=? AND status='healing'").run(JSON.stringify(Object.fromEntries(Object.entries(remaining).reverse())),row.id);
         else db.prepare("UPDATE hospital_entries SET status='healed',recovered_at=? WHERE id=? AND status='healing'").run(now,row.id);
       }
@@ -2318,13 +2520,13 @@ class DatabaseManager {
     })();
   }
 
-  resolveMothershipAttacks(eventId) {
+  resolveMothershipAttacks(eventId, now=Date.now()) {
+    if (!this.advancingCampaignTimeline) this.advanceCampaignTimeline(now);
     return db.transaction(()=>{
-    const now=Date.now();
     const due=db.prepare("SELECT * FROM mothership_attacks WHERE event_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(eventId,now);
     for(const attack of due){
-      const current=this.syncGame(attack.user_id),army=JSON.parse(attack.army),formation=JSON.parse(attack.formation);
-      if(!current)continue;
+      const current=this.syncGame(attack.user_id,attack.arrives_at),army=JSON.parse(attack.army),formation=JSON.parse(attack.formation);
+      if(!current)throw new Error("Mothership march has no player progress");
       const {playerTypes}=require("../shared/combatEngine");
       const gear=this.getUserEquipment(attack.user_id),items=Object.values(gear?.equippedItems||{}),gearEffects=this.equipmentBonuses(attack.user_id);
       let gearAttack=0,gearXp=0;
@@ -2334,7 +2536,7 @@ class DatabaseManager {
         if(/mother ship damage|army attack|attack damage/i.test(stat))gearAttack+=Number(match[1]);
         if(/experience gain|xp gain/i.test(stat))gearXp+=Number(match[1]);
       }
-      const alliance=current.allianceBonuses||{},buffs=db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(attack.user_id,now);
+      const alliance=current.allianceBonuses||{},buffs=db.prepare("SELECT kind FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(attack.user_id,attack.arrives_at);
       const buffAttack=buffs.some(b=>b.kind==="attack")?10:0,protocols={
         infantry:this.protocolBonusWithEquipment(attack.user_id,"Infantry Command",gearEffects),
         ranged:this.protocolBonusWithEquipment(attack.user_id,"Precision Fire",gearEffects),
@@ -2366,21 +2568,21 @@ class DatabaseManager {
       // Mother Ship attacks are score runs: return the entire committed army after every battle.
       for(const [unit,count] of Object.entries(army))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),attack.user_id);
-      db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=? WHERE id=?").run(now,damage,xp,attack.id);
+      db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=? WHERE id=?").run(attack.arrives_at,damage,xp,attack.id);
       this.sideQuests.record(attack.user_id,"mothership",null,1,attack.arrives_at);
       db.prepare("UPDATE mothership_events SET hp_remaining=MAX(1,hp_remaining-?) WHERE id=?").run(damage,eventId);
     }
     // Release troops from earlier versions that kept Mother Ship armies in event hospital until closing.
     const held=db.prepare("SELECT * FROM hospital_entries WHERE source='mothership' AND source_id=? AND status='event'").all(eventId);
     for(const row of held){
-      const current=this.syncGame(row.user_id);if(!current)continue;
+      const current=this.syncGame(row.user_id,now);if(!current)continue;
       for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),row.user_id);
       db.prepare("UPDATE hospital_entries SET status='healed',recovered_at=? WHERE id=? AND status='event'").run(now,row.id);
     }
     const legacy=db.prepare("SELECT * FROM mothership_hospital WHERE event_id=? AND status IN ('waiting','healing')").all(eventId);
     for(const row of legacy){
-      const current=this.syncGame(row.user_id);if(!current)continue;
+      const current=this.syncGame(row.user_id,now);if(!current)continue;
       for(const [unit,count] of Object.entries(JSON.parse(row.wounded||"{}")))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),row.user_id);
       db.prepare("UPDATE mothership_hospital SET status='healed' WHERE id=? AND status IN ('waiting','healing')").run(row.id);
@@ -2475,27 +2677,29 @@ class DatabaseManager {
     return started;
   }
 
-  resolveSaturdayAllianceInvasions(now=Date.now()) {
+  resolveSaturdayAllianceInvasions(now=Date.now(), arrivalsOnly=false) {
+    if (!this.advancingCampaignTimeline) this.advanceCampaignTimeline(now);
     return db.transaction(()=>{
       const events=db.prepare("SELECT r.*,s.ends_at FROM saturday_invasion_runs r JOIN saturday_invasion_seasons s ON s.week_start=r.week_start WHERE r.status='active' AND s.settled=0 ORDER BY r.id").all();
       const cancelPendingAttacks=(runId,userId,at)=>db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE run_id=? AND user_id=? AND resolved_at IS NULL")
         .run(at,JSON.stringify({cancelled:true,eliminated:true}),runId,userId);
       for(const event of events){
-        const dueAttacks=db.prepare("SELECT * FROM saturday_invasion_attacks WHERE run_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(event.id,now);
+        const dueAttacks=db.prepare("SELECT * FROM saturday_invasion_attacks WHERE run_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY arrives_at,id").all(event.id,now);
         for(const attack of dueAttacks){
+          const at=attack.arrives_at;
           const participant=db.prepare("SELECT * FROM saturday_invasion_members WHERE run_id=? AND user_id=?").get(event.id,attack.user_id);
           if(!participant||participant.eliminated){
-            if(participant?.eliminated)cancelPendingAttacks(event.id,attack.user_id,now);
-            else db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify({cancelled:true}),attack.id);
+            if(participant?.eliminated)cancelPendingAttacks(event.id,attack.user_id,at);
+            else db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(at,JSON.stringify({cancelled:true}),attack.id);
             continue;
           }
-          this.settleAllianceReinforcements(attack.user_id);
-          const current=this.syncGame(attack.user_id);
+          this.settleAllianceReinforcements(attack.user_id,at);
+          const current=this.syncGame(attack.user_id,at);
           const army=Object.fromEntries(Object.entries(current?.army||{}).filter(([,count])=>Number(count)>0));
           const armySize=Object.values(army).reduce((sum,count)=>sum+Number(count||0),0);
           if(!current||!armySize){
             db.prepare("UPDATE saturday_invasion_members SET eliminated=1 WHERE run_id=? AND user_id=?").run(event.id,attack.user_id);
-            cancelPendingAttacks(event.id,attack.user_id,now);
+            cancelPendingAttacks(event.id,attack.user_id,at);
             continue;
           }
           const level=attack.level,aliens=Object.fromEntries(Object.entries(this.getAlienArmy(level)).map(([unit,count])=>[unit,Math.ceil(Number(count)*1.5)]));
@@ -2508,11 +2712,11 @@ class DatabaseManager {
           const result=combat.fight(aliens,army,null,{
             ...protocols,unitResearch:alliance.units||{},unitUpgrades:current.unitUpgrades,allAttack:Number(alliance.attack)||0,allHealth:protocols.allHealth+(Number(alliance.health)||0),
             unitEffects:gear.unitEffects,enemyDebuffs:gear.enemyDebuffs
-          },{playerDefense:true,defenderFormation: defenseFormation,attackerIsAlien:true});
+          },{playerDefense:true,defenderFormation: defenseFormation,attackerIsAlien:true,random:missionRandom({id:attack.id,defender_id:attack.user_id,launched_at:attack.launched_at})});
           const survivors=result.defenderSurvivors||{},wounded={};
           for(const [unit,count] of Object.entries(army)){const lost=Math.max(0,(Number(count)||0)-(Number(survivors[unit])||0));if(lost>0)wounded[unit]=lost;}
           const lost=Object.values(wounded).reduce((sum,count)=>sum+Number(count||0),0);
-          if(Object.keys(wounded).length)this.recordHospitalWounds(attack.user_id,"saturday-invasion",event.id,wounded,"event",event.ends_at);
+          if(Object.keys(wounded).length)this.recordHospitalWounds(attack.user_id,"saturday-invasion",event.id,wounded,"event",event.ends_at,at);
           const enemyCount=Object.values(aliens).reduce((sum,count)=>sum+Number(count||0),0);
           const enemyRemaining=Object.values(result.survivors||{}).reduce((sum,count)=>sum+Number(count||0),0);
           const score=Math.max(0,enemyCount-enemyRemaining);
@@ -2520,9 +2724,10 @@ class DatabaseManager {
           const remaining=Object.values(survivors).reduce((sum,count)=>sum+Number(count||0),0),eliminated=remaining<=0;
           const battle={level,rounds:result.rounds,report:result.report,enemyUnits:enemyCount,alienCasualties:score,troopsLost:lost,troopsWounded:lost,remaining};
           db.prepare("UPDATE saturday_invasion_members SET score=score+?,waves=waves+1,eliminated=?,last_battle=? WHERE run_id=? AND user_id=?").run(score,eliminated?1:0,JSON.stringify(battle),event.id,attack.user_id);
-          db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(now,JSON.stringify(battle),attack.id);
-          if(eliminated)cancelPendingAttacks(event.id,attack.user_id,now);
+          db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(at,JSON.stringify(battle),attack.id);
+          if(eliminated)cancelPendingAttacks(event.id,attack.user_id,at);
         }
+        if (arrivalsOnly) continue;
         const dueMembers=db.prepare("SELECT * FROM saturday_invasion_members WHERE run_id=? AND eliminated=0 AND waves<20 AND next_attack_at<=? ORDER BY user_id").all(event.id,now);
         for(const participant of dueMembers){
           if(db.prepare("SELECT 1 FROM saturday_invasion_attacks WHERE run_id=? AND user_id=? AND resolved_at IS NULL LIMIT 1").get(event.id,participant.user_id))continue;
@@ -2546,6 +2751,7 @@ class DatabaseManager {
           this.recoverEventHospital("saturday-invasion",event.id,now);
         }
       }
+      if (arrivalsOnly) return events.length;
       const seasons=db.prepare("SELECT week_start FROM saturday_invasion_seasons WHERE settled=0 AND ends_at<=?").all(now);
       for(const season of seasons)this.settleSaturdayAllianceInvasion(season.week_start);
       return events.length;
@@ -2630,7 +2836,7 @@ Personal points / Лични точки: ${Number(player.score||0).toLocaleStrin
 Waves / Вълни: ${player.waves}/20
 Alliance / Алианс: ${player.alliance}
 Alliance rank / Място на алианса: #${allianceRank}
-Alliance points / Точки на алианса: ${Number(ranking[allianceRank-1]?.score||0).toLocaleString("en-US")}
+Alliance points / Алианс точки: ${Number(ranking[allianceRank-1]?.score||0).toLocaleString("en-US")}
 
 YOUR ALLIANCE REWARD / ТВОЯТА НАГРАДА ОТ АЛИАНСА:
 ${prizeText}
@@ -2810,15 +3016,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   labyrinthMonster(room){
-    const stage=Math.max(1,Math.min(30,Math.ceil(room/10)));
-    const chamber=((room-1)%10)+1;
-    const boss=chamber===10;
-    const base=1000+(chamber-1)*500+(boss?4500:0);
-    const hp=base+(stage-1)*10000;
-    const damage=Math.round((65+chamber*17)*(stage===1?1:8*Math.pow(1.22,stage-2)));
-    const heal=stage<4?0:Math.min(15,2+Math.floor((stage-4)/3)*2+(boss?1:0));
-    const names=["Spore Mutant","Xeno Stalker","Plasma Beast","Cave Reaper","Void Sentinel","Alien Warden","Abyss Predator","Crystal Devourer","Nightmare Guardian","Alien Overlord"];
-    return {room,stage,chamber,boss,name:names[chamber-1],hp,damage,heal};
+    return labyrinthMonster(room);
   }
 
   labyrinthKnight(userId){
@@ -2854,40 +3052,6 @@ Rewards are distributed per participating player, not once per alliance. / На�
       db.prepare("UPDATE labyrinth_players SET mission_day=?,missions_today=0,last_mission_at=0 WHERE user_id=?").run(today,userId);
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
-    // One-time test recovery for MazeRunner only; does not alter earned HP, crystals or progress.
-    if(Number(row.combat_one_time_reset||0)<2&&db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"){
-      db.prepare("UPDATE labyrinth_players SET missions_today=0,combat_active='',combat_one_time_reset=2 WHERE user_id=?").run(userId);
-      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-    }
-    // One-time recovery for MazeRunner after the Labyrinth balance change.
-    // Preserve historical progress, earned HP and crystals; restart at floor 2,
-    // room 1 with fresh attempts for the recovery day.
-    if(db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"){
-      db.exec("CREATE TABLE IF NOT EXISTS labyrinth_recovery_log (user_id INTEGER NOT NULL, recovery_key TEXT NOT NULL, previous_room INTEGER NOT NULL, previous_missions INTEGER NOT NULL, recovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,recovery_key))");
-      const recoveryKey="mazerunner-floor-2-recovery-2026-11-21";
-      db.transaction(()=>{
-        if(db.prepare("SELECT 1 FROM labyrinth_recovery_log WHERE user_id=? AND recovery_key=?").get(userId,recoveryKey))return;
-        const previous=db.prepare("SELECT combat_room,missions_today FROM labyrinth_players WHERE user_id=?").get(userId);
-        if(!previous||Number(previous.combat_room)<11)return;
-        db.prepare("INSERT INTO labyrinth_recovery_log(user_id,recovery_key,previous_room,previous_missions) VALUES (?,?,?,?)").run(userId,recoveryKey,previous.combat_room,previous.missions_today);
-        db.prepare("UPDATE labyrinth_players SET combat_room=11,missions_today=0,combat_active='',combat_log='[]' WHERE user_id=?").run(userId);
-      })();
-      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-    }
-    // One-time recovery for KakaMarianka to retry floor 2 fairly.
-    // Preserve earned HP, equipment, crystals and record prior progress.
-    if(db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="KakaMarianka"){
-      db.exec("CREATE TABLE IF NOT EXISTS labyrinth_recovery_log (user_id INTEGER NOT NULL, recovery_key TEXT NOT NULL, previous_room INTEGER NOT NULL, previous_missions INTEGER NOT NULL, recovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,recovery_key))");
-      const recoveryKey="kak amarianka-floor-2-retry-2026-11-21";
-      db.transaction(()=>{
-        if(db.prepare("SELECT 1 FROM labyrinth_recovery_log WHERE user_id=? AND recovery_key=?").get(userId,recoveryKey))return;
-        const previous=db.prepare("SELECT combat_room,missions_today FROM labyrinth_players WHERE user_id=?").get(userId);
-        if(!previous||Number(previous.combat_room)<11)return;
-        db.prepare("INSERT INTO labyrinth_recovery_log(user_id,recovery_key,previous_room,previous_missions) VALUES (?,?,?,?)").run(userId,recoveryKey,previous.combat_room,previous.missions_today);
-        db.prepare("UPDATE labyrinth_players SET combat_room=11,missions_today=0,combat_active='',combat_log='[]' WHERE user_id=?").run(userId);
-      })();
-      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-    }
     // Credit Labyrinth green crystals to the same wallet used by alliance donations.
     // Reconcile previously earned Labyrinth crystals once per player, without touching donations.
     db.exec("CREATE TABLE IF NOT EXISTS labyrinth_green_wallet_sync (user_id INTEGER PRIMARY KEY, synced_at INTEGER NOT NULL)");
@@ -2905,13 +3069,13 @@ Rewards are distributed per participating player, not once per alliance. / На�
     if(!alreadySynced)db.prepare("INSERT OR IGNORE INTO labyrinth_green_wallet_sync(user_id,synced_at) VALUES (?,?)").run(userId,Date.now());
     const crystals=JSON.parse(row.crystals||"{}");
     const room=Math.max(1,Math.min(301,Number(row.combat_room)||1));
-    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
+    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,bonusBattles:Number(row.bonus_battles),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
   }
 
   labyrinthBattle(userId,action="status",options={}){
-    const status=this.getLabyrinthStatus(userId);
-    if(!status.unlocked)return {error:"Labyrinth is locked."};
     return db.transaction(()=>{
+      const status=this.getLabyrinthStatus(userId);
+      if(!status.unlocked)return {error:"Labyrinth is locked."};
       const today=new Date().toISOString().slice(0,10);
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
       let active;try{active=JSON.parse(row.combat_active||"null");}catch(e){active=null;}
@@ -2923,37 +3087,22 @@ Rewards are distributed per participating player, not once per alliance. / На�
       }
       if(action==="start"){
         if(active)return {error:"Finish the current battle before starting another."};
-        if(Number(row.missions_today)>=10)return {error:"All 10 daily battles have been used."};
+        const extra=Number(row.missions_today)>=10;
+        if(extra&&!row.bonus_battles)return {error:"All 10 daily battles have been used."};
         const progress=Math.max(1,Math.min(301,Number(row.combat_room)||1));
         if(progress>300)return {error:"The final medicine has already been found."};
         const requested=Number(options.room);
         const room=Number.isInteger(requested)&&requested>=1&&requested<progress?requested:progress;
 
         const monster=this.labyrinthMonster(room),knight=this.labyrinthKnight(userId);
-        const monsterMaxHp=Math.max(1,Math.round(monster.hp*(1-knight.enemyHpReduction/100)));
-        active={room,monster,knight,knightHp:knight.maxHp,monsterHp:monsterMaxHp,monsterMaxHp,round:0,log:[],startedAt:Date.now()};
-        db.prepare("UPDATE labyrinth_players SET combat_active=?,missions_today=missions_today+1 WHERE user_id=?").run(JSON.stringify(active),userId);
+        active=createBattle(monster,knight,Date.now());
+        db.prepare("UPDATE labyrinth_players SET combat_active=?,missions_today=missions_today+?,bonus_battles=bonus_battles-? WHERE user_id=?").run(JSON.stringify(active),extra?0:1,extra?1:0,userId);
         this.sideQuests.record(userId,"labyrinthStart");
         return {battle:active,status:this.getLabyrinthStatus(userId)};
       }
       if(action!=="strike"||!active)return {error:"Start a battle first."};
-      if(active.round>=150){active.knightHp=0;}
-      active.round++;
-      const {knight,monster}=active;
-      const damage=knight.attack;
-      active.monsterHp=Math.max(0,active.monsterHp-damage);
-      active.log.push({round:active.round,actor:"knight",damage,knightHp:active.knightHp,monsterHp:active.monsterHp});
-      if(active.monsterHp>0){
-        const monsterDamage=Math.max(1,Math.round(monster.damage*(1-knight.enemyAttackReduction/100)));
-        active.knightHp=Math.max(0,active.knightHp-monsterDamage);
-        if(active.knightHp>0&&knight.healing>0)active.knightHp=Math.min(knight.maxHp,active.knightHp+Math.floor((knight.maxHp-active.knightHp)*knight.healing/100));
-        active.log.push({round:active.round,actor:"monster",damage:monsterDamage,knightHp:active.knightHp,monsterHp:active.monsterHp});
-        if(active.knightHp>0&&monster.heal>0){
-          const heal=Math.max(0,monster.heal*(1-knight.enemyHealingReduction/100));
-          active.monsterHp=Math.min(active.monsterMaxHp,active.monsterHp+Math.floor((active.monsterMaxHp-active.monsterHp)*heal/100));
-        }
-      }
-      const victory=active.monsterHp<=0,defeat=active.knightHp<=0;
+      const {monster}=active;
+      const {victory,defeat}=strike(active);
       if(!victory&&!defeat){
         db.prepare("UPDATE labyrinth_players SET combat_active=? WHERE user_id=?").run(JSON.stringify(active),userId);
         return {battle:active,status:this.getLabyrinthStatus(userId)};
@@ -2972,14 +3121,14 @@ Rewards are distributed per participating player, not once per alliance. / На�
       db.prepare("UPDATE labyrinth_players SET combat_active='',combat_room=?,combat_hp_bonus=combat_hp_bonus+?,combat_level_day=?,combat_log=?,crystals=?,medicine_found=?,completed_at=? WHERE user_id=?")
         .run(nextRoom,gainedHp,completedLevel?today:row.combat_level_day,JSON.stringify(active.log),JSON.stringify(crystals),finished?1:row.medicine_found,finished?Date.now():row.completed_at,userId);
       return {battle:null,victory,defeat,gainedHp,crystalReward,monster,log:active.log,medicineFound:finished,status:this.getLabyrinthStatus(userId)};
-    })();
+    }).immediate();
   }
 
   runLabyrinthMission(userId,options={}){
     const start=this.labyrinthBattle(userId,"start",options);
     if(start.error)return start;
     let result=start;
-    for(let i=0;i<150&&result.battle;i++)result=this.labyrinthBattle(userId,"strike");
+    for(let i=0;i<=roundLimit&&result.battle;i++)result=this.labyrinthBattle(userId,"strike");
     return {...result,success:!result.error,room:start.battle?.room};
   }
 
@@ -3064,7 +3213,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerScoutMissions:this.getPlayerScoutMissions(userId),playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,gatheringReports,mothershipEvent};
+    return {scoutMissions,playerScoutMissions:this.getPlayerScoutMissions(userId),playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),allianceMineMarch:this.getAllianceMineMarch(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,gatheringReports,mothershipEvent};
   }
 
   getAlienStationStatus(userId){
@@ -3327,10 +3476,11 @@ Rewards are distributed per participating player, not once per alliance. / На�
     return launched;
   }
 
-  resolveAlienMissions(userId) {
+  resolveAlienMissions(userId,now=Date.now()) {
+    if (!this.advancingCampaignTimeline) this.advanceCampaignTimeline(now);
     return db.transaction(()=>{
       // Resolve Alien Base battles immediately; return survivors in the same transaction.
-      const due=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(userId,Date.now());
+      const due=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NULL AND arrives_at<=? ORDER BY id").all(userId,now);
       for(const mission of due){
         const armyData=JSON.parse(mission.army);
         const {fight}=require("../shared/combatEngine");
@@ -3350,7 +3500,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
         }
         result.wounded=wounded;
         result.xpEarned=0;
-        if(Object.keys(wounded).length)this.recordHospitalWounds(userId,"alien-base",mission.id,wounded,"waiting");
+        if(Object.keys(wounded).length)this.recordHospitalWounds(userId,"alien-base",mission.id,wounded,"waiting",null,mission.arrives_at);
         if(result.victory){
           // Alien Base equipment is awarded only for a victory.
           const slots=["HELMET","SHIELD","BOOTS","WEAPON","ARMOR","GLOVES"];
@@ -3397,17 +3547,17 @@ Rewards are distributed per participating player, not once per alliance. / На�
         }
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
         db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=MIN(50,1+CAST((prestige+1)/20 AS INTEGER)) WHERE user_id=?").run(userId);
-        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(Date.now(),mission.arrives_at,JSON.stringify(result),mission.id);
+        db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(mission.arrives_at,mission.arrives_at,JSON.stringify(result),mission.id);
         this.sideQuests.record(userId,"alienAttack",mission.level,1,mission.arrives_at);
         if(result.victory)this.sideQuests.record(userId,"alienVictory",mission.level,1,mission.arrives_at);
       }
-      const returning=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?").all(userId,Date.now());
+      const returning=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?").all(userId,now);
       for(const mission of returning){
         const result=JSON.parse(mission.result);
-        const current=this.syncGame(userId);
+        const current=this.syncGame(userId,mission.returns_at);
         for(const [unit,n] of Object.entries(result.survivors||{}))current.army[unit]=(current.army[unit]||0)+n;
         db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
-        db.prepare("UPDATE alien_missions SET returned_at=? WHERE id=?").run(Date.now(),mission.id);
+        db.prepare("UPDATE alien_missions SET returned_at=? WHERE id=?").run(mission.returns_at,mission.id);
       }
       return due.length;
     })();
@@ -3721,12 +3871,198 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
 
+  getAllianceMineMarch(userId) {
+    return db.prepare(`SELECT m.id,m.mode,m.origin_x,m.origin_y,m.launched_at,m.arrives_at,
+      m.work,m.gathered,m.capacity,m.population,m.gathering_started_at,a.id AS mineId,a.x,a.y,a.resource
+      FROM alliance_mine_marches m JOIN alliance_mines a ON a.id=m.mine_id
+      WHERE m.user_id=? AND m.returned_at IS NULL`).get(userId) || null;
+  }
+
+  getAllianceMine(userId, includeMap=false) {
+    this.settleAllianceMines();
+    const member = db.prepare(`SELECT a.id,a.leader_id FROM alliance_members m
+      JOIN alliances a ON a.id=m.alliance_id WHERE m.user_id=?`).get(userId);
+    const mine = member && db.prepare("SELECT * FROM alliance_mines WHERE alliance_id=? AND status<>'closed'").get(member.id);
+    const contributions = member ? db.prepare(`SELECT u.id,u.username,SUM(m.work)/${hour}.0 AS points
+      FROM alliance_mine_marches m JOIN alliance_mines a ON a.id=m.mine_id
+      JOIN users u ON u.id=m.user_id WHERE a.alliance_id=? AND m.work>0
+      GROUP BY u.id ORDER BY points DESC,u.id`).all(member.id) : [];
+    const now = Date.now();
+    const march = this.getAllianceMineMarch(userId);
+    const arrivedPopulation = mine?.status === "construction" ? db.prepare(
+      "SELECT COALESCE(SUM(population),0) AS total FROM alliance_mine_marches WHERE mine_id=? AND returned_at IS NULL AND arrives_at<=?"
+    ).get(mine.id,now).total : 0;
+    const incomingBuilders = mine?.status === "construction" ? db.prepare(
+      `SELECT arrives_at AS arrivesAt,SUM(population) AS population FROM alliance_mine_marches
+       WHERE mine_id=? AND returned_at IS NULL AND arrives_at>? GROUP BY arrives_at ORDER BY arrives_at`
+    ).all(mine.id,now) : [];
+    const state = {
+      active: mine ? {...mine, constructionPoints:mine.work/hour, arrivedPopulation,incomingBuilders,measuredAt:now} : null,
+      isMember: Boolean(member),
+      canPlace: !!member && member.leader_id===userId && !mine,
+      march,
+      contributions,
+      constructionGoal: constructionTarget/hour,
+    };
+    if (!includeMap) return state;
+    const allianceMines = db.prepare(`SELECT id,x,y,resource,status,alliance_id FROM alliance_mines
+      WHERE status<>'closed' AND alliance_id IS NOT NULL ORDER BY id`).all()
+      .map(tile => ({...tile, ally:tile.alliance_id===member?.id, resource:tile.resource.toLowerCase()}));
+    return {allianceMine:state, allianceMines};
+  }
+
+  notifyAllianceMine(allianceId, kind, now) {
+    db.prepare(`INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at)
+      SELECT m.user_id,?,a.name,? FROM alliance_members m JOIN alliances a ON a.id=m.alliance_id
+      WHERE a.id=?`).run(kind,now,allianceId);
+  }
+
+  placeAllianceMine(userId, x, y, resource) {
+    if (!Number.isInteger(x) || !Number.isInteger(y) || x<1 || x>100 || y<1 || y>100 || !resourceNames.includes(resource)) {
+      return {error:"Choose valid mine coordinates and a resource."};
+    }
+    return db.transaction(() => {
+      this.settleAllianceMines();
+      const alliance = db.prepare("SELECT id FROM alliances WHERE leader_id=?").get(userId);
+      if (!alliance) return {error:"Only the alliance leader can place a mine."};
+      if (db.prepare("SELECT 1 FROM alliance_mines WHERE alliance_id=? AND status<>'closed'").get(alliance.id)) {
+        return {error:"Your alliance already has an active mine."};
+      }
+      const occupied = db.prepare(`SELECT 1 FROM base_positions WHERE x=@x AND y=@y
+        UNION ALL SELECT 1 FROM resource_mines WHERE x=@x AND y=@y
+        UNION ALL SELECT 1 FROM alliance_mines WHERE x=@x AND y=@y AND status<>'closed' AND alliance_id IS NOT NULL
+        UNION ALL SELECT 1 FROM game_progress WHERE json_valid(castle_data)
+          AND json_extract(castle_data,'$.x')=@x AND json_extract(castle_data,'$.y')=@y LIMIT 1`).get({x,y});
+      if (occupied || (x===50 && y===50) || [...alienBases,...spaceStations].some(tile => tile.x===x && tile.y===y)) {
+        return {error:"Select an empty map tile."};
+      }
+      db.prepare("INSERT INTO alliance_mines(alliance_id,resource,x,y,status) VALUES(?,?,?,?,'construction')").run(alliance.id,resource,x,y);
+      this.notifyAllianceMine(alliance.id,"alliance_mine_started",Date.now());
+      return {success:true,...this.getMapResources(userId)};
+    }).immediate();
+  }
+
+  launchAllianceMineMarch(userId, mineId, mode, units) {
+    return db.transaction(() => {
+      this.settleAllianceMines();
+      const mine = db.prepare(`SELECT a.* FROM alliance_mines a JOIN alliance_members m ON m.alliance_id=a.alliance_id
+        WHERE a.id=? AND m.user_id=? AND a.status<>'closed'`).get(mineId,userId);
+      if (!mine || mine.status!==mode) return {error:"This alliance mine is unavailable for that mission."};
+      if (this.getAllianceMineMarch(userId)) return {error:"You already have an active alliance mine march."};
+      const origin = db.prepare("SELECT x,y FROM base_positions WHERE user_id=?").get(userId);
+      const current = this.syncGame(userId);
+      if (!origin || !current) return {error:"Your base could not be found."};
+      const {playerTypes} = require("../shared/combatEngine");
+      if (!units || typeof units!=="object" || Array.isArray(units) || Object.entries(units).some(([unit,count]) =>
+        !Object.hasOwn(playerTypes,unit) || !Number.isSafeInteger(count) || count<0 || count>Number(current.army[unit]||0))) {
+        return {error:"Invalid troop selection."};
+      }
+      const selected = Object.fromEntries(Object.entries(units).filter(([,count]) => count>0));
+      const population = armyPopulation(selected);
+      if (population<1 || population>marchLimit) return {error:"Select troops with a total population between 1 and 50,000."};
+      const capacity = Math.floor(calculateCargoCapacity(selected));
+      if (mode==="gathering" && capacity<1) return {error:"Select troops with cargo capacity."};
+      const now = Date.now();
+      const distance = Math.hypot(origin.x-mine.x,origin.y-mine.y);
+      const arrivesAt = now + Math.max(10000,armyTravelDuration(distance*1000,selected,this.protocolBonus(userId,"Rapid Deployment")));
+      for (const [unit,count] of Object.entries(selected)) current.army[unit] -= count;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      db.prepare(`INSERT INTO alliance_mine_marches
+        (mine_id,user_id,mode,units,population,capacity,origin_x,origin_y,launched_at,arrives_at,credited_at,gathering_started_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(mine.id,userId,mode,JSON.stringify(selected),population,capacity,origin.x,origin.y,now,arrivesAt,arrivesAt,mode==="gathering"?arrivesAt:null);
+      return {success:true,arrivesAt,...this.getMapResources(userId)};
+    }).immediate();
+  }
+
+  returnAllianceMineMarch(mine, march, reason, now) {
+    const claimed = db.prepare("UPDATE alliance_mine_marches SET returned_at=? WHERE id=? AND returned_at IS NULL").run(now,march.id);
+    if (!claimed.changes) return;
+    const current = this.syncGame(march.user_id,now);
+    if (!current) throw new Error("Alliance mine march has no base progress.");
+    for (const [unit,count] of Object.entries(JSON.parse(march.units))) current.army[unit] = (Number(current.army[unit])||0)+count;
+    db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),march.user_id);
+    if (march.mode==="gathering") {
+      current.resources[mine.resource] = (Number(current.resources[mine.resource])||0)+march.gathered;
+      db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+        .run(JSON.stringify(current.resources),march.user_id);
+      db.prepare(`INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y,source)
+        VALUES (?,?,?,?,?,?,?,?,?,'alliance')`).run(march.user_id,mine.id,mine.resource,march.gathered,march.units,now,reason,mine.x,mine.y);
+      db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'gathering_return',?,?)")
+        .run(march.user_id,mine.resource+" · "+march.gathered,now);
+    }
+  }
+
+  settleAllianceMines(now=Date.now()) {
+    if (!this.advancingCampaignTimeline) return this.advanceCampaignTimeline(now);
+    return db.transaction(() => {
+      const mines = db.prepare(`SELECT * FROM alliance_mines WHERE status<>'closed' AND alliance_id IS NOT NULL
+        AND EXISTS (SELECT 1 FROM alliance_mine_marches WHERE mine_id=alliance_mines.id AND returned_at IS NULL)`).all();
+      const activeMarches = db.prepare("SELECT * FROM alliance_mine_marches WHERE mine_id=? AND returned_at IS NULL ORDER BY id");
+      for (const mine of mines) {
+        if (mine.status==="construction") {
+          const {credits,remaining,finished,at} = settleWork(mine,activeMarches.all(mine.id),now);
+          for (const {march,amount} of credits) {
+            if (!amount) continue;
+            db.prepare("UPDATE alliance_mine_marches SET work=work+?,credited_at=? WHERE id=?").run(amount,at,march.id);
+            db.prepare(`INSERT INTO alliance_wallets(user_id,points,construction_ap_remainder)
+              VALUES (@userId,CAST(@work AS INTEGER)/${constructionApUnit},CAST(@work AS INTEGER)%${constructionApUnit})
+              ON CONFLICT(user_id) DO UPDATE SET
+                points=points+(construction_ap_remainder+CAST(@work AS INTEGER))/${constructionApUnit},
+                construction_ap_remainder=(construction_ap_remainder+CAST(@work AS INTEGER))%${constructionApUnit}`)
+              .run({userId:march.user_id,work:amount});
+          }
+          db.prepare("UPDATE alliance_mines SET work=?,status=? WHERE id=?")
+            .run(constructionTarget-remaining,finished?"gathering":"construction",mine.id);
+          if (!finished) continue;
+          db.prepare(`UPDATE alliance_mine_marches SET mode='gathering', gathering_started_at=MAX(arrives_at,?)
+            WHERE mine_id=? AND returned_at IS NULL`).run(at,mine.id);
+          this.notifyAllianceMine(mine.alliance_id,"alliance_mine_completed",at);
+          mine.status="gathering";
+        }
+        const {credits,remaining,finished,at} = settleWork(mine,activeMarches.all(mine.id),now);
+        for (const {march,amount} of credits) {
+          march.gathered += amount;
+          if (amount>0) db.prepare("UPDATE alliance_mine_marches SET gathered=? WHERE id=?").run(march.gathered,march.id);
+          const fullAt = cargoFullAt(march);
+          if (finished || (march.gathered>=march.capacity && now>=gatheringStart(march))) {
+            const depleted = finished && fullAt>=at;
+            this.returnAllianceMineMarch(mine,march,depleted?"depleted":"cargo_full",depleted?at:fullAt);
+          }
+        }
+        db.prepare("UPDATE alliance_mines SET amount=?,status=? WHERE id=?").run(remaining,finished?"closed":"gathering",mine.id);
+      }
+    }).immediate();
+  }
+
+  withdrawAllianceMine(userId, mineId) {
+    return db.transaction(() => {
+      const now = Date.now();
+      this.settleAllianceMines(now);
+      const march = db.prepare("SELECT * FROM alliance_mine_marches WHERE user_id=? AND returned_at IS NULL").get(userId);
+      if (!march || (mineId!==undefined && march.mine_id!==mineId)) return {error:"You have no active army at this alliance mine."};
+      const mine = db.prepare("SELECT * FROM alliance_mines WHERE id=?").get(march.mine_id);
+      this.returnAllianceMineMarch(mine,march,"recalled",now);
+      return {success:true};
+    }).immediate();
+  }
+
   mineCapacity(userId) {
     const tier=Number(this.playerTalents(userId).talents["Mining Operations"]||0);
     return 4 + [0,1,3,5][Math.max(0,Math.min(3,tier))];
   }
 
+  externalGatheringProgress(mine,now,cargo){
+    const start=Math.max(mine.arrives_at,mine.gathering_started_at);
+    const limit=Math.min(mine.amount,cargo);
+    const windows=this.marketBoostWindows(mine.claimed_by,"external",start,Math.max(start,now));
+    const amountAt=at=>boostedDuration(start,at,windows)*mine.gathering_rate/hour;
+    const amount=Math.min(limit,Math.floor(amountAt(now)+1e-9));
+    const finishAt=now>=start&&amount>=limit ? firstTime(start,now,at=>amountAt(at)+1e-9>=limit) : null;
+    return {amount,finishAt};
+  }
+
   settleResourceMines(now=Date.now()) {
+    if (!this.advancingCampaignTimeline) return this.advanceCampaignTimeline(now);
     return db.transaction(()=>{
       const active=db.prepare("SELECT * FROM resource_mines WHERE claimed_by IS NOT NULL ORDER BY id").all();
       let settled=0;
@@ -3734,52 +4070,53 @@ Rewards are distributed per participating player, not once per alliance. / На�
         if(!mine.gathering_started_at || !mine.gathering_rate) continue;
         const units=JSON.parse(mine.gathering_units||"{}");
         const cargo=Math.floor(calculateCargoCapacity(units));
-        const collectedLimit=Math.min(Number(mine.amount)||0,cargo);
-        const finishAt=mine.gathering_started_at+Math.ceil(collectedLimit/mine.gathering_rate*3600000);
-        if(now<finishAt) continue;
-        const depleted=collectedLimit>=Number(mine.amount);
-        const current=this.syncGame(mine.claimed_by);
-        if(current){
-          const key={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
-          current.resources[key]=(Number(current.resources[key])||0)+collectedLimit;
-          for(const [unit,count] of Object.entries(JSON.parse(mine.gathering_units||"{}"))){
-            current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
-          }
-          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
-            .run(JSON.stringify(current.resources),mine.claimed_by);
-          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mine.claimed_by);
-          db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
-            .run(mine.claimed_by,mine.id,mine.resource,collectedLimit,mine.gathering_units||"{}",now,depleted?"depleted":"cargo_full",mine.x,mine.y);
-          db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'gathering_return', ?, ?)")
-            .run(mine.claimed_by,key+" · "+collectedLimit.toLocaleString(),now);
+        const {amount:collectedLimit,finishAt}=this.externalGatheringProgress(mine,now,cargo);
+        if(finishAt===null) continue;
+        const depleted=Number(mine.amount)>0&&collectedLimit===Number(mine.amount);
+        const current=this.syncGame(mine.claimed_by,finishAt);
+        if(!current)continue;
+        const key={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
+        current.resources[key]=(Number(current.resources[key])||0)+collectedLimit;
+        for(const [unit,count] of Object.entries(units)){
+          current.army[unit]=(Number(current.army[unit])||0)+Number(count||0);
         }
+        db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+          .run(JSON.stringify(current.resources),mine.claimed_by);
+        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),mine.claimed_by);
+        db.prepare("INSERT INTO resource_gathering_reports(user_id,mine_id,resource,amount,units,returned_at,reason,x,y) VALUES (?,?,?,?,?,?,?,?,?)")
+          .run(mine.claimed_by,mine.id,mine.resource,collectedLimit,mine.gathering_units||"{}",finishAt,depleted?"depleted":"cargo_full",mine.x,mine.y);
+        db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'gathering_return', ?, ?)")
+          .run(mine.claimed_by,key+" · "+collectedLimit.toLocaleString(),now);
         if(!depleted){
           db.prepare("UPDATE resource_mines SET amount=?,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=?")
             .run(Math.max(0,Number(mine.amount)-collectedLimit),mine.id);
           settled++;
           continue;
         }
-        const blocked=new Set(db.prepare("SELECT x,y FROM base_positions").all().map(row=>row.x+":"+row.y));
-        for(const base of alienBases)blocked.add(base.x+":"+base.y);
-        for(const other of db.prepare("SELECT x,y FROM resource_mines WHERE id<>?").all(mine.id))blocked.add(other.x+":"+other.y);
-        let tile=null;
-        for(let attempt=0;attempt<10000&&!tile;attempt++){
-          const x=1+Math.floor(Math.random()*100),y=1+Math.floor(Math.random()*100);
-          if(!blocked.has(x+":"+y))tile={x,y};
-        }
-        if(!tile)throw new Error("No free map tile is available for a replacement resource mine.");
-        db.prepare("UPDATE resource_mines SET x=?,y=?,amount=5000,claimed_by=NULL,launched_at=NULL,arrives_at=NULL,origin_x=NULL,origin_y=NULL,gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=?")
-          .run(tile.x,tile.y,mine.id);
+        // The collector and remaining stock still identify this depletion.
+        if(collectedLimit>0)this.sideQuests.record(mine.claimed_by,"mine",null,1,finishAt);
+        createMine(db,mine.resource);
+        db.prepare("DELETE FROM resource_mines WHERE id=? AND claimed_by=?").run(mine.id,mine.claimed_by);
+        settled++;
+      }
+      // Repair empty, unclaimed rows left by legacy withdrawals without paying twice.
+      const empty=db.prepare("SELECT id,resource FROM resource_mines WHERE claimed_by IS NULL AND amount=0").all();
+      for(const mine of empty){
+        createMine(db,mine.resource);
+        db.prepare("DELETE FROM resource_mines WHERE id=? AND claimed_by IS NULL").run(mine.id);
         settled++;
       }
       return settled;
-    })();
+    }).immediate();
   }
 
   getResourceGatheringReports(userId) {
-    this.settleResourceMines();
-    return db.prepare("SELECT id,mine_id AS mineId,resource,amount,units,returned_at AS returnedAt,reason,x,y FROM resource_gathering_reports WHERE user_id=? ORDER BY id DESC LIMIT 50")
-      .all(Number(userId)).map(report=>({...report,units:JSON.parse(report.units||"{}")}));
+    this.advanceCampaignTimeline();
+    return db.prepare(`SELECT id,mine_id AS mineId,resource,amount,units,returned_at AS returnedAt,reason,x,y,source
+      FROM resource_gathering_reports WHERE user_id=@userId AND (source='alliance' OR id IN (
+        SELECT id FROM resource_gathering_reports WHERE user_id=@userId AND source='resource' ORDER BY id DESC LIMIT 50))
+      ORDER BY id DESC`)
+      .all({userId:Number(userId)}).map(report=>({...report,units:JSON.parse(report.units||"{}")}));
   }
 
   getMapResources(userId) {
@@ -3788,13 +4125,12 @@ Rewards are distributed per participating player, not once per alliance. / На�
     const mines=db.prepare(`SELECT m.id,m.resource,m.x,m.y,m.amount,m.claimed_by,m.launched_at,m.arrives_at,
       m.origin_x,m.origin_y,m.gathering_started_at,m.gathering_rate,m.gathering_units,u.username AS owner
       FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by ORDER BY m.id`).all().map(mine=>{
-        const elapsed=Math.max(0,now-Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now));
         const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
-        const gathered=mine.claimed_by&&mine.gathering_rate?Math.min(mine.amount,cargo,elapsed*mine.gathering_rate/3600000):0;
-        return {...mine,amount:Math.max(0,Math.floor(mine.amount-gathered))};
+        const gathered=mine.claimed_by&&mine.gathering_rate?this.externalGatheringProgress(mine,now,cargo).amount:0;
+        return {...mine,amount:Math.max(0,mine.amount-Math.floor(gathered))};
       });
     const activeMineCount=mines.filter(mine=>Number(mine.claimed_by)===Number(userId)).length;
-    return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId)};
+    return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId),...this.getAllianceMine(userId,true)};
   }
 
   startGathering(userId,mineId,selectedArmy) {
@@ -3845,9 +4181,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
       }
       const current=this.syncGame(userId);
       if(!current)return {error:"Player not found."};
-      const startAt=Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now);
       const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
-      const gathered=mine.gathering_rate?Math.min(Number(mine.amount)||0,cargo,Math.floor(Math.max(0,now-startAt)*Number(mine.gathering_rate)/3600000)):0;
+      const gathered=mine.gathering_rate?this.externalGatheringProgress(mine,now,cargo).amount:0;
       const resourceKey={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
       if(resourceKey)current.resources[resourceKey]=(Number(current.resources[resourceKey])||0)+gathered;
       const returnedUnits=JSON.parse(mine.gathering_units||"{}");

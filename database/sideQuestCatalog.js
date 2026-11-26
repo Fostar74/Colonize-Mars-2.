@@ -40,7 +40,43 @@ const rows = [
   ["Последната надежда на Земята","Earth’s Last Hope",action("population",forge(500),null,100000)],
   ["Живот след битката","Life After Battle",action("heal",[...resources(100000),...forge(100)],null,10000)],
 ];
+const stories = [
+  ["Calibrate the expedition’s rail weapons on Earth before the first launch drills.","Настрой релсовите оръжия на експедицията на Земята преди първите тренировки за изстрелване."],
+  ["Put the next generation of powered suits through field trials.","Изпитай новото поколение силови костюми в полеви условия."],
+  ["Train marksmen who can defend the launch site before the enemy reaches it.","Подготви стрелци, които да защитят стартовата площадка, преди врагът да я достигне."],
+  ["Give the expedition a close-combat unit for cramped corridors.","Осигури на експедицията отряд за близък бой в тесни коридори."],
+  ["Map the approaches to the launch complex with a dedicated reconnaissance team.","Картирай подстъпите към стартовия комплекс с отряд за разузнаване."],
+  ["Prepare demolition crews to clear debris and breaches around the base.","Подготви разрушителни отряди за разчистване на отломки и пробиви около базата."],
+  null,
+  ["Probe the alien defenses beyond the base perimeter before committing more troops.","Проучи извънземната отбрана отвъд периметъра на базата, преди да изпратиш повече войски."],
+  ["Find out what forces a rival has assembled near the expedition’s supply routes.","Разбери какви сили е събрал съперникът край снабдителните маршрути на експедицията."],
+  ["Help the alliance stockpile the materials needed for Earth’s first expedition.","Помогни на алианса да натрупа материалите за първата експедиция от Земята."],
+  ["Choose the portrait that will represent you on the expedition roster.","Избери портрета, който ще те представлява в списъка на експедицията."],
+  ["Prepare fast riders to carry orders between the assembly sites.","Подготви бързи пилоти, които да пренасят заповеди между сборните пунктове."],
+  ["Build a rocket detachment to cover the launch complex from a distance.","Сформирай ракетен отряд за далечна защита на стартовия комплекс."],
+  ["Form a shield line to hold the approaches while the crews work.","Изгради щитова линия, която да държи подстъпите, докато екипите работят."],
+  ["Train enough operators to keep reconnaissance and defense drones in the air.","Обучи достатъчно оператори за разузнавателните и отбранителните дронове."],
+  ["Bring heavy walkers online to defend Earth’s assembly yards.","Въведи бойни мехове в строй за защита на монтажните площадки на Земята."],
+  ["Test the expedition’s battle formations against a stronger alien garrison.","Изпитай бойните формации на експедицията срещу по-силен извънземен гарнизон."],
+  ["Join the defense of Earth against the alien command ship.","Присъедини се към отбраната на Земята срещу извънземния команден кораб."],
+  ["Send the Cyber Knight into the tunnels beneath Earth’s defenses.","Изпрати Киберрицаря в тунелите под отбранителните съоръжения на Земята."],
+  ["Upgrade every piece of the Cyber Knight’s gear before the expedition departs.","Подобри всяка част от екипировката на Киберрицаря преди отпътуването."],
+  ["Deploy particle weapons to protect the spacecraft assembly yards.","Разположи оръдия с частици за защита на площадките за сглобяване на космическия кораб."],
+  ["Prepare a hover drone squadron to patrol the skies above the base.","Подготви ескадрила от летящи дронове за патрули над базата."],
+  ["Scout a deeper alien position for technologies useful to the expedition.","Проучи по-дълбока извънземна позиция за технологии, полезни на експедицията."],
+  ["Train crews to coordinate orbital strikes in defense of the launch site.","Обучи екипи за координиране на орбитални удари в защита на стартовата площадка."],
+  ["Decide how your forces will secure the expedition’s launch window.","Реши как войските ти ще осигурят безопасното изстрелване на експедицията."],
+  ["Prepare the Cyber Knight to command the expedition’s most demanding operations.","Подготви Киберрицаря да ръководи най-трудните операции на експедицията."],
+  ["Explore the deepest passages your Cyber Knight has reached so far.","Проучи най-дълбоките проходи, достигнати досега от Киберрицаря."],
+  ["Press farther into alien territory to test the expedition’s readiness.","Навлез по-навътре в извънземната територия, за да провериш готовността на експедицията."],
+  ["Mobilize AI commanders to coordinate Earth’s growing defenses.","Мобилизирай командири с изкуствен интелект, които да координират отбраната на Земята."],
+  ["Prepare genetically enhanced troops for the toughest ground operations.","Подготви генетично усъвършенствани войници за най-тежките наземни операции."],
+  ["Break a heavily fortified alien outpost before it can threaten the launch.","Превземи силно укрепен извънземен пост, преди да застраши изстрелването."],
+  ["Defeat the garrison guarding the last approach before the final alien stronghold.","Победи гарнизона, който пази последния подстъп към финалната извънземна крепост."],
+  null,
+  null,
+];
 const defender=[boost("attack",5),boost("health",5)];
 const conqueror=[boost("protection")];
-const catalog=rows.map(([bg,en,[kind,target,detail,rewards]],index)=>({id:index+1,title:{bg,en},kind,target,detail,rewards,...(kind==="path"?{choices:{defender,conqueror}}:{})}));
+const catalog=rows.map(([bg,en,[kind,target,detail,rewards]],index)=>({id:index+1,title:{bg,en},kind,target,detail,rewards,...(stories[index]?{story:{en:stories[index][0],bg:stories[index][1]}}:{}),...(kind==="path"?{choices:{defender,conqueror}}:{})}));
 module.exports=catalog;

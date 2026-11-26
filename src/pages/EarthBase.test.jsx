@@ -1,0 +1,31 @@
+import React from "react";
+import {fireEvent,render,screen,within} from "@testing-library/react";
+import {LanguageProvider} from "../language";
+import EarthBase from "./EarthBase";
+
+test("each base renders its own levels, perimeter tier and actionable buildings in English and Bulgarian",()=>{
+  const onBuilding=jest.fn();
+  localStorage.setItem("colonize-mars-language","en");
+  const scene=progress=><LanguageProvider><EarthBase progress={progress} onBuilding={onBuilding}/></LanguageProvider>;
+  const view=render(scene({structures:{"Gold Synthesizer":3,"Defense Grid":2},buildingJob:{name:"Gold Synthesizer"}}));
+  const gold=screen.getByRole("button",{name:/Gold Synthesizer.*Level 3.*Under construction/i});
+  fireEvent.click(gold);
+  expect(onBuilding).toHaveBeenCalledWith("Gold Synthesizer");
+  const defense=screen.getByRole("button",{name:/Defensive Network.*Level 2/i});
+  expect(defense.parentElement.getAttribute("data-tier")).toBe("1");
+  fireEvent.click(defense);
+  expect(onBuilding).toHaveBeenLastCalledWith("Defense Grid");
+  view.rerender(scene({structures:{"Gold Synthesizer":18,"Defense Grid":27}}));
+  expect(screen.getByRole("button",{name:/Gold Synthesizer.*Level 18/i})).toBeTruthy();
+  expect(screen.getByRole("button",{name:/Defensive Network.*Level 27/i}).parentElement.getAttribute("data-tier")).toBe("5");
+  expect(within(screen.getByLabelText("Base buildings")).getAllByRole("button")).toHaveLength(12);
+  view.unmount();
+  localStorage.setItem("colonize-mars-language","bg");
+  const width=window.innerWidth;
+  window.innerWidth=390;
+  render(scene({structures:{}}));
+  expect(screen.getByRole("button",{name:/Отбранителна мрежа.*Ниво 0/})).toBeTruthy();
+  expect(within(screen.getByLabelText("Сгради в базата")).getAllByRole("button")).toHaveLength(12);
+  window.innerWidth=width;
+  localStorage.clear();
+});

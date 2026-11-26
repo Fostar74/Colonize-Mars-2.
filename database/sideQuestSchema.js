@@ -20,20 +20,6 @@ function migrateSideQuests(db) {
         quantity INTEGER NOT NULL CHECK(quantity>=0),
         PRIMARY KEY(user_id,unit)
       );
-      CREATE TRIGGER IF NOT EXISTS side_quest_external_depletion
-      AFTER INSERT ON resource_gathering_reports
-      WHEN NEW.reason='depleted' AND NEW.amount>0 AND EXISTS (
-        SELECT 1 FROM resource_mines
-        WHERE id=NEW.mine_id AND claimed_by=NEW.user_id AND x=NEW.x AND y=NEW.y
-          AND amount=NEW.amount AND resource=NEW.resource
-      )
-      BEGIN
-        UPDATE player_side_quests SET progress=1
-        WHERE user_id=NEW.user_id AND mission=7 AND unlocked_at<=(
-          SELECT gathering_started_at+CAST(CEIL(amount*3600000.0/gathering_rate) AS INTEGER)
-          FROM resource_mines WHERE id=NEW.mine_id
-        );
-      END;
     `);
   }).immediate();
 }

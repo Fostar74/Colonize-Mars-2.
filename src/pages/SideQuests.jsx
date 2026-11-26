@@ -1,4 +1,4 @@
-import React, {useEffect,useState} from "react";
+import React, {useEffect,useRef,useState} from "react";
 import {useLanguage} from "../language";
 
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
@@ -7,17 +7,21 @@ export default function SideQuests(){
   const [missions,setMissions]=useState(null);
   const [notice,setNotice]=useState("");
   const [busy,setBusy]=useState(false);
+  const claimRevision=useRef(0);
   const userId=sessionStorage.getItem("userId");
   const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
   useEffect(()=>{
-    let active=true;
+    let active=true,loading=false;
     const refresh=async()=>{
+      if(loading)return;
+      loading=true;
+      const revision=claimRevision.current;
       try{
         const response=await fetch(api+"/side-quests/"+encodeURIComponent(userId),{
           headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"
         });
-        if(response.ok&&active){const data=await response.json();if(active)setMissions(data.missions);}
-      }catch{}
+        if(response.ok&&active){const data=await response.json();if(active&&revision===claimRevision.current)setMissions(data.missions);}
+      }catch{}finally{loading=false;}
     };
     refresh();
     const timer=setInterval(refresh,5000);
@@ -31,7 +35,9 @@ export default function SideQuests(){
       const response=await fetch(api+"/side-quests/claim",{method:"POST",headers,body:JSON.stringify({userId,missionId})});
       const data=await response.json();
       if(!response.ok)throw Error(data.message);
+      claimRevision.current++;
       setMissions(data.missions);
+      window.dispatchEvent(new Event("game-progress-updated"));
       setNotice(t("Reward collected.","Наградата е взета."));
     }catch(error){setNotice(label(error.message));}
     finally{setBusy(false);}
@@ -80,6 +86,7 @@ export default function SideQuests(){
         {quest.status==="locked"?t("Locked","Заключена"):<strong>{quest.title[language]}</strong>}
         {quest.status==="claimed"&&" · "+t("Reward claimed","Наградата е взета")}
         {["active","complete"].includes(quest.status)&&<>
+          {quest.story&&<p>{quest.story[language]}</p>}
           <p>{condition(quest)}</p>
           <p>{quest.progress.toLocaleString()} / {quest.target.toLocaleString()}</p>
           {quest.choices
