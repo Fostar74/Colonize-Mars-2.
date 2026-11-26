@@ -764,7 +764,7 @@ function Game() {
   };
 
   useEffect(() => {
-    if (!sessionStorage.getItem("authToken")) { window.location.href = "/#/"; return; }
+    if (!sessionStorage.getItem("authToken")) { navigate("/",{replace:true}); return; }
     const savedResources = sessionStorage.getItem("resources");
     if (savedResources) {
       try { setResources(JSON.parse(savedResources)); } catch (_) {}
@@ -776,7 +776,7 @@ function Game() {
       const castle = JSON.parse(saved);
       setCastleName(`Headquarter (${castle.x}:${castle.y})`);
     }
-  }, [api]);
+  }, [api,navigate]);
 
   useEffect(()=>{
     const updateClock=()=>setUtcClock(new Date().toISOString().slice(11,19));
@@ -801,10 +801,16 @@ function Game() {
       if (!active || inFlight || document.hidden) return;
       inFlight = true;
       try {
+        const token=sessionStorage.getItem("authToken");
         const response = await fetch(base + "/get-progress/" + encodeURIComponent(userId), {
-          headers: { Authorization: "Bearer " + sessionStorage.getItem("authToken") },
+          headers: { Authorization: "Bearer " + token },
           cache: "no-store"
         });
+        if (response.status===401&&active&&token===sessionStorage.getItem("authToken")) {
+          sessionStorage.clear();
+          navigate("/",{replace:true,state:{sessionExpired:true}});
+          return;
+        }
         if (!response.ok) return;
         const data = await response.json();
         const progress = data.gameProgress;
@@ -832,11 +838,13 @@ function Game() {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("game-progress-updated", onUpdated);
     };
-  }, []);
+  }, [navigate]);
 
   const logout = () => {
+    const token=sessionStorage.getItem("authToken");
+    if(token)void fetch(api+"/logout",{method:"POST",headers:{Authorization:"Bearer "+token},keepalive:true}).catch(()=>{});
     sessionStorage.clear();
-    window.location.href = "/";
+    navigate("/",{replace:true});
   };
 
   const openBlueNotification=notification=>{
