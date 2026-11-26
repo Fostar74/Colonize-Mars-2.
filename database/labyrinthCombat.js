@@ -4,8 +4,9 @@ const attackMultipliers = [
   1.96,1.92,1.88,1.84,1.80,1.76,1.72,1.68,1.64,1.60,
   1.56,1.52,1.48,1.44,1.40,1.36,1.32,1.28,1.24,1.20,
 ];
-const roundLimit=20;
-const COMBAT_VERSION=2;
+const version2RoundLimit=20;
+const COMBAT_VERSION=3;
+const momentumStartsAfterRound=12;
 const BALANCE={knightHealMaxPercent:50,knightHealMinRatio:0.92,knightHealMaxRatio:0.99,monsterHealCapFromStage:6,monsterHealCapMultiplier:0.85,monsterHealSoftCapRatio:0.80};
 function knightHealSoftCapRatio(stage){return Math.min(0.99,0.92+(stage-1)*(0.07/24));}
 
@@ -55,11 +56,16 @@ function strikeV1(active) {
   return {victory:active.monsterHp<=0,defeat:active.knightHp<=0};
 }
 
-function strikeV2(active){
+function strikeModern(active){
+  const legacy=active.combatVersion===2;
   const {knight,monster}=active;
-  if(active.round>=roundLimit){active.knightHp=0;return {victory:false,defeat:true};}
+  if(legacy&&active.round>=version2RoundLimit){active.knightHp=0;return {victory:false,defeat:true};}
   active.round++;
-  const damage=Math.min(active.monsterHp,knight.attack);
+  // In longer fights the knight builds momentum. Recovery remains bounded
+  // by base damage, so the extra damage cannot become a healing equilibrium.
+  const momentum=legacy?0:Math.max(0,active.round-momentumStartsAfterRound);
+  const strikeDamage=knight.attack+Math.floor(knight.attack*momentum/2);
+  const damage=Math.min(active.monsterHp,strikeDamage);
   active.monsterHp-=damage;
   active.log.push({round:active.round,actor:"knight",damage,regen:0,knightHp:active.knightHp,monsterHp:active.monsterHp});
   if(active.monsterHp<=0)return {victory:true,defeat:false};
@@ -75,8 +81,8 @@ function strikeV2(active){
     active.monsterHp+=monsterRegen;
   }
   active.log.push({round:active.round,actor:"monster",damage:monsterDamage,regen:monsterRegen,knightRegen,knightHp:active.knightHp,monsterHp:active.monsterHp});
-  if(active.round>=roundLimit)active.knightHp=0;
+  if(legacy&&active.round>=version2RoundLimit)active.knightHp=0;
   return {victory:false,defeat:active.knightHp<=0};
 }
-function strike(active){return active.combatVersion===2?strikeV2(active):strikeV1(active);}
-module.exports={attackMultipliers,roundLimit,COMBAT_VERSION,BALANCE,knightHealSoftCapRatio,labyrinthMonster,createBattle,strike,strikeV1,strikeV2};
+function strike(active){return active.combatVersion===2||active.combatVersion===3?strikeModern(active):strikeV1(active);}
+module.exports={attackMultipliers,COMBAT_VERSION,BALANCE,knightHealSoftCapRatio,labyrinthMonster,createBattle,strike,strikeV1};

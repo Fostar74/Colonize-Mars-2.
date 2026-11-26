@@ -87,11 +87,14 @@ test("market activations, timed boosts and extra attempts retain normal limits",
     assert.equal(game.getAlienCampaign(user).used,21);
     assert.match(game.useInventoryItem(user,"labyrinth_attempt",1).error,/unavailable/);
     assert.equal(game.getInventory(user).items.labyrinth_attempt,1);
-    const levelUp=db.prepare("INSERT INTO alien_rewards(user_id,knight_level) VALUES (?,7) ON CONFLICT(user_id) DO UPDATE SET knight_level=7");
+    const levelUp=db.prepare("INSERT INTO alien_rewards(user_id,knight_level) VALUES (?,50) ON CONFLICT(user_id) DO UPDATE SET knight_level=50");
     for(const id of [user,second]){
       levelUp.run(id);
       game.getLabyrinthStatus(id);
-      db.prepare("UPDATE labyrinth_players SET combat_room=51,combat_hp_bonus=17000 WHERE user_id=?").run(id);
+      const slots=["ARMOR","HELMET","BOOTS","WEAPON","SHIELD","GLOVES"];
+      const equipped=Object.fromEntries(slots.map(slot=>[slot,{id:"fixture-"+slot,slot,level:50}]));
+      game.saveUserEquipment(id,equipped,[],{});
+      db.prepare("UPDATE labyrinth_players SET combat_room=101,combat_hp_bonus=60000 WHERE user_id=?").run(id);
     }
     db.prepare("UPDATE labyrinth_players SET missions_today=10 WHERE user_id=?").run(user);
     assert.equal(game.useInventoryItem(user,"labyrinth_attempt",1).inventory.items.labyrinth_attempt,undefined);
@@ -101,15 +104,27 @@ test("market activations, timed boosts and extra attempts retain normal limits",
     let manual=manualStart;
     while(manual.battle)manual=game.labyrinthBattle(user,"strike");
     const auto=game.runLabyrinthMission(second);
+    assert.equal(manual.victory,true);
+    assert.ok(manual.log.at(-1).round>20);
     assert.deepEqual(auto.log,manual.log);
     assert.equal(auto.victory,manual.victory);
     assert.match(game.labyrinthBattle(user,"start").error,/daily/);
     const original=createBattle({...labyrinthMonster(101),damage:111,healingCap:undefined},
       {maxHp:10000,attack:1000,enemyHpReduction:0,enemyAttackReduction:0,enemyHealingReduction:0,healing:0},0);
+    original.combatVersion=2;
+    original.round=18;
     db.prepare("UPDATE labyrinth_players SET combat_active=? WHERE user_id=?").run(JSON.stringify(original),second);
+    assert.deepEqual(game.labyrinthBattle(second,"status").battle,JSON.parse(JSON.stringify(original)));
     const existing=game.labyrinthBattle(second,"strike").battle;
     assert.equal(existing.monster.damage,111);
     assert.equal(existing.knightHp,9889);
+    assert.equal(existing.log[0].damage,1000);
+    const legacyEnd=game.labyrinthBattle(second,"strike");
+    assert.equal(legacyEnd.defeat,true);
+    assert.equal(legacyEnd.log.at(-1).round,20);
+    assert.equal(legacyEnd.status.room,102);
+    assert.equal(legacyEnd.status.knight.bonusHp,auto.status.knight.bonusHp);
+    assert.equal(legacyEnd.status.knight.attack,1500);
   } finally {
     Date.now=clock;
     db.close();
@@ -134,10 +149,27 @@ test("Labyrinth simulation keeps early stats and all 300 rooms attainable with f
       enemyAttackReduction:50,enemyHpReduction:50,enemyHealingReduction:50};
     const battle=createBattle(monster,knight,0);
     let outcome;
-    do {outcome=strike(battle);} while(!outcome.victory&&!outcome.defeat);
+    do {
+      outcome=strike(battle);
+      assert.ok(battle.round<50,"Long fight in room "+room);
+    } while(!outcome.victory&&!outcome.defeat);
     assert.equal(outcome.victory,true,"Room "+room);
     longest=Math.max(longest,battle.round);
     earnedHp+=Math.floor(monster.hp/100);
   }
-  assert.equal(longest,135);
+  assert.ok(longest>20,"Late-game fights can continue past round 20");
+});
+
+test("even the highest-HP boss cannot outheal a surviving knight indefinitely",()=>{
+  const monster=labyrinthMonster(300);
+  const knight={maxHp:10000000,attack:1000,healing:50,
+    enemyAttackReduction:50,enemyHpReduction:0,enemyHealingReduction:0};
+  const battle=createBattle(monster,knight,0);
+  let outcome;
+  do {
+    outcome=strike(battle);
+    assert.ok(battle.round<50);
+  } while(!outcome.victory&&!outcome.defeat);
+  assert.equal(outcome.victory,true);
+  assert.ok(battle.round>20);
 });
