@@ -530,6 +530,7 @@ function Game() {
   const [showQuests, setShowQuests] = useState(false);
   const [questTab,setQuestTab]=useState("main");
   const [showReports,setShowReports]=useState(false);
+  const [reportsTab,setReportsTab]=useState("military");
   const [unreadIncoming,setUnreadIncoming]=useState(0);
   const [unreadBattleReports,setUnreadBattleReports]=useState(0);
   const [hospitalWoundedCount,setHospitalWoundedCount]=useState(0);
@@ -604,8 +605,16 @@ function Game() {
     setShowAlliance(true);
   };
   const toastNotifications=notifications.filter(item=>item.kind==="player_message"||item.kind==="game_message"||
-    item.kind==="trade_message"||item.kind==="side_quest_unlocked"||item.kind==="gathering_return"||item.kind?.startsWith("alliance_mine_"));
-  const messageNotifications=toastNotifications.filter(item=>item.kind!=="side_quest_unlocked");
+    item.kind==="trade_message"||item.kind==="espionage_report"||item.kind==="side_quest_unlocked"||item.kind==="gathering_return"||item.kind?.startsWith("alliance_mine_"));
+  const espionageNotifications=notifications.filter(item=>item.kind==="espionage_report");
+  const reportBadge=unreadIncoming+unreadBattleReports+espionageNotifications.length;
+  const messageNotifications=toastNotifications.filter(item=>!["side_quest_unlocked","espionage_report"].includes(item.kind));
+  const openReports=()=>{
+    setReportsTab(espionageNotifications.length?"espionage":"military");
+    setShowReports(true);
+    setIncomingAlert(false);
+    for(const item of espionageNotifications)dismissNotification(item.id);
+  };
   const activeNotice=notifications.find(item=>item.kind==="saturday_invasion_started") || toastNotifications[0];
   const eventNotification=activeNotice?.kind==="saturday_invasion_started" ? activeNotice : null;
   const showIncomingAlert=incomingAlert&&unreadIncoming>0;
@@ -849,7 +858,8 @@ function Game() {
 
   const openBlueNotification=notification=>{
     dismissNotification(notification.id);
-    if(notification?.kind==="gathering_return")navigate("/map");
+    if(notification?.kind==="espionage_report"){setReportsTab("espionage");setShowReports(true);}
+    else if(notification?.kind==="gathering_return")navigate("/map");
     else if(notification?.kind==="side_quest_unlocked"){setQuestTab("side");setShowQuests(true);}
     else if(notification?.kind.startsWith("alliance_mine_"))openAlliance();
     else setMessageRecipient("");
@@ -901,7 +911,7 @@ function Game() {
         </button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
         <button className={messageNotifications.length?"messages-nav-button messages-unread":""} onClick={()=>setMessageRecipient("")}>{t("Messages","Съобщения")}{messageNotifications.length>0&&<span className="messages-badge">{messageNotifications.length}</span>}</button>
-        <button className={unreadIncoming+unreadBattleReports>0?"reports-nav-button reports-unread":""} onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("Reports","Доклади")}{unreadIncoming+unreadBattleReports>0&&<span className="reports-badge">{unreadIncoming+unreadBattleReports}</span>}</button>
+        <button className={reportBadge>0?"reports-nav-button reports-unread":""} onClick={openReports}>{t("Reports","Доклади")}{reportBadge>0&&<span className="reports-badge">{reportBadge}</span>}</button>
         <button onClick={() => setShowInventory(true)}>{t("Inventory","Инвентар")}</button>
         <button onClick={() => setOptionsVisible(!optionsVisible)}>{t("Options","Настройки")}</button>
       </div>
@@ -1037,11 +1047,11 @@ function Game() {
       </div>}
       {!showIncomingAlert&&!eventNotification&&toastNotifications.length>0&&<div className="message-notification-alert">
         <span aria-hidden="true">✉️</span>
-        <span role="status">{toastNotifications[0].kind==="side_quest_unlocked"?t("A new side quest is available.","Отключена е нова странична мисия."):toastNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):toastNotifications[0].kind==="alliance_mine_started"?t("Your alliance placed a mine. Send an army to help construct it.","Алиансът ти постави мина. Изпрати армия, за да помогнеш със строежа."):toastNotifications[0].kind==="alliance_mine_completed"?t("Alliance mine construction is complete. Gathering is open.","Алиансната мина е построена. Можеш да започнеш добив."):toastNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):toastNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(toastNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{toastNotifications[0].kind==="gathering_return"&&toastNotifications[0].allianceName&&" · "+toastNotifications[0].allianceName}</span>
-        <button type="button" onClick={()=>openBlueNotification(toastNotifications[0])}>{toastNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):toastNotifications[0].kind==="side_quest_unlocked"?t("View quests","Виж мисиите"):toastNotifications[0].kind.startsWith("alliance_mine_")?t("View alliance","Виж алианса"):t("View messages","Виж съобщенията")}</button>
+        <span role="status">{toastNotifications[0].kind==="espionage_report"?t("Your espionage report is ready.","Докладът ти от шпионаж е готов."):toastNotifications[0].kind==="side_quest_unlocked"?t("A new side quest is available.","Отключена е нова странична мисия."):toastNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):toastNotifications[0].kind==="alliance_mine_started"?t("Your alliance placed a mine. Send an army to help construct it.","Алиансът ти постави мина. Изпрати армия, за да помогнеш със строежа."):toastNotifications[0].kind==="alliance_mine_completed"?t("Alliance mine construction is complete. Gathering is open.","Алиансната мина е построена. Можеш да започнеш добив."):toastNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):toastNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(toastNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{toastNotifications[0].kind==="gathering_return"&&toastNotifications[0].allianceName&&" · "+toastNotifications[0].allianceName}</span>
+        <button type="button" onClick={()=>openBlueNotification(toastNotifications[0])}>{toastNotifications[0].kind==="espionage_report"?t("View report","Виж доклада"):toastNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):toastNotifications[0].kind==="side_quest_unlocked"?t("View quests","Виж мисиите"):toastNotifications[0].kind.startsWith("alliance_mine_")?t("View alliance","Виж алианса"):t("View messages","Виж съобщенията")}</button>
         <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>dismissNotification(activeNoticeId)}>×</button>
       </div>}
-      {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}
+      {showReports&&<ReportsPanel initialTab={reportsTab} onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}
       {showQuests && (
         <div className="popup">
           <div className="popup-header">

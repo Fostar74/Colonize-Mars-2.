@@ -3,7 +3,7 @@ const {hour, constructionTarget, constructionApUnit, firstTime, gatheringStart, 
 const marketProducts = require("../src/shared/allianceMarket");
 const {boostedDuration} = require("./marketBoosts");
 const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCombat");
-const {createMine,replenishMissingMines} = require("./externalMines");
+const {replenishMissingMines} = require("./externalMines");
 const {placedMapObjects}=require("./mapObjects");
 const {tileKey,touchesTile,blockedMapTiles}=require("../src/shared/mapSpacing");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
@@ -648,7 +648,7 @@ class DatabaseManager {
     return db.prepare("SELECT * FROM game_runtime WHERE user_id = ?").get(userId);
   }
 
-  syncGame(userId, now = Date.now()) {
+  syncGame(userId, now = Date.now(), {settlePlayerScouts=true}={}) {
     if (arguments.length === 1 && !db.inTransaction) this.advanceCampaignTimeline(now);
     return db.transaction(() => {
       const allianceBonuses = this.activeAllianceBonuses(userId,now);
@@ -659,7 +659,7 @@ class DatabaseManager {
       const structures = JSON.parse(row.structures);
       const army = JSON.parse(state.army);
       this.settleScoutMissions(userId, now, army);
-      this.settlePlayerScoutMissions(userId, now, army);
+      if(settlePlayerScouts)this.settlePlayerScoutMissions(userId, now, army);
       const barracksReserve = JSON.parse(state.barracks_reserve || "{}");
       const upgradeJobs=JSON.parse(state.upgrade_jobs || "[]");
       const unitUpgrades=JSON.parse(state.unit_upgrades);
@@ -1383,7 +1383,7 @@ class DatabaseManager {
   }
 
   listPlayerNotifications(userId){
-    const notifications=db.prepare("SELECT id,kind,alliance_name AS allianceName,created_at AS createdAt FROM player_notifications WHERE recipient_id=? AND read_at IS NULL ORDER BY id LIMIT 20").all(userId);
+    const notifications=db.prepare("SELECT id,kind,alliance_name AS allianceName,created_at AS createdAt FROM player_notifications WHERE recipient_id=? AND read_at IS NULL ORDER BY (kind='espionage_report') DESC,id LIMIT 20").all(userId);
     const allianceUnreadIds=db.prepare(`SELECT receipt.id FROM alliance_message_receipts receipt
       JOIN player_messages message ON message.id=receipt.message_id
       JOIN alliance_members member ON member.user_id=receipt.recipient_id AND member.alliance_id=message.alliance_id
@@ -1942,30 +1942,33 @@ class DatabaseManager {
   }
 
   settlePlayerScoutMissions(userId,now,army) {
-    const due=db.prepare("SELECT * FROM player_scout_missions WHERE user_id=? AND returned_at IS NULL AND arrives_at<=?").all(userId,now);
+    const due=db.prepare("SELECT * FROM player_scout_missions WHERE user_id=? AND returned_at IS NULL AND arrives_at<=? ORDER BY arrives_at,id").all(userId,now);
     for(const mission of due){
       if(!mission.report){
-        const target=this.progressQueries.getProgress.get(mission.target_user_id);
-        const targetRuntime=target?this.runtime(mission.target_user_id):null;
-        const targetArmy=targetRuntime?JSON.parse(targetRuntime.army):{};
+        // Bring the target's economy current at arrival. Defer their own
+        // scout reports to the timeline to avoid re-entering reciprocal missions.
+        const target=this.syncGame(mission.target_user_id,mission.arrives_at,{settlePlayerScouts:false});
+        const targetArmy=target?.army||{};
         const defenders=Math.max(0,Number(targetArmy["Rover Scout"]||0));
         const casualties=Math.min(mission.quantity,defenders);
         const survivors=mission.quantity-casualties;
-        const report={success:survivors>0&&!!target&&!!targetRuntime,scoutedAt:now,
-          lastSeenAt:this.lastPlayerActivity(mission.target_user_id),abandoned:this.isAbandonedBase(mission.target_user_id,now),
+        const report={success:survivors>0&&!!target,scoutedAt:mission.arrives_at,
+          lastSeenAt:this.lastPlayerActivity(mission.target_user_id),abandoned:this.isAbandonedBase(mission.target_user_id,mission.arrives_at),
           sent:mission.quantity,attackerLost:casualties,defenderLost:casualties,survivors};
-        if(casualties>0&&targetRuntime){
+        if(casualties>0&&target){
           targetArmy["Rover Scout"]=defenders-casualties;
           db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(targetArmy),mission.target_user_id);
         }
         if(report.success){
-          report.resources=unprotectedResources(JSON.parse(target.resources));
+          report.resources=unprotectedResources(target.resources);
           report.resourcesUnprotected=true;
           report.army=targetArmy;
-          report.structures=JSON.parse(target.structures);
-        }else if(!target||!targetRuntime)report.error="Target unavailable";
+          report.structures=target.structures;
+        }else if(!target)report.error="Target unavailable";
         db.prepare("UPDATE player_scout_missions SET report=? WHERE id=?").run(JSON.stringify(report),mission.id);
-        if(target&&targetRuntime)this.sideQuests.record(userId,"spy",null,1,mission.arrives_at);
+        db.prepare("INSERT INTO player_notifications(recipient_id,kind,created_at) VALUES (?,'espionage_report',?)")
+          .run(userId,mission.arrives_at);
+        if(target)this.sideQuests.record(userId,"spy",null,1,mission.arrives_at);
       }
       if(now>=mission.returns_at){
         const result=JSON.parse(mission.report||db.prepare("SELECT report FROM player_scout_missions WHERE id=?").get(mission.id)?.report||"{}");
@@ -4097,6 +4100,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
     return db.transaction(()=>{
       const active=db.prepare("SELECT * FROM resource_mines WHERE claimed_by IS NOT NULL ORDER BY id").all();
       let settled=0;
+      const retired=[];
       for(const mine of active){
         if(!mine.gathering_started_at || !mine.gathering_rate) continue;
         const units=JSON.parse(mine.gathering_units||"{}");
@@ -4126,17 +4130,18 @@ Rewards are distributed per participating player, not once per alliance. / На�
         }
         // The collector and remaining stock still identify this depletion.
         if(collectedLimit>0)this.sideQuests.record(mine.claimed_by,"mine",null,1,finishAt);
-        createMine(db,mine.resource);
+        retired.push(mine);
         db.prepare("DELETE FROM resource_mines WHERE id=? AND claimed_by=?").run(mine.id,mine.claimed_by);
         settled++;
       }
       // Repair empty, unclaimed rows left by legacy withdrawals without paying twice.
-      const empty=db.prepare("SELECT id,resource FROM resource_mines WHERE claimed_by IS NULL AND amount=0").all();
+      const empty=db.prepare("SELECT id,x,y FROM resource_mines WHERE claimed_by IS NULL AND amount<=0").all();
       for(const mine of empty){
-        createMine(db,mine.resource);
+        retired.push(mine);
         db.prepare("DELETE FROM resource_mines WHERE id=? AND claimed_by IS NULL").run(mine.id);
         settled++;
       }
+      replenishMissingMines(db,retired);
       return settled;
     }).immediate();
   }

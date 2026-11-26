@@ -99,6 +99,17 @@ test("external mines replenish independently and alliance help includes all acti
     assert.equal(game.getResourceGatheringReports(player).length,2);
     assert.equal(game.syncGame(player).army["Explorer Trooper"],100);
     assert.equal(game.syncGame(player2).army["Explorer Trooper"],100);
+    // Legacy central mines must never reduce the number visible on the map.
+    const hidden=db.prepare("SELECT id FROM resource_mines WHERE resource='iron' LIMIT 1").get();
+    db.prepare("UPDATE resource_mines SET x=49,y=49 WHERE id=?").run(hidden.id);
+    const onlyDepleted=db.prepare("SELECT id FROM resource_mines WHERE resource='water' LIMIT 1").get();
+    db.prepare("UPDATE resource_mines SET amount=0 WHERE id=?").run(onlyDepleted.id);
+    const visible=game.getMapResources(player).mines.filter(m=>Math.hypot(m.x-50,m.y-50)>15);
+    assert.equal(visible.filter(m=>m.resource==="iron").length,10);
+    assert.equal(visible.filter(m=>m.resource==="water").length,10);
+    assert.equal(db.prepare("SELECT x FROM resource_mines WHERE id=?").get(hidden.id).x,49);
+    assert.equal(db.prepare("SELECT id FROM resource_mines WHERE id=?").get(onlyDepleted.id),undefined);
+
   }finally{
     Date.now=clock;
     game.close();

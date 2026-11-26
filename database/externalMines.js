@@ -26,14 +26,20 @@ function createMine(db, resource, blocked=blockedMineTiles(db)) {
   db.prepare("INSERT INTO resource_mines(resource,x,y,amount) VALUES (?,?,?,?)").run(resource,x,y,stock);
 }
 
-function replenishMissingMines(db) {
+function replenishMissingMines(db, retired=[]) {
   db.transaction(()=>{
+    // Match the visible map boundary. Keep legacy deposits inside it available
+    // to existing marches, without counting them against the visible quota.
+    const counts=new Map(db.prepare(`SELECT resource,COUNT(*) AS count FROM resource_mines
+      WHERE amount>0 AND (x-50)*(x-50)+(y-50)*(y-50)>225 GROUP BY resource`)
+      .all().map(({resource,count})=>[resource,count]));
+    if(types.every(resource=>(counts.get(resource)||0)>=10))return;
     const blocked=blockedMineTiles(db);
-    const count=db.prepare("SELECT COUNT(*) AS count FROM resource_mines WHERE resource=?");
+    for(const {x,y} of retired)reserveTileAndNeighbors(blocked,x,y);
     for (const resource of types) {
-      for (let i=count.get(resource).count;i<10;i++) createMine(db,resource,blocked);
+      for (let i=(counts.get(resource)||0);i<10;i++) createMine(db,resource,blocked);
     }
   }).immediate();
 }
 
-module.exports={createMine,replenishMissingMines};
+module.exports={replenishMissingMines};
