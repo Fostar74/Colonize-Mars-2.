@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from "react";
 import {useLanguage} from "../language";
 import "./EarthBase.css";
+import "./EarthPerimeter.css";
 
 export const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
