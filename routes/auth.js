@@ -219,7 +219,7 @@ router.post("/cancel-unit-upgrade", requireSession, (req, res) => {
 
 router.post("/barracks/mobilize",requireSession,(req,res)=>{
   try{
-    const result=db.mobilizeBarracks(Number(req.body.userId),req.body.unit,Number(req.body.amount));
+    const result=db.mobilizeBarracks(Number(req.body.userId),req.body.unit,Number(req.body.amount),req.body.requestId);
     if(result.error)return res.status(400).json({message:result.error});
     res.json(result);
   }catch(e){console.error(e);res.status(500).json({message:"Mobilization unavailable."});}
@@ -574,13 +574,20 @@ router.post("/market/offers/:offerId/cancel",requireSession,(req,res)=>{
   }catch(error){console.error("Cancel market offer:",error);res.status(500).json({message:"Offer could not be cancelled."});}
 });
 
-router.post("/alien-campaign/side-quest",requireSession,(req,res)=>{
-  try{
-    const result=db.claimAlienSideQuest(Number(req.body.userId),Number(req.body.milestone));
-    if(result.error)return res.status(400).json({message:result.error});
-    res.json(result);
-  }catch(e){console.error(e);res.status(500).json({message:"Side quest unavailable."});}
+router.get("/side-quests/:userId",requireSession,(req,res)=>{
+  res.json(db.sideQuests.state(Number(req.params.userId)));
 });
+router.post("/side-quests/claim",requireSession,(req,res)=>{
+  const result=db.sideQuests.claim(Number(req.body.userId),Number(req.body.missionId));
+  if(result.error)return res.status(400).json({message:result.error});
+  res.json(result);
+});
+router.post("/hospital/mobilize",requireSession,(req,res)=>{
+  const result=db.mobilizeHealedTroops(Number(req.body.userId),req.body.unit,Number(req.body.amount),req.body.requestId);
+  if(result.error)return res.status(400).json({message:result.error});
+  res.json(result);
+});
+
 router.get("/tutorial/:userId", requireSession, (req,res) => {
   try {
     const data = db.getTutorial(Number(req.params.userId));

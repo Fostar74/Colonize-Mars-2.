@@ -16,6 +16,8 @@ const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
 const fs = require("fs");
+const migrateSideQuests = require("./sideQuestSchema");
+const SideQuests = require("./sideQuests");
 
 const dbDir = path.join(__dirname);
 if (!fs.existsSync(dbDir)) {
@@ -436,6 +438,8 @@ class DatabaseManager {
   constructor() {
     initializeDatabase();
     this.initializeQueries();
+    migrateSideQuests(db);
+    this.sideQuests = new SideQuests(db,this);
   }
 
   initializeQueries() {
@@ -857,11 +861,27 @@ class DatabaseManager {
     })();
   }
 
-  mobilizeBarracks(userId,unit,amount) {
+  validMobilizationRequest(requestId){
+    return typeof requestId==="string"&&/^[a-f0-9-]{36}$/i.test(requestId);
+  }
+
+  hasMobilized(userId,origin,requestId){
+    return requestId&&db.prepare("SELECT 1 FROM mobilization_requests WHERE user_id=? AND origin=? AND request_id=?")
+      .get(userId,origin,requestId);
+  }
+
+  recordMobilization(userId,origin,requestId){
+    if(requestId)db.prepare("INSERT INTO mobilization_requests(user_id,origin,request_id) VALUES (?,?,?)")
+      .run(userId,origin,requestId);
+  }
+
+  mobilizeBarracks(userId,unit,amount,requestId) {
+    if(requestId!==undefined&&!this.validMobilizationRequest(requestId))return {error:"Invalid mobilization request."};
     if(typeof unit!=="string" || (unit!=="ALL"&&!unitPrice(unit)))return {error:"Invalid unit."};
     return db.transaction(()=>{
       const current=this.syncGame(userId);
       if(!current)return {error:"Player not found."};
+      if(this.hasMobilized(userId,"training",requestId))return current;
       const reserve={...current.barracksReserve};
       const units=unit==="ALL"?Object.keys(reserve):[unit];
       if(unit!=="ALL"&&(!Number.isSafeInteger(amount)||amount<1||amount>Number(reserve[unit]||0)))return {error:"Invalid mobilization quantity."};
@@ -873,11 +893,13 @@ class DatabaseManager {
         reserve[name]=(Number(reserve[name])||0)-n;
         const unitCost=Object.values(unitPrice(name)||{}).reduce((total,cost)=>total+cost,0);
         trainingXp+=3*n*unitCost;
+        this.sideQuests.record(userId,"train",name,n);
       }
       db.prepare("UPDATE game_runtime SET army=?,barracks_reserve=? WHERE user_id=?").run(JSON.stringify(current.army),JSON.stringify(reserve),userId);
       this.awardPlayerXp(userId,trainingXp);
+      this.recordMobilization(userId,"training",requestId);
       return {...current,barracksReserve:reserve};
-    })();
+    }).immediate();
   }
 
   upgradeUnit(userId,unit,stat,slot){
@@ -1443,6 +1465,7 @@ class DatabaseManager {
       const eventParticipant=db.prepare("SELECT 1 FROM saturday_invasion_members m JOIN saturday_invasion_runs r ON r.id=m.run_id WHERE m.user_id=? AND m.eliminated=0 AND r.status='active' AND r.week_start=?").get(recipientId,this.saturdayInvasionWindow(now).startsAt);
       const travelMs=eventParticipant?30000:armyTravelDuration(60000,units,this.protocolBonus(userId,"Rapid Deployment"));
       const result=db.prepare("INSERT INTO alliance_reinforcements(alliance_id,sender_id,recipient_id,units,launched_at,arrives_at) VALUES (?,?,?,?,?,?)").run(members[0].alliance_id,userId,recipientId,JSON.stringify(units),now,now+travelMs);
+      this.sideQuests.record(userId,"path","defender");
       return {missionId:Number(result.lastInsertRowid),arrivesAt:now+travelMs};
     })();
   }
@@ -1511,6 +1534,7 @@ class DatabaseManager {
       db.prepare("UPDATE game_progress SET resources=? WHERE user_id=?").run(JSON.stringify(progress.resources),userId);
       db.prepare("UPDATE alliance_treasury SET resources=? WHERE alliance_id=?").run(JSON.stringify(economy.treasury),member.alliance_id);
       db.prepare("UPDATE alliance_wallets SET points=points+10,donations_today=CASE WHEN donation_date=? THEN donations_today+1 ELSE 1 END,donation_date=? WHERE user_id=?").run(today,today,userId);
+      this.sideQuests.record(userId,"donate");
       return {pointsEarned:10,resource,amount,economy:this.allianceEconomy(userId,member.alliance_id)};
     })();
   }
@@ -1577,8 +1601,8 @@ class DatabaseManager {
   }
   useInventoryItem(userId,item,amount){
     const catalog={landing:"token",attack:"buff",health:"buff",protection:"buff",protocol_reset:"reset"};
-    if(!Object.hasOwn(marketProducts,item))return {error:"This item cannot be used."};
-    const {effect,percent}=marketProducts[item];
+    if(item!=="landing"&&!Object.hasOwn(marketProducts,item))return {error:"This item cannot be used."};
+    const {effect,percent,tokens}=marketProducts[item]||{};
     if(effect&&amount!==1)return {error:"Activate one item at a time."};
     if(!Number.isSafeInteger(amount)||amount<1||amount>10000)return {error:"Enter a valid item quantity."};
     return db.transaction(()=>{
@@ -1612,7 +1636,7 @@ class DatabaseManager {
       inventory.items[item]-=amount;
       if(inventory.items[item]<=0)delete inventory.items[item];
       db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
-      if(item==="landing")this.creditTokens(userId,amount);
+      if(item==="landing"||tokens)this.creditTokens(userId,amount*(tokens||1));
       else if(catalog[item]==="buff"){
         const duration=(item==="protection"?86400000:3600000)*amount;
         const now=Date.now();
@@ -1915,6 +1939,7 @@ class DatabaseManager {
           report.structures=JSON.parse(target.structures);
         }else if(!target||!targetRuntime)report.error="Target unavailable";
         db.prepare("UPDATE player_scout_missions SET report=? WHERE id=?").run(JSON.stringify(report),mission.id);
+        if(target&&targetRuntime)this.sideQuests.record(userId,"spy",null,1,mission.arrives_at);
       }
       if(now>=mission.returns_at){
         const result=JSON.parse(mission.report||db.prepare("SELECT report FROM player_scout_missions WHERE id=?").get(mission.id)?.report||"{}");
@@ -2029,6 +2054,7 @@ class DatabaseManager {
       const armyData={units:selected,formation:battleFormation,origin,target:destination,includeCyberKnight:includeCyberKnight===true,cyberKnightLevel:includeCyberKnight?Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level||1):null};
       const mission=db.prepare("INSERT INTO player_missions(attacker_id,defender_id,army,launched_at,arrives_at) VALUES (?,?,?,?,?)")
         .run(userId,target.id,JSON.stringify(armyData),now,now+travelMs);
+      this.sideQuests.record(userId,"path","conqueror");
       return {missionId:Number(mission.lastInsertRowid),launchedAt:now,arrivesAt:now+travelMs,origin,target:destination,units:selected,formation:battleFormation};
     })();
   }
@@ -2416,9 +2442,16 @@ class DatabaseManager {
           end-=count*duration;
         }
         if(!Object.keys(ready).length)continue;
-        const current=this.syncGame(userId);if(!current)continue;
-        for(const [unit,count] of Object.entries(ready))current.army[unit]=(Number(current.army[unit])||0)+count;
-        db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+        if(["player-defense","player-attack","alien-base"].includes(row.source)){
+          const reserve=db.prepare(`INSERT INTO hospital_mobilization(user_id,unit,quantity) VALUES (?,?,?)
+            ON CONFLICT(user_id,unit) DO UPDATE SET quantity=quantity+excluded.quantity`);
+          for(const [unit,count] of Object.entries(ready))reserve.run(userId,unit,count);
+        }else{
+          const current=this.syncGame(userId,now);
+          if(!current)continue;
+          for(const [unit,count] of Object.entries(ready))current.army[unit]=(Number(current.army[unit])||0)+count;
+          db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+        }
         if(Object.keys(remaining).length)db.prepare("UPDATE hospital_entries SET wounded=? WHERE id=? AND status='healing'").run(JSON.stringify(Object.fromEntries(Object.entries(remaining).reverse())),row.id);
         else db.prepare("UPDATE hospital_entries SET status='healed',recovered_at=? WHERE id=? AND status='healing'").run(now,row.id);
       }
@@ -2436,9 +2469,34 @@ class DatabaseManager {
         return {...row,recoveryAt};
       }),...legacy];
       const wounded={};for(const entry of entries)for(const [unit,count] of Object.entries(entry.wounded||{}))wounded[unit]=(Number(wounded[unit])||0)+Number(count||0);
-      return {entries,wounded,totalWounded:Object.values(wounded).reduce((sum,count)=>sum+Number(count||0),0),capacity:null};
+      return {entries,wounded,ready:this.healedTroops(userId),totalWounded:Object.values(wounded).reduce((sum,count)=>sum+Number(count||0),0),capacity:null};
     })();
   }
+
+  healedTroops(userId){
+    return Object.fromEntries(db.prepare("SELECT unit,quantity FROM hospital_mobilization WHERE user_id=? AND quantity>0 ORDER BY unit")
+      .all(userId).map(row=>[row.unit,row.quantity]));
+  }
+
+  mobilizeHealedTroops(userId,unit,amount,requestId){
+    if(requestId!==undefined&&!this.validMobilizationRequest(requestId))return {error:"Invalid mobilization request."};
+    if(!unitPrice(unit)||!Number.isSafeInteger(amount)||amount<1)return {error:"Invalid healed troop quantity."};
+    this.getHospital(userId);
+    return db.transaction(()=>{
+      const current=this.syncGame(userId);
+      if(!current)return {error:"Player not found."};
+      if(this.hasMobilized(userId,"hospital",requestId))return {army:current.army,ready:this.healedTroops(userId)};
+      const deducted=db.prepare("UPDATE hospital_mobilization SET quantity=quantity-? WHERE user_id=? AND unit=? AND quantity>=?")
+        .run(amount,userId,unit,amount);
+      if(!deducted.changes)return {error:"Not enough healed troops ready to mobilize."};
+      current.army[unit]=(Number(current.army[unit])||0)+amount;
+      db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
+      this.sideQuests.record(userId,"heal",null,amount);
+      this.recordMobilization(userId,"hospital",requestId);
+      return {army:current.army,ready:this.healedTroops(userId)};
+    }).immediate();
+  }
+
 
   startHospitalTreatment(userId) {
     return db.transaction(()=>{
@@ -2511,6 +2569,7 @@ class DatabaseManager {
       for(const [unit,count] of Object.entries(army))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),attack.user_id);
       db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=? WHERE id=?").run(attack.arrives_at,damage,xp,attack.id);
+      this.sideQuests.record(attack.user_id,"mothership",null,1,attack.arrives_at);
       db.prepare("UPDATE mothership_events SET hp_remaining=MAX(1,hp_remaining-?) WHERE id=?").run(damage,eventId);
     }
     // Release troops from earlier versions that kept Mother Ship armies in event hospital until closing.
@@ -3038,6 +3097,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
         const monster=this.labyrinthMonster(room),knight=this.labyrinthKnight(userId);
         active=createBattle(monster,knight,Date.now());
         db.prepare("UPDATE labyrinth_players SET combat_active=?,missions_today=missions_today+?,bonus_battles=bonus_battles-? WHERE user_id=?").run(JSON.stringify(active),extra?0:1,extra?1:0,userId);
+        this.sideQuests.record(userId,"labyrinthStart");
         return {battle:active,status:this.getLabyrinthStatus(userId)};
       }
       if(action!=="strike"||!active)return {error:"Start a battle first."};
@@ -3148,13 +3208,12 @@ Rewards are distributed per participating player, not once per alliance. / На�
       return {...m, units:march.units, formation:march.formation, cyberKnightLevel:march.cyberKnightLevel, origin:march.origin, target:march.target, result:missionResult};
     });
     const knight=db.prepare("SELECT victories,knight_level,prestige,bonus_missions FROM alien_rewards WHERE user_id=?").get(userId)||{victories:0,knight_level:1,prestige:0,bonus_missions:0};
-    const sideQuests=Array.from({length:20},(_,i)=>i+1).map(level=>({level,completed:highestDefeated>=level,claimed:!!db.prepare("SELECT 1 FROM alien_side_quests WHERE user_id=? AND milestone=?").get(userId,level)}));
     const knightBusy=missions.some(m=>m.returned_at===null) || !!db.prepare("SELECT 1 FROM mothership_attacks WHERE user_id=? AND resolved_at IS NULL LIMIT 1").get(userId);
     const supportRoutes=db.prepare(`SELECT r.id,r.launched_at,r.arrives_at,r.recall_at,s.username AS sender,t.username AS recipient
       FROM alliance_reinforcements r JOIN users s ON s.id=r.sender_id JOIN users t ON t.id=r.recipient_id
       WHERE r.returned_at IS NULL AND (r.sender_id=? OR r.recipient_id=?)
         AND COALESCE(r.recall_at,r.arrives_at)>?`).all(userId,userId,Date.now());
-    return {scoutMissions,playerScoutMissions:this.getPlayerScoutMissions(userId),playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),allianceMineMarch:this.getAllianceMineMarch(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,sideQuests,gatheringReports,mothershipEvent};
+    return {scoutMissions,playerScoutMissions:this.getPlayerScoutMissions(userId),playerMissions,invasionRoutes,supportRoutes,stations:this.getAlienStationStatus(userId),formations:this.getFormations(userId),allianceMineMarch:this.getAllianceMineMarch(userId),tradeModuleLevel:Math.min(3,Number(current.structures["Cargo Depot"]||0)),knightBusy,highestDefeated,nextLevel,defenders:this.getAlienArmy(nextLevel),garrisons:Object.fromEntries(Array.from({length:20},(_,i)=>[i+1,this.getAlienArmy(i+1)])),remaining:Math.max(0,20-used)+Number(knight.bonus_missions||0),bonusMissions:Number(knight.bonus_missions||0),prestige:Number(knight.prestige||0),used,missions,knightLevel:knight.knight_level,victories:knight.victories,gatheringReports,mothershipEvent};
   }
 
   getAlienStationStatus(userId){
@@ -3489,6 +3548,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
         db.prepare("INSERT OR IGNORE INTO alien_rewards(user_id) VALUES (?)").run(userId);
         db.prepare("UPDATE alien_rewards SET prestige=prestige+1,knight_level=MIN(50,1+CAST((prestige+1)/20 AS INTEGER)) WHERE user_id=?").run(userId);
         db.prepare("UPDATE alien_missions SET resolved_at=?,returns_at=?,result=? WHERE id=?").run(mission.arrives_at,mission.arrives_at,JSON.stringify(result),mission.id);
+        this.sideQuests.record(userId,"alienAttack",mission.level,1,mission.arrives_at);
+        if(result.victory)this.sideQuests.record(userId,"alienVictory",mission.level,1,mission.arrives_at);
       }
       const returning=db.prepare("SELECT * FROM alien_missions WHERE user_id=? AND resolved_at IS NOT NULL AND returned_at IS NULL AND returns_at<=?").all(userId,now);
       for(const mission of returning){
@@ -3502,20 +3563,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
     })();
   }
 
-  claimAlienSideQuest(userId,milestone){
-    if(!Number.isInteger(milestone)||milestone<1||milestone>20)return {error:"Invalid side quest."};
-    return db.transaction(()=>{
-      const highest=db.prepare("SELECT highest_defeated FROM alien_campaign WHERE user_id=?").get(userId)?.highest_defeated||0;
-      if(highest<milestone)return {error:"Defeat the required alien base first."};
-      const insert=db.prepare("INSERT OR IGNORE INTO alien_side_quests(user_id,milestone) VALUES (?,?)").run(userId,milestone);
-      if(!insert.changes)return {error:"Side quest already claimed."};
-      const tokens=milestone===20?500:milestone>=15?250:milestone>=10?200:milestone>=6?150:100;
-      this.creditTokens(userId,tokens);
-      const amount=milestone*1000;
-      for(const name of ["Gold","Iron","Water","Solar"])this.addInventoryReward(userId,"resources",name,amount);
-      return {milestone,amount,tokens};
-    })();
-  }
+
 
   getTutorial(userId) {
     const current = this.syncGame(userId);
@@ -4045,8 +4093,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
           settled++;
           continue;
         }
-        // The depletion report is persisted above, before replacing the map tile.
-        // Both changes and the player's payout share this transaction.
+        // The collector and remaining stock still identify this depletion.
+        if(collectedLimit>0)this.sideQuests.record(mine.claimed_by,"mine",null,1,finishAt);
         createMine(db,mine.resource);
         db.prepare("DELETE FROM resource_mines WHERE id=? AND claimed_by=?").run(mine.id,mine.claimed_by);
         settled++;
@@ -4237,8 +4285,12 @@ Rewards are distributed per participating player, not once per alliance. / На�
   setPlayerAvatar(userId, avatarId) {
     const allowed = new Set(["defender-m","defender-f","attacker-m","attacker-f","farmer-m","farmer-f","scientist-m","scientist-f","pilot-m","pilot-f","doctor-m","doctor-f","engineer-m","engineer-f","tactician-m","tactician-f","leader-m","leader-f"]);
     if (!allowed.has(avatarId)) return {error:"Choose a valid avatar."};
-    db.prepare("INSERT INTO player_profiles (user_id, avatar_id) VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET avatar_id=excluded.avatar_id").run(Number(userId), avatarId);
-    return {avatarId};
+    return db.transaction(()=>{
+      const old=this.getPlayerProfile(userId).avatarId;
+      db.prepare("UPDATE player_profiles SET avatar_id=? WHERE user_id=?").run(avatarId,Number(userId));
+      if(old!==avatarId)this.sideQuests.record(userId,"avatar");
+      return {avatarId};
+    }).immediate();
   }
 
   getEquipmentCount() {

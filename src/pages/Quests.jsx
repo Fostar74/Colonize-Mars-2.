@@ -1,19 +1,17 @@
 import { useLanguage } from "../language";
 import React, { useState, useEffect } from "react";
 import "./Quests.css";
+import SideQuests from "./SideQuests";
 import ActivityWheel from "./ActivityWheel";
 import goldIcon from "../images/gold.png";
 import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
-const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance }) => {
+const Quests = ({ initialTab="main", onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance }) => {
   const { t , label: localLabel} = useLanguage();
-  const [activeTab, setActiveTab] = useState("main");
+  const [activeTab, setActiveTab] = useState(initialTab);
   const [loginRewards, setLoginRewards] = useState(null);
-  const [alienSideQuests, setAlienSideQuests] = useState([]);
-  const [sideQuestBusy, setSideQuestBusy] = useState(false);
-  const [sideQuestMessage, setSideQuestMessage] = useState("");
   const [loginBusy, setLoginBusy] = useState(false);
   const [loginMessage, setLoginMessage] = useState("");
   const [tutorial, setTutorial] = useState([]);
@@ -34,8 +32,6 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
       const data = await response.json();
       const loginResponse = await fetch(base + "/daily-login/" + encodeURIComponent(userId), {headers:headers()});
       if(loginResponse.ok) setLoginRewards(await loginResponse.json());
-      const sideResponse = await fetch(base + "/alien-campaign/" + encodeURIComponent(userId), {headers:headers(),cache:"no-store"});
-      if(sideResponse.ok) {const sideData=await sideResponse.json();setAlienSideQuests(sideData.sideQuests||[]);}
       const tutorialResponse = await fetch(base + "/tutorial/" + encodeURIComponent(userId), {headers:headers()});
       if (tutorialResponse.ok) { const t=await tutorialResponse.json(); setTutorial(t.missions || []); }
       if (data.gameProgress) {
@@ -175,28 +171,7 @@ const Quests = ({ onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance })
     </div>
   );
 
-  const claimAlienSideQuest = async level => {
-    if(sideQuestBusy)return;
-    setSideQuestBusy(true);setSideQuestMessage("");
-    try {
-      const response=await fetch(base+"/alien-campaign/side-quest",{
-        method:"POST",headers:headers(),body:JSON.stringify({userId,milestone:level})
-      });
-      const data=await response.json();
-      if(!response.ok)throw Error(data.message||"Cannot claim side quest reward.");
-      setSideQuestMessage(t("Level reward collected! Resources added to Inventory and tokens awarded.","Наградата за нивото е взета! Ресурсите са добавени в Инвентара и жетоните са начислени."));
-      setAlienSideQuests(previous=>previous.map(quest=>quest.level===level?{...quest,claimed:true}:quest));
-      window.dispatchEvent(new Event("game-progress-updated"));
-      await refresh();
-    }catch(error){setSideQuestMessage(error.message);}
-    finally{setSideQuestBusy(false);}
-  };
-  const renderSideQuests = () => (
-    <div className="quest-section">
-      <h3>{t("Side Quests","Странични мисии")}</h3>
-      <p>{t("Coming soon","Очаквайте скоро")}</p>
-    </div>
-  );
+  const renderSideQuests = () => <SideQuests />;
 
   const renderActivityRewards = () => <ActivityWheel />;
 

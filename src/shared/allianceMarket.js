@@ -1,5 +1,5 @@
 const products = {
-  landing: {cost:100, label:"Mars Landing Token", bg:"Жетон за кацане на Марс"},
+  landing_pack: {cost:100, tokens:50, label:"Mars Landing Pack (50 tokens)", bg:"Пакет за кацане на Марс (50 жетона)"},
   attack: {cost:80, label:"Army Attack +10% (1h)", bg:"Атака на армията +10% (1 ч.)"},
   health: {cost:80, label:"Army Health +10% (1h)", bg:"Здраве на армията +10% (1 ч.)"},
   protection: {cost:150, label:"Plasma Shield (24h)", bg:"Плазмен щит (24 ч.)"},

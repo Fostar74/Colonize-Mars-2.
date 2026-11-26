@@ -242,5 +242,9 @@ export default {
   "Army Attack boost activated for 1 hour.": "Бонусът към атаката на армията е активен за 1 час.",
   "Army Health boost activated for 1 hour.": "Бонусът към здравето на армията е активен за 1 час.",
   "Enter a valid item quantity.": "Въведи валиден брой предмети.",
+  "Invalid mobilization request.": "Невалидна заявка за мобилизация.",
+  "This side quest reward is unavailable.": "Наградата от тази странична мисия не е достъпна.",
+  "Invalid healed troop quantity.": "Невалидно количество излекувани войници.",
+  "Not enough healed troops ready to mobilize.": "Няма достатъчно излекувани войници за мобилизация.",
   "You do not have that many items.": "Нямаш толкова предмети."
 };

@@ -13,7 +13,9 @@ const headers=()=>({Authorization:"Bearer "+sessionStorage.getItem("authToken")}
 const resourceIcons={Gold:goldIcon,Iron:ironIcon,Water:waterIcon,Solar:solarIcon};
 const marketItems=[
   {id:"protocol_reset",label:"Protocol Reset",description:"Refunds all allocated Commander Protocol points. You can use it after active combat missions end.",bulgarianLabel:"Нулиране на протоколите",bulgarianDescription:"Възстановява всички разпределени точки за командирски протоколи. Можеш да го използваш след края на активните бойни мисии.",icon:marketItemIcon},
-  {id:"landing",label:"Mars Landing Token",description:"Adds one Mars Landing Token to your account.",bulgarianLabel:"Жетон за кацане на Марс",bulgarianDescription:"Добавя жетон за кацане на Марс към акаунта ти.",icon:marketItemIcon},
+  {id:"landing",label:"Mars Landing Token (1 token)",description:"Adds one Mars Landing Token to your account.",bulgarianLabel:"Жетон за кацане на Марс (1 жетон)",bulgarianDescription:"Добавя жетон за кацане на Марс към акаунта ти.",icon:marketItemIcon},
+  {id:"landing_pack",label:marketProducts.landing_pack.label,bulgarianLabel:marketProducts.landing_pack.bg,
+    description:"Adds 50 Mars Landing Tokens per pack to your account.",bulgarianDescription:"Добавя 50 жетона за кацане на Марс за всеки активиран пакет.",icon:marketItemIcon},
   {id:"attack",label:"Army Attack +10% (1h)",description:"Increases army attack for one hour.",bulgarianLabel:"Атака на армията +10% (1 ч.)",bulgarianDescription:"Увеличава атаката на армията за един час.",icon:marketItemIcon},
   {id:"health",label:"Army Health +10% (1h)",description:"Increases army health for one hour.",bulgarianLabel:"Здраве на армията +10% (1 ч.)",bulgarianDescription:"Увеличава здравето на армията за един час.",icon:marketItemIcon},
   {id:"protection",label:"Plasma Shield (24h)",description:"Surrounds your base with a protective plasma bubble for 24 hours.",bulgarianLabel:"Плазмен щит (24 ч.)",bulgarianDescription:"Обгръща базата ти със защитен плазмен балон за 24 часа.",icon:marketItemIcon},
@@ -97,7 +99,7 @@ export default function Inventory(){
     </div>}
     {reserve&&tab==="items"&&<div>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
-        {marketItems.map(item=>{const count=Number(reserve.items?.[item.id]||0),selected=selectedItem===item.id;return <div role="button" tabIndex={0} key={item.id} onClick={()=>{setSelectedItem(item.id);setItemAmount("1");}} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setSelectedItem(item.id);setItemAmount("1");}}} aria-pressed={selected} style={{...card,textAlign:"left",color:"white",cursor:"pointer",border:selected?"2px solid #83e6ff":"1px solid #4a6c83",opacity:count?1:.65}}>
+        {marketItems.filter(item=>item.id!=="landing"||Number(reserve.items?.landing)>0).map(item=>{const count=Number(reserve.items?.[item.id]||0),selected=selectedItem===item.id;return <div role="button" tabIndex={0} key={item.id} onClick={()=>{setSelectedItem(item.id);setItemAmount("1");}} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setSelectedItem(item.id);setItemAmount("1");}}} aria-pressed={selected} style={{...card,textAlign:"left",color:"white",cursor:"pointer",border:selected?"2px solid #83e6ff":"1px solid #4a6c83",opacity:count?1:.65}}>
           <img src={item.icon} alt="" width="64" height="64" style={{objectFit:"contain",display:"block",margin:"0 auto 8px"}}/>
           <strong>{t(item.label,item.bulgarianLabel)}</strong>
           <p style={{marginBottom:0}}>{t("In inventory:","В инвентара:")} <b>{count.toLocaleString()}</b></p>
