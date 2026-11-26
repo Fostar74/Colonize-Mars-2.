@@ -15,17 +15,22 @@ const eventSettlementTimer=setInterval(()=>{
   finally{settlingEndedEvents=false;}
 },15000);
 if(typeof eventSettlementTimer.unref==="function")eventSettlementTimer.unref();
-function requireSession(req, res, next) {
+function requireAuthenticatedPlayer(req, res, next) {
   const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
   const session = match && sessions.get(match[1]);
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   const requestedId = req.params.userId ?? req.body?.userId;
   if (String(requestedId) !== String(session.userId)) return res.status(403).json({ message: "Access denied." });
-  db.advanceCampaignTimeline();
-  db.markPlayerActive(session.userId);
   next();
 }
 
+function requireSession(req, res, next) {
+  requireAuthenticatedPlayer(req, res, () => {
+    db.advanceCampaignTimeline();
+    db.markPlayerActive(Number(req.params.userId ?? req.body?.userId));
+    next();
+  });
+}
 
 router.post("/register", async (req, res) => {
   const { email, password, username } = req.body;
@@ -256,15 +261,16 @@ router.route("/messages/:scope/:userId")
     const result=db.sendMessage(Number(req.params.userId),req.params.scope,req.body.recipient,req.body.body);
     res.status(result.error?400:201).json(result.error?{message:result.error}:result);
   });
-router.get("/notifications/:userId",requireSession,(req,res)=>{
-  try{res.json(db.listPlayerNotifications(Number(req.params.userId)));}
+router.get("/notifications/:userId",requireAuthenticatedPlayer,(req,res)=>{
+  try{res.set("Cache-Control","no-store").json(db.listPlayerNotifications(Number(req.params.userId)));}
   catch(error){console.error("Player notifications:",error);res.status(500).json({message:"Notifications unavailable."});}
 });
-router.post("/notifications/:userId/read",requireSession,(req,res)=>{
+router.post("/notifications/:userId/read",requireAuthenticatedPlayer,(req,res)=>{
   try{
-    const notificationId=Number(req.body.notificationId);
+    const notificationId=Number(req.body?.notificationId);
     if(!Number.isSafeInteger(notificationId)||notificationId<1)return res.status(400).json({message:"Choose a valid notification."});
-    res.json(db.markPlayerNotificationRead(Number(req.params.userId),notificationId));
+    const result=db.markPlayerNotificationRead(Number(req.params.userId),notificationId);
+    res.status(result.success?200:404).json(result);
   }catch(error){console.error("Mark notification read:",error);res.status(500).json({message:"Could not update notification."});}
 });
 

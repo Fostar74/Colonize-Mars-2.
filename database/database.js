@@ -1294,8 +1294,9 @@ class DatabaseManager {
   }
 
   markPlayerNotificationRead(userId, notificationId){
-    const result=db.prepare("UPDATE player_notifications SET read_at=? WHERE id=? AND recipient_id=? AND read_at IS NULL").run(Date.now(),notificationId,userId);
-    return {success:result.changes>0};
+    const result=db.prepare("UPDATE player_notifications SET read_at=COALESCE(read_at,?) WHERE id=? AND recipient_id=? RETURNING id")
+      .get(Date.now(),notificationId,userId);
+    return {success:Boolean(result)};
   }
 
   rankings(userId){
