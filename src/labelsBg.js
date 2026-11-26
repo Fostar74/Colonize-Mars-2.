@@ -1,4 +1,5 @@
 export default {
+  "Leave at least one empty tile between bases and mines.": "Остави поне едно свободно квадратче между базите и мините.",
   "Session expired. Please log in again.": "Сесията изтече. Влез отново.",
   "Enter a valid email and username, and use a password of at least 8 characters.": "Въведи валиден имейл, потребителско име и парола с поне 8 знака.",
   "Account created. Enter your password to log in.": "Акаунтът е създаден. Въведи паролата си, за да влезеш.",
