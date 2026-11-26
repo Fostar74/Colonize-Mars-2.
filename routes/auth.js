@@ -21,6 +21,7 @@ function requireSession(req, res, next) {
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   const requestedId = req.params.userId ?? req.body?.userId;
   if (String(requestedId) !== String(session.userId)) return res.status(403).json({ message: "Access denied." });
+  db.advanceCampaignTimeline();
   db.markPlayerActive(session.userId);
   next();
 }
@@ -120,6 +121,7 @@ function requireSessionForMap(req, res, next) {
   const session = match && sessions.get(match[1]);
   if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
   req.mapUserId=session.userId;
+  db.advanceCampaignTimeline();
   db.markPlayerActive(session.userId);
   next();
 }
@@ -140,6 +142,25 @@ router.post("/map/gathering/recall", requireSession, (req,res)=>{
     res.json(result);
   }catch(error){console.error("Recall gathering army:",error);res.status(500).json({message:"Could not recall the gathering army."});}
 });
+
+const allianceMineActions = {
+  place: (userId, body) => db.placeAllianceMine(userId, body.x, body.y, body.resource),
+  march: (userId, body) => db.launchAllianceMineMarch(userId, Number(body.mineId), body.mode, body.units),
+  withdraw: (userId, body) => db.withdrawAllianceMine(userId, Number(body.mineId)),
+};
+for (const [action, perform] of Object.entries(allianceMineActions)) {
+  router.post("/alliance/mine/"+action,requireSession,(req,res)=>{
+    try {
+      const userId=Number(req.body.userId);
+      const result=perform(userId,req.body);
+      if(result.error)return res.status(400).json({message:result.error});
+      res.json(action==="withdraw"?{...result,...db.getMapResources(userId)}:result);
+    } catch(error) {
+      console.error("Alliance mine action:",error);
+      res.status(500).json({message:"Alliance mine action failed."});
+    }
+  });
+}
 
 router.post("/upgrade-building", requireSession, (req, res) => {
   try {

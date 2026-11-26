@@ -11,6 +11,7 @@ const names=["Gold","Iron","Water","Solar"];
 const headers=()=>({Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 const resourceIcons={Gold:goldIcon,Iron:ironIcon,Water:waterIcon,Solar:solarIcon};
 const marketItems=[
+  {id:"protocol_reset",label:"Protocol Reset",description:"Refunds all allocated Commander Protocol points. You can use it after active combat missions end.",bulgarianLabel:"Нулиране на протоколите",bulgarianDescription:"Възстановява всички разпределени точки за командирски протоколи. Можеш да го използваш след края на активните бойни мисии.",icon:marketItemIcon},
   {id:"landing",label:"Mars Landing Token",description:"Adds one Mars Landing Token to your account.",bulgarianLabel:"Жетон за кацане на Марс",bulgarianDescription:"Добавя жетон за кацане на Марс към акаунта ти.",icon:marketItemIcon},
   {id:"attack",label:"Army Attack +10% (1h)",description:"Increases army attack for one hour.",bulgarianLabel:"Атака на армията +10% (1 ч.)",bulgarianDescription:"Увеличава атаката на армията за един час.",icon:marketItemIcon},
   {id:"health",label:"Army Health +10% (1h)",description:"Increases army health for one hour.",bulgarianLabel:"Здраве на армията +10% (1 ч.)",bulgarianDescription:"Увеличава здравето на армията за един час.",icon:marketItemIcon},
@@ -98,9 +99,9 @@ export default function Inventory(){
           <img src={item.icon} alt="" width="72" height="72" style={{objectFit:"contain"}}/>
           <div><h3 style={{margin:"0 0 6px"}}>{t(item.label,item.bulgarianLabel)}</h3><div>{t(item.description,item.bulgarianDescription)}</div></div>
         </div>
-        <label style={{display:"block",marginTop:14}}>{t("How many items do you want to activate?","Колко предмета искаш да активираш?")}
+        {selectedItem!=="protocol_reset"&&<label style={{display:"block",marginTop:14}}>{t("How many items do you want to activate?","Колко предмета искаш да активираш?")}
           <input type="number" min="1" max={count} step="1" value={itemAmount} onChange={event=>setItemAmount(event.target.value)} style={{display:"block",width:130,padding:8,marginTop:6}}/>
-        </label>
+        </label>}
         <p>{t("Available:","Налични:")} {count.toLocaleString()}</p>
         <button type="button" disabled={busy||!Number.isSafeInteger(amount)||amount<1||amount>count} style={button} onClick={()=>activateItem(selectedItem,amount)}>{t("Confirm and activate","Потвърди и активирай")}</button>
       </section>})()}

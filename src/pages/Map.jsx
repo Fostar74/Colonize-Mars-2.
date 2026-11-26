@@ -159,6 +159,11 @@ function Map() {
   const [selectedTarget, setSelectedTarget] = useState(null);
   const [marchDraft, setMarchDraft] = useState(null);
   const [mapMines,setMapMines]=useState([]);
+  const [allianceMines,setAllianceMines]=useState([]);
+  const [allianceMine,setAllianceMine]=useState(null);
+  const [mineResource,setMineResource]=useState("Gold");
+  const [allianceMineBusy,setAllianceMineBusy]=useState(false);
+  const [allianceMineNotice,setAllianceMineNotice]=useState("");
   const [myMineCount,setMyMineCount]=useState(0);
   const [mineCapacity,setMineCapacity]=useState(4);
   const [mineRecallId,setMineRecallId]=useState(null);
@@ -200,7 +205,10 @@ function Map() {
   const playerMarches = (campaign.playerMissions || []).filter(mission =>
     campaignTab === "active" ? !mission.returned_at : mission.result || mission.returned_at);
   const myGatheringMines=mapMines.filter(mine=>Number(mine.claimed_by)===Number(sessionStorage.getItem("userId")));
-  const hasRoutes=(campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || (campaign.playerMissions||[]).some(m=>!m.returned_at) || !!campaign.supportRoutes?.length || mapMines.some(m=>m.claimed_by&&m.arrives_at>Date.now());
+  const allianceMarch=allianceMine?.march;
+  const selectedAllianceMine=selectedTarget?.type==="allianceMine"
+    ? allianceMines.find(mine=>mine.id===selectedTarget.id) : null;
+  const hasRoutes=!!allianceMarch || (campaign.scoutMissions||[]).some(m=>!m.returned_at) || (campaign.missions||[]).some(m=>m.target&&!m.returned_at) || (campaign.playerMissions||[]).some(m=>!m.returned_at) || !!campaign.supportRoutes?.length || mapMines.some(m=>m.claimed_by&&m.arrives_at>Date.now());
   useEffect(()=>{
     if(!marchHistoryOpen&&!hasRoutes)return;
     setClock(Date.now());
@@ -229,6 +237,8 @@ function Map() {
           const bases = Array.isArray(data.bases) ? data.bases : [];
           setCastles(own && !bases.some(b => b.username === own.username) ? [...bases, own] : bases);
           setMapMines(Array.isArray(data.mines)?data.mines:[]);
+          setAllianceMines(data.allianceMines||[]);
+          setAllianceMine(data.allianceMine||null);
           setMyMineCount(Number(data.activeMineCount)||0);
           setMineCapacity(Number(data.gatheringCapacity)||4);
           setMapError("");
@@ -400,7 +410,7 @@ function Map() {
       }
     }
 
-    mineData.forEach((mine) => {
+    [...mineData,...allianceMines].forEach((mine) => {
       const px = (mine.x-1) * tileSize + offset.x;
       const py = (mine.y-1) * tileSize + offset.y;
       const icon = mineIcons[mine.resource];
@@ -416,6 +426,11 @@ function Map() {
         sy - markerSize / 2 < canvas.height
       ) {
         ctx.drawImage(icon, sx - markerSize / 2, sy - markerSize / 2, markerSize, markerSize);
+        if (mine.status) {
+          ctx.strokeStyle = mine.ally ? "#77efcd" : "#c6a4fa";
+          ctx.lineWidth = 2;
+          ctx.strokeRect(sx-tileSize/2,sy-tileSize/2,tileSize,tileSize);
+        }
       }
     });
 
@@ -521,7 +536,7 @@ function Map() {
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
       ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
-  }, [offset, castles, hqIcon, mineIcons, alienIcon, allianceBaseIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, t]);
+  }, [offset, castles, hqIcon, mineIcons, alienIcon, allianceBaseIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, allianceMines, t]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
@@ -573,15 +588,19 @@ function Map() {
     const nearest=(items)=>items.map(item=>({
       item,dist:Math.hypot((Number(item.x)-.5)*tileSize+offset.x-px,(Number(item.y)-.5)*tileSize+offset.y-py)
     })).filter(hit=>hit.dist<=hitRadius).sort((a,b)=>a.dist-b.dist)[0]?.item;
-    const castle=nearest(castles);
-    const event=campaign.mothershipEvent?.active?nearest([campaign.mothershipEvent.coordinates]):null;
-    const station=castle||event?null:nearest(campaign.stations?.stations||spaceStations);
-    const mine=castle||event||station?null:nearest(mineData);
-    const alien=castle||event||station||mine?null:nearest(alienBases);
-    setSelectedAlien(castle||station?null:alien||null);
+    const exact=items=>items.find(item=>Number(item.x)===x+1&&Number(item.y)===y+1);
+    const selectMarker=allianceMine?.canPlace ? exact : nearest;
+    const allianceTile=exact(allianceMines);
+    const castle=selectMarker(castles);
+    const event=campaign.mothershipEvent?.active?selectMarker([campaign.mothershipEvent.coordinates]):null;
+    const station=castle||event?null:selectMarker(campaign.stations?.stations||spaceStations);
+    const mine=castle||event||station?null:selectMarker(mineData);
+    const alien=castle||event||station||mine?null:selectMarker(alienBases);
+    setSelectedAlien(castle||station||allianceTile?null:alien||null);
+    setAllianceMineNotice("");
     setMarchDraft(null);
     setStationNotice("");
-    setSelectedTarget(castle?{type:"castle",...castle}:event?{type:"mothership",...campaign.mothershipEvent.coordinates}:station?{type:"station",stationId:station.id,x:station.x,y:station.y}:mine?{type:"mine",...mine}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
+    setSelectedTarget(allianceTile?{type:"allianceMine",...allianceTile}:castle?{type:"castle",...castle}:event?{type:"mothership",...campaign.mothershipEvent.coordinates}:station?{type:"station",stationId:station.id,x:station.x,y:station.y}:mine?{type:"mine",...mine}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
     setMarchNotice("");
   };
   const ownUsername=sessionStorage.getItem("username");
@@ -627,6 +646,36 @@ function Map() {
     ?Math.max(Math.abs(Number(marchDraft.origin.x)-Number(marchDraft.target.x)),Math.abs(Number(marchDraft.origin.y)-Number(marchDraft.target.y))):null;
   const pvpTravelSeconds=pvpDistance===null?null:Math.max(1,pvpDistance)*30;
   const pvpTravelLabel=pvpTravelSeconds===null?"":(Math.floor(pvpTravelSeconds/3600)>0?Math.floor(pvpTravelSeconds/3600)+" "+t("h","ч")+" ":"")+(Math.floor(pvpTravelSeconds%3600/60)>0?Math.floor(pvpTravelSeconds%3600/60)+" "+t("min","мин")+" ":"")+(pvpTravelSeconds%60>0?pvpTravelSeconds%60+" "+t("sec","сек"):"");
+  const allianceMineAction = async (action, payload) => {
+    const base=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
+    const response=await fetch(base+"/alliance/mine/"+action,{
+      method:"POST",
+      headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
+      body:JSON.stringify({userId:sessionStorage.getItem("userId"),...payload}),
+    });
+    const data=await response.json();
+    if(!response.ok)throw Error(data.message||"Alliance mine action failed.");
+    setAllianceMine(data.allianceMine);
+    setAllianceMines(data.allianceMines);
+    window.dispatchEvent(new Event("game-progress-updated"));
+    return data;
+  };
+  const changeAllianceMine = async (action, target) => {
+    setAllianceMineBusy(true);
+    setAllianceMineNotice("");
+    try {
+      const data=await allianceMineAction(action,action==="place"
+        ? {x:target.x,y:target.y,resource:mineResource} : {mineId:target.mineId||target.id});
+      if(action==="place")setSelectedTarget({type:"allianceMine",...data.allianceMines.find(mine=>mine.id===data.allianceMine.active.id)});
+      setAllianceMineNotice(action==="place"
+        ? t("Mine site placed. Send troops to construct it.","Теренът е запазен. Изпрати войски за строеж.")
+        : t("Your army returned to base.","Армията ти се върна в базата."));
+    } catch(error) {
+      setAllianceMineNotice(error.message);
+    } finally {
+      setAllianceMineBusy(false);
+    }
+  };
   const prepareMarch = async () => {
     setPreviewOpen(false);
     const isEspionage=marchDraft?.type==="Espionage"&&marchDraft?.target?.type==="castle";
@@ -636,14 +685,22 @@ function Map() {
     const isSupport=marchDraft?.type==="Support"&&marchDraft?.target?.type==="castle"&&sameAllianceTarget;
     const isStationDefense=marchDraft?.type==="Defend"&&marchDraft?.target?.type==="station";
     const isGathering=marchDraft?.type==="Gather"&&marchDraft?.target?.type==="mine";
+    const isAllianceMine=marchDraft?.target?.type==="allianceMine";
     if(!isEspionage&&selectedPopulation>marchLimit){setMarchNotice(t("A march can contain at most 50,000 population.","Походът може да включва най-много 50 000 популация."));return;}
     if((isAlienAttack||isMothershipAttack)&&!knightAdded){setMarchNotice("Add Cyber Knight before launching the attack.");return;}
-    if(!isEspionage&&!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isSupport&&!isStationDefense&&!isGathering){setMarchNotice("Choose an attackable target.");return;}
+    if(!isEspionage&&!isAlienAttack&&!isMothershipAttack&&!isPlayerAttack&&!isSupport&&!isStationDefense&&!isGathering&&!isAllianceMine){setMarchNotice("Choose an attackable target.");return;}
     const selected=Object.fromEntries(Object.entries(marchUnits).filter(([,n])=>n>0));
     if(!isEspionage&&!Object.keys(selected).length){setMarchNotice("Choose at least one unit.");return;}
     if(isEspionage&&(!Number.isSafeInteger(Number(marchUnits["Rover Scout"]))||Number(marchUnits["Rover Scout"])<1||Number(marchUnits["Rover Scout"])>Number(availableArmy["Rover Scout"]||0))){setMarchNotice(t("Select available Rover Scouts.","Избери налични разузнавателни роувъри."));return;}
     try{
       setMarchLoading(true);
+      if(isAllianceMine){
+        await allianceMineAction("march",{mineId:marchDraft.target.id,mode:marchDraft.type==="Construct"?"construction":"gathering",units:selected});
+        setMarchSuccess(t("Alliance mine march dispatched.","Походът към алиансната мина е изпратен."));
+        setMarchDraft(null);
+        setSelectedTarget(null);
+        return;
+      }
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
       const payload=isEspionage ? {userId:sessionStorage.getItem("userId"),quantity:Number(marchUnits["Rover Scout"]),target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}}
@@ -859,6 +916,11 @@ function Map() {
   const gatheringRoutes=mapMines.filter(m=>m.claimed_by&&Number(m.arrives_at)>clock).map(m=>({
     id:"gather-"+m.id,color:"#ffd166",from:{x:m.origin_x,y:m.origin_y},to:{x:m.x,y:m.y},start:m.launched_at,end:m.arrives_at
   }));
+  if(allianceMarch?.arrives_at>clock)gatheringRoutes.push({
+    id:"alliance-mine-"+allianceMarch.id,color:"#77efcd",
+    from:{x:allianceMarch.origin_x,y:allianceMarch.origin_y},to:{x:allianceMarch.x,y:allianceMarch.y},
+    start:allianceMarch.launched_at,end:allianceMarch.arrives_at,
+  });
   const mothership = campaign.mothershipEvent;
   const mothershipClock=clock+mothershipClockOffset.current;
   const mothershipRoutes = (mothership?.attacks || [])
@@ -1074,7 +1136,30 @@ function Map() {
               <div style={{maxHeight:180,overflowY:"auto"}}>{(campaign.mothershipEvent.attacks||[]).slice().reverse().map(attack=><div key={attack.id}>{attack.username} · {attack.origin_x}:{attack.origin_y} → 50:50 · {attack.resolved_at?Number(attack.damage).toLocaleString()+" "+t("damage","щети")+" · "+Number(attack.xp||0).toLocaleString()+" XP":t("en route","на път")}</div>)}</div>
             </details>
           </section>}
-          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Attack the Alien Command Ship · Global Event","Атакувай Командния кораб на извънземните · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
+          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Attack the Alien Command Ship · Global Event","Атакувай Командния кораб на извънземните · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):selectedTarget?.type==="allianceMine"?localLabel("Alliance Mine"):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
+          {selectedTarget?.type==="field"&&allianceMine?.canPlace&&!marchDraft&&<section>
+            <label>{t("Mine resource","Ресурс на мината")}{" "}
+              <select value={mineResource} onChange={event=>setMineResource(event.target.value)}>
+                {["Gold","Iron","Water","Solar"].map(resource=><option key={resource} value={resource}>{localLabel(resource)}</option>)}
+              </select>
+            </label>{" "}
+            <button type="button" disabled={allianceMineBusy} onClick={()=>changeAllianceMine("place",selectedTarget)}>{t("Place alliance mine","Постави алиансна мина")}</button>
+          </section>}
+          {selectedTarget?.type==="allianceMine"&&<section>
+            {!selectedAllianceMine ? <p>{t("This mine is depleted.","Мината е изчерпана.")}</p>
+              : !selectedAllianceMine.ally ? <p>{t("This mine belongs to another alliance.","Мината принадлежи на друг алианс.")}</p>
+              : <>
+                <p>{localLabel(allianceMine?.active?.resource||"")}</p>
+                {selectedAllianceMine.status==="construction"
+                  ? <p>{t("Construction points","Строителни точки")} {Number(allianceMine?.active?.constructionPoints||0).toLocaleString(undefined,{maximumFractionDigits:2})} / {allianceMine?.constructionGoal?.toLocaleString()}</p>
+                  : <p>{t("Shared resources remaining","Оставащи общи ресурси")} {allianceMine?.active?.amount?.toLocaleString()} · {t("1,000 per hour per player","1 000 на час за играч")}</p>}
+                <p>{t("Armies at the mine are protected from attacks.","Армиите в мината са защитени от атаки.")}</p>
+                {!marchDraft&&(!allianceMarch
+                  ? <button type="button" disabled={marchLoading} onClick={()=>chooseAction(selectedAllianceMine.status==="construction"?"Construct":"Gather")}>{selectedAllianceMine.status==="construction"?t("Send construction army","Изпрати строителна армия"):t("Send gathering army","Изпрати армия за добив")}</button>
+                  : <button type="button" disabled={allianceMineBusy} onClick={()=>changeAllianceMine("withdraw",allianceMarch)}>{t("Withdraw army","Изтегли армията")}</button>)}
+              </>}
+          </section>}
+          {allianceMineNotice&&<p role="status">{localLabel(allianceMineNotice)}</p>}
           {selectedTarget?.type==="mine"&&<section style={{padding:12,margin:"10px 0",background:"#243449",border:"1px solid #6b8ca5",borderRadius:8}}>
             <strong>{t("Available resource","Наличен ресурс")}: {Number(selectedTarget.amount||0).toLocaleString()} · {t("Gathering slots used","Заети места за добив")}: {myMineCount}/{mineCapacity}</strong>
             {selectedTarget.claimed_by
@@ -1091,7 +1176,7 @@ function Map() {
             </div> : <p>{t("Loading fixed garrison data...","Зареждане на гарнизона…")}</p>}
             <p style={{fontSize:12}}>{t("Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.","По-високите нива имат по-големи и по-силни гарнизони. Крепостта на ниво 20 има извънземен владетел.")}</p>
           </div>}
-          {!marchDraft && selectedTarget?.type!=="station" && <div>
+          {!marchDraft && !["station","allianceMine"].includes(selectedTarget?.type) && <div>
             <p>{t("Choose mission type:","Избери вид мисия:")}</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
               {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:selectedTarget?.type==="mine"?["Gather"]:["Attack","Support","Espionage","Gather","Trade"]).map(type=>{
@@ -1119,7 +1204,7 @@ function Map() {
           </div>}
           {marchLoading && <p>{t("Loading your army...","Зареждане на армията…")}</p>}
           {marchDraft && <div>
-            <h3>{marchDraft.type}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
+            <h3>{localLabel(marchDraft.type)}: {marchDraft.origin.username} ({marchDraft.origin.x}:{marchDraft.origin.y}) → ({marchDraft.target.x}:{marchDraft.target.y})</h3>
             {marchDraft.type==="Trade" ? <div>
               <p>{t("Direct transfers have been replaced by the marketplace. Publish an offer from your base; the other player must accept it before resources move.","Директното изпращане е заменено с пазар. Публикувай оферта от базата си; другият играч трябва да я приеме, преди ресурсите да се преместят.")}</p>
               <button type="button" onClick={()=>navigate("/game?market=1")}>{t("Open marketplace","Отвори пазара")}</button>
@@ -1184,12 +1269,12 @@ function Map() {
             <div style={{marginTop:14,display:"flex",gap:8,flexWrap:"wrap"}}>
               <button onClick={()=>setMarchUnits({})}>{t("Clear","Изчисти")}</button>
               {marchDraft.type!=="Gather"&&<button type="button" disabled={!selectedTroops || selectedPopulation>marchLimit} onClick={()=>setPreviewOpen(true)}>{t("Preview formation","Преглед на строя")}</button>}
-              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedPopulation>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):marchDraft.type==="Support"?t("Send reinforcements","Изпрати подкрепление"):marchDraft.target.type==="castle"?t("ATTACK","АТАКА"):t("Launch attack","Изпрати похода")}</button>
+              <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedPopulation>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Construct"?t("Send construction army","Изпрати строителна армия"):marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):marchDraft.type==="Support"?t("Send reinforcements","Изпрати подкрепление"):marchDraft.target.type==="castle"?t("ATTACK","АТАКА"):t("Launch attack","Изпрати похода")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
             {selectedPopulation>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
             {pvpTravelSeconds!==null&&<p style={{margin:"8px 0",color:"#9cdbff",fontWeight:600}}>{t("Travel to player","Пътуване до играча")}: {pvpTravelLabel} · {pvpDistance} {t("map squares","квадратчета")}</p>}
-            <p style={{fontSize:12,color:"#b5c7d9"}}>{marchDraft.type==="Gather"?t("Selected troops are reserved until the mine is depleted, then they return to your base.","Избраните войски се отделят до изчерпване на мината, след което се връщат в базата."):t("Selected troops leave your base immediately and return after the mission.","Избраните войски напускат базата веднага и се връщат след мисията.")}</p>
+            <p style={{fontSize:12,color:"#b5c7d9"}}>{marchDraft.target.type==="allianceMine"?t("Work starts on arrival. You can withdraw your army at any time.","Работата започва при пристигане. Можеш да изтеглиш армията по всяко време."):marchDraft.type==="Gather"?t("Selected troops are reserved until the mine is depleted, then they return to your base.","Избраните войски се отделят до изчерпване на мината, след което се връщат в базата."):t("Selected troops leave your base immediately and return after the mission.","Избраните войски напускат базата веднага и се връщат след мисията.")}</p>
             </>}
             </>}
           </div>}
@@ -1308,7 +1393,7 @@ function Map() {
             <p>{t("The selected defense formation is used for future player battles. You can change it at any time.","Избраната формация за защита се използва в бъдещи битки с играчи. Можеш да я смениш по всяко време.")}</p>
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
           </section> : <>
-          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !myGatheringMines.length && !myMothershipMarches.length &&
+          {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !myGatheringMines.length && !myMothershipMarches.length && !allianceMarch &&
             <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
           {campaignTab==="active"&&(campaign.invasionRoutes||[]).length>0&&<section style={{margin:"14px 0",padding:12,border:"1px solid #9c5353",borderRadius:9,background:"rgba(78,25,30,.3)"}}>
             <h3>⚔️ Alien Invasion — {t("Incoming attacks against alliance members","Атаки срещу членовете на алианса")}</h3>
@@ -1330,6 +1415,16 @@ function Map() {
               {march.from.x}:{march.from.y} → {march.to.x}:{march.to.y} · {t("Arrival","Пристигане")} · {formatDuration(march.end-mothershipClock)}
             </div>)}
           </section>}
+          {campaignTab==="active"&&allianceMarch&&<section>
+            <h3>{localLabel("Alliance Mine")} · {allianceMarch.x}:{allianceMarch.y}</h3>
+            {clock<allianceMarch.arrives_at
+              ? <p>{t("Arrival in","Пристига след")} {formatDuration(allianceMarch.arrives_at-clock)}</p>
+              : allianceMarch.mode==="construction"
+                ? <p>{t("Construction points earned","Спечелени строителни точки")} {(allianceMarch.work/3600000).toLocaleString(undefined,{maximumFractionDigits:2})}</p>
+                : <p>{t("Resources gathered","Добити ресурси")} {allianceMarch.gathered.toLocaleString()} / {allianceMarch.capacity.toLocaleString()} {localLabel(allianceMarch.resource)}</p>}
+            <button type="button" disabled={allianceMineBusy} onClick={()=>changeAllianceMine("withdraw",allianceMarch)}>{t("Withdraw army","Изтегли армията")}</button>
+          </section>}
+          {campaignTab==="active"&&allianceMineNotice&&<p role="status">{localLabel(allianceMineNotice)}</p>}
           {campaignTab==="active"&&myGatheringMines.length>0&&<section>
             <h3>{t("Gathering","Събиране")}</h3>
             {myGatheringMines.map(mine=>{
