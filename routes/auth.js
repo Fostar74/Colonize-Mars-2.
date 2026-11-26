@@ -23,6 +23,15 @@ const eventSettlementTimer=setInterval(()=>{
   finally{settlingEndedEvents=false;}
 },15000);
 if(typeof eventSettlementTimer.unref==="function")eventSettlementTimer.unref();
+if (process.env.ORANGE_EMPIRE_ENABLED === "true") {
+  const advanceOrangeEmpire = () => {
+    try { db.advanceOrangeEmpire(); }
+    catch (error) { console.error("Orange Empire development:", error); }
+  };
+  advanceOrangeEmpire();
+  setInterval(advanceOrangeEmpire, 10000).unref();
+}
+
 function requireAuthenticatedPlayer(req, res, next) {
   const session = sessionFor(req);
   if (!session) return res.status(401).json({ message: "Please log in again." });
@@ -128,7 +137,12 @@ router.post("/logout", (req,res)=>{
 
 router.get("/map/bases", requireSessionForMap, (req, res) => {
   try {
-    res.json({ bases: db.getPublicBases(), ...db.getMapResources(req.mapUserId) });
+    const orangeEmpireBases = db.getOrangeEmpireBases();
+    res.json({
+      bases: db.getPublicBases(),
+      ...db.getMapResources(req.mapUserId),
+      ...(orangeEmpireBases.length ? {orangeEmpireBases} : {})
+    });
   } catch (error) {
     console.error("Map data error:", error);
     res.status(500).json({ message: "Could not load the map." });
