@@ -27,6 +27,8 @@ import spaceStations from "../shared/spaceStations";
 import earthMapBackground from "../images/3C5B6E22-97A8-422D-B54F-96E836796ABC.png";
 const {units, marchLimit, cellsPerRow, defaultFormation, normalizeFormation}=formations;
 const {armyPopulation,profileFor}=require("../shared/unitProfiles");
+const allianceMineArtDirectory=(process.env.PUBLIC_URL||"").replace(/\/$/,"")+"/alliance-mines/";
+const allianceMineArtKey=mine=>mine.resource+"-"+(mine.status==="construction"?"construction":"completed");
 const unitPopulation=unit=>Number(profileFor(unit)?.population||1);
 const selectArmyWithinPopulation=(available,limit)=>{
   let remaining=limit;const selected={};
@@ -286,7 +288,10 @@ function Map() {
   const [hoveredTitle, setHoveredTitle] = useState("");
   const [cursorCoord, setCursorCoord] = useState(null);
   const [mineIcons, setMineIcons] = useState({});
+  const [allianceMineArtManifest,setAllianceMineArtManifest]=useState(null);
   const [allianceMineArt,setAllianceMineArt]=useState({});
+  const allianceMineArtRequests=useRef({});
+  const allianceMineArtKeys=[...new Set(allianceMines.map(allianceMineArtKey))].sort().join(",");
   const [alienIcon, setAlienIcon] = useState(null);
   const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
@@ -329,22 +334,35 @@ function Map() {
 
   useEffect(()=>{
     let active=true;
-    const dir=(process.env.PUBLIC_URL||"").replace(/\/$/,"")+"/alliance-mines/";
-    fetch(dir+"manifest.json").then(response=>response.ok?response.json():null).then(manifest=>{
-      if(!active||!manifest)return;
-      for(const stage of ["construction","completed"]){
-        if(!Array.isArray(manifest[stage]))continue;
-        for(const resource of ["gold","iron","water","solar"]){
-          if(!manifest[stage].includes(resource))continue;
-          const key=resource+"-"+stage;
-          const image=new Image();
-          image.onload=()=>{if(active)setAllianceMineArt(current=>({...current,[key]:image}));};
-          image.src=dir+key+".webp";
-        }
-      }
-    }).catch(()=>{});
+    fetch(allianceMineArtDirectory+"manifest.json")
+      .then(response=>response.ok?response.json():null)
+      .then(manifest=>{if(active)setAllianceMineArtManifest(manifest);})
+      .catch(()=>{});
     return ()=>{active=false;};
   },[]);
+
+  useEffect(()=>{
+    if(!allianceMineArtManifest||!allianceMineArtKeys)return;
+    let active=true;
+    const requests=allianceMineArtRequests.current;
+    for(const key of allianceMineArtKeys.split(",")){
+      const [resource,stage]=key.split("-");
+      if(!Array.isArray(allianceMineArtManifest[stage])||!allianceMineArtManifest[stage].includes(resource))continue;
+      if(!requests[key]){
+        requests[key]=new Promise(resolve=>{
+          const image=new Image();
+          image.decoding="async";
+          image.onload=()=>resolve(image);
+          image.onerror=()=>resolve(null);
+          image.src=allianceMineArtDirectory+key+".webp";
+        });
+      }
+      requests[key].then(image=>{
+        if(active&&image)setAllianceMineArt(current=>current[key]===image?current:{...current,[key]:image});
+      });
+    }
+    return ()=>{active=false;};
+  },[allianceMineArtKeys,allianceMineArtManifest]);
 
   useEffect(() => {
     const img = new Image();
@@ -434,7 +452,7 @@ function Map() {
     [...mineData,...allianceMines].forEach((mine) => {
       const px = (mine.x-1) * tileSize + offset.x;
       const py = (mine.y-1) * tileSize + offset.y;
-      const artwork = mine.status && allianceMineArt[mine.resource+"-"+(mine.status==="construction"?"construction":"completed")];
+      const artwork = mine.status && allianceMineArt[allianceMineArtKey(mine)];
       const icon = artwork || mineIcons[mine.resource];
       const markerSize = Math.max(78, tileSize * 1.85);
       const artScale=artwork?markerSize*1.75/Math.max(icon.naturalWidth,icon.naturalHeight):1;
