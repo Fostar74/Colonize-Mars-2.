@@ -502,6 +502,8 @@ function Game() {
   const [incomingAlert,setIncomingAlert]=useState(false);
   const [eventNotification,setEventNotification]=useState(null);
   const [messageNotifications,setMessageNotifications]=useState([]);
+  const dismissedMessageNotifications=useRef(new Set());
+  const activeMessageId=messageNotifications[0]?.id;
   const lastUnreadRef=useRef(0);
   const handleReportsRead=useCallback(async()=>{
     setIncomingAlert(false);
@@ -565,7 +567,7 @@ function Game() {
         const event=notices.find(item=>item.kind==="saturday_invasion_started");
         const messages=notices.filter(item=>item.kind==="player_message"||item.kind==="game_message"||item.kind==="trade_message"||item.kind==="gathering_return"||item.kind.startsWith("alliance_mine_"));
         if(event)setEventNotification(old=>old||event);
-        setMessageNotifications(messages);
+        setMessageNotifications(messages.filter(item=>!dismissedMessageNotifications.current.has(item.id)));
       }catch{}
     };
     refreshEventNotifications();
@@ -764,29 +766,39 @@ function Game() {
     window.location.href = "/";
   };
 
-  const markNotificationRead=async notification=>{
-    if(!notification)return;
+  const markNotificationRead=useCallback(async notificationId=>{
+    if(notificationId==null)return;
     try{
       const response=await fetch(api+"/notifications/"+encodeURIComponent(sessionStorage.getItem("userId"))+"/read",{
         method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
-        body:JSON.stringify({notificationId:notification.id})
+        body:JSON.stringify({notificationId})
       });
       if(response.ok){
-        setEventNotification(current=>current?.id===notification.id?null:current);
-        setMessageNotifications(current=>current.filter(item=>item.id!==notification.id));
+        setEventNotification(current=>current?.id===notificationId?null:current);
       }
     }catch{}
-  };
+  },[api]);
+  const dismissMessageNotification=useCallback(notificationId=>{
+    if(dismissedMessageNotifications.current.has(notificationId))return;
+    dismissedMessageNotifications.current.add(notificationId);
+    setMessageNotifications(current=>current.filter(item=>item.id!==notificationId));
+    void markNotificationRead(notificationId);
+  },[markNotificationRead]);
+  useEffect(()=>{
+    if(activeMessageId==null)return;
+    const timer=window.setTimeout(()=>dismissMessageNotification(activeMessageId),5000);
+    return ()=>window.clearTimeout(timer);
+  },[activeMessageId,dismissMessageNotification]);
   const closeEventNotification=async openEvent=>{
     const notification=eventNotification;
     if(openEvent)setShowEvents(true);
-    await markNotificationRead(notification);
+    await markNotificationRead(notification?.id);
   };
-  const openBlueNotification=async notification=>{
+  const openBlueNotification=notification=>{
+    dismissMessageNotification(notification.id);
     if(notification?.kind==="gathering_return")navigate("/map");
     else if(notification?.kind.startsWith("alliance_mine_")){setSupportTarget(null);setShowAlliance(true);}
     else setMessageRecipient("");
-    await markNotificationRead(notification);
   };
 
   return (
@@ -962,11 +974,11 @@ function Game() {
         <button type="button" onClick={()=>closeEventNotification(true)}>{t("View event","Виж събитието")}</button>
         <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>closeEventNotification(false)}>×</button>
       </div>}
-      {messageNotifications.length>0&&<div className="message-notification-alert" role="status">
+      {messageNotifications.length>0&&<div className="message-notification-alert">
         <span aria-hidden="true">✉️</span>
-        <span>{messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):messageNotifications[0].kind==="alliance_mine_started"?t("Your alliance placed a mine. Send an army to help construct it.","Алиансът ти постави мина. Изпрати армия, за да помогнеш със строежа."):messageNotifications[0].kind==="alliance_mine_completed"?t("Alliance mine construction is complete. Gathering is open.","Алиансната мина е построена. Можеш да започнеш добив."):messageNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):messageNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
+        <span role="status">{messageNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):messageNotifications[0].kind==="alliance_mine_started"?t("Your alliance placed a mine. Send an army to help construct it.","Алиансът ти постави мина. Изпрати армия, за да помогнеш със строежа."):messageNotifications[0].kind==="alliance_mine_completed"?t("Alliance mine construction is complete. Gathering is open.","Алиансната мина е построена. Можеш да започнеш добив."):messageNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):messageNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(messageNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{messageNotifications[0].kind==="gathering_return"&&messageNotifications[0].allianceName&&" · "+messageNotifications[0].allianceName}</span>
         <button type="button" onClick={()=>openBlueNotification(messageNotifications[0])}>{messageNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):messageNotifications[0].kind.startsWith("alliance_mine_")?t("View alliance","Виж алианса"):t("View messages","Виж съобщенията")}</button>
-        <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>markNotificationRead(messageNotifications[0])}>×</button>
+        <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>dismissMessageNotification(activeMessageId)}>×</button>
       </div>}
       {showReports&&<ReportsPanel onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}
       {showQuests && (
