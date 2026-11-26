@@ -1,3 +1,4 @@
+import AllianceMessages from "./AllianceMessages";
 import AllianceMineProgress from "./AllianceMineProgress";
 import marketProducts from "../shared/allianceMarket";
 import { useNavigate } from "react-router-dom";
@@ -9,20 +10,19 @@ import React,{useEffect,useState,useCallback} from "react";
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const getUserId=()=>sessionStorage.getItem("userId");
 const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
-export default function AlliancePanel({supportTarget,playerAction}){
+export default function AlliancePanel({supportTarget,playerAction,tab,setTab,markMessagesDisplayed}){
   const { t , label: localLabel} = useLanguage();
   const navigate=useNavigate();
  const playerName=player=>playerAction ? playerAction(player) : player.username;
  const [reinforceRecipient,setReinforceRecipient]=useState(supportTarget?.id || ""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
- const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[description,setDescription]=useState(""),[tab,setTab]=useState(supportTarget ? "reinforcements" : "members");
+ const [loadError,setLoadError]=useState(""),[state,setState]=useState(null),[name,setName]=useState(""),[message,setMessage]=useState(""),[busy,setBusy]=useState(false),[description,setDescription]=useState("");
  const [exchangeFrom,setExchangeFrom]=useState("Gold"),[exchangeTo,setExchangeTo]=useState("Iron"),[exchangeAmount,setExchangeAmount]=useState("100");
- const [crystalKind,setCrystalKind]=useState("green"),[crystalAmount,setCrystalAmount]=useState(""),[broadcastBody,setBroadcastBody]=useState("");
+ const [crystalKind,setCrystalKind]=useState("green"),[crystalAmount,setCrystalAmount]=useState("");
  const refresh=useCallback(async()=>{try{if(!getUserId()||!sessionStorage.getItem("authToken"))throw Error("Session missing. Please log in again.");const r=await fetch(api+"/alliance/"+encodeURIComponent(getUserId()),{headers:headers(),cache:"no-store"});const d=await r.json().catch(()=>null);if(!r.ok)throw Error((d&&d.message)||(r.status===401?"Session expired. Please log in again.":"Alliance unavailable (HTTP "+r.status+")."));setState(d);setLoadError("");}catch(e){setLoadError(e.message);}},[]);
  useEffect(()=>{refresh();const t=setInterval(refresh,10000);return()=>clearInterval(t);},[refresh]);
  useEffect(()=>{if(state?.alliance)setDescription(state.alliance.description||"");},[state?.alliance?.id,state?.alliance?.description]);
  const action=async(path,extra={})=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alliance/"+path,{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),...extra})});const d=await r.json();if(!r.ok)throw Error(d.message||"Action failed");setMessage(d.message||(path==="help"?"Construction accelerated! +1 wheel token.":path==="request-help"?"Alliance help requested.":path==="market/buy"?"Purchase added to your Inventory.":"Success!"));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  const donateCrystals=async()=>{setBusy(true);setMessage("");try{const r=await fetch(api+"/alien-stations/donate",{method:"POST",headers:headers(),body:JSON.stringify({userId:getUserId(),kind:crystalKind,amount:Number(crystalAmount)})});const d=await r.json();if(!r.ok)throw Error(d.message||"Donation failed");setCrystalAmount("");setMessage(t("Crystals donated to the alliance.","Кристалите са дарени на алианса."));await refresh();}catch(e){setMessage(e.message);}finally{setBusy(false);}};
- const sendAllianceBroadcast=async event=>{event.preventDefault();setBusy(true);setMessage("");try{const r=await fetch(api+"/messages/broadcast/"+encodeURIComponent(getUserId()),{method:"POST",headers:headers(),body:JSON.stringify({body:broadcastBody})});const d=await r.json();if(!r.ok)throw Error(d.message||"Message could not be sent.");setBroadcastBody("");setMessage(d.message||t("Alliance message sent.","Съобщението до алианса е изпратено."));}catch(e){setMessage(e.message);}finally{setBusy(false);}};
  return <div style={{color:"#eef6ff",padding:15,minWidth:300}}>
   <h2>{t("Alliance Command","Командване на алианса")}</h2>
   {message&&<p role="status">{localLabel(message)}</p>}
@@ -55,16 +55,14 @@ export default function AlliancePanel({supportTarget,playerAction}){
     </>}
    </section>
    <div style={{display:"flex",gap:8,flexWrap:"wrap",marginBottom:12}}>
-    {Object.entries({members:"Members",applications:"Applications",research:"Alliance Research",market:"Donation & Market",mine:"Alliance Mine"}).map(([key,label])=>
-      <button key={key} onClick={()=>setTab(key)} style={{background:tab===key?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{localLabel(label)}</button>)}
+    {Object.entries({members:"Members",applications:"Applications",research:"Alliance Research",market:"Donation & Market",mine:"Alliance Mine",messages:"Messages"}).map(([key,label])=>
+      <button key={key} onClick={()=>setTab(key)} style={{background:tab===key?"#257f8e":"#20384d",color:"white",padding:9,borderRadius:6}}>{key==="messages"?t("Messages","Съобщения"):localLabel(label)}</button>)}
    </div>
+   {tab==="messages"&&<AllianceMessages key={state.alliance.id} api={api}
+     canBroadcast={["Leader","Co-Leader"].includes(state.alliance.role)}
+     markDisplayed={markMessagesDisplayed} playerAction={playerAction}/>}
    {tab==="members"&&<div>
     {!!state.reinforcements?.length && <button onClick={()=>setTab("reinforcements")}>{t("Active Support (","Активни подкрепления (")}{state.reinforcements.length})</button>}
-    {["Leader","Co-Leader"].includes(state.alliance.role)&&<form onSubmit={sendAllianceBroadcast} style={{margin:"12px 0",padding:12,border:"1px solid #47758e",borderRadius:8,background:"#142637"}}>
-     <h3 style={{marginTop:0}}>{t("Alliance Broadcast","Масово съобщение до алианса")}</h3>
-     <textarea aria-label={localLabel("Message to all alliance members")} maxLength={500} required value={broadcastBody} onChange={event=>setBroadcastBody(event.target.value)} style={{display:"block",width:"100%",boxSizing:"border-box",minHeight:70,marginBottom:8}} placeholder={localLabel("Write a message for every alliance member")}/>
-     <button type="submit" disabled={busy||!broadcastBody.trim()}>{t("Send to all members","Изпрати до всички членове")}</button>
-    </form>}
     <h3>{t("Alliance Members (","Членове на алианса (")}{(state.members||[]).length})</h3>
     <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",textAlign:"left"}}>
      <thead><tr><th>{t("Player","Играч")}</th><th>{t("Role","Роля")}</th><th>{t("Actions","Действия")}</th></tr></thead>
@@ -130,8 +128,8 @@ export default function AlliancePanel({supportTarget,playerAction}){
       <input aria-label={localLabel("Crystal donation amount")} type="number" min="1" step="1" value={crystalAmount} onChange={e=>setCrystalAmount(e.target.value)} placeholder={localLabel("Amount")}/>
       <button type="button" disabled={busy||!Number.isSafeInteger(Number(crystalAmount))||Number(crystalAmount)<1} onClick={donateCrystals}>{t("Donate to Alliance","Дари на алианса")}</button>
     </div>
-    <p>{t("Alliance Points:","Точки на алианса:")} <strong>{Number(state.economy?.points||0).toLocaleString(undefined,{maximumFractionDigits:2})}</strong> {t("· Donations left today (resets at 00:00 UTC):","· Оставащи дарения днес (нулиране в 00:00 UTC):")} {state.economy?.donationsRemaining??20}/20</p>
-    <h4>{t("Donate 100 resources (+10 Alliance Points)","Дари 100 ресурса (+10 точки на алианса)")}</h4>
+    <p>{t("Alliance Points:","Алианс точки:")} <strong>{Number(state.economy?.points||0).toLocaleString(undefined,{maximumFractionDigits:2})}</strong> {t("· Donations left today (resets at 00:00 UTC):","· Оставащи дарения днес (нулиране в 00:00 UTC):")} {state.economy?.donationsRemaining??20}/20</p>
+    <h4>{t("Donate 100 resources (+10 Alliance Points)","Дари 100 ресурса (+10 Алианс точки)")}</h4>
     {["Gold","Iron","Water","Solar"].map(resource=><button key={resource} disabled={busy||!state.economy?.donationsRemaining} style={{margin:4}} onClick={()=>action("donate",{resource})}>{t("Donate 100","Дари 100")} {localLabel(resource)}</button>)}
     <h4>{t("Alliance Treasury","Хазна на алианса")}</h4>
     <p>{Object.entries(state.economy?.treasury||{}).map(([k,n])=>k+": "+n).join(" · ")}</p>
@@ -148,7 +146,7 @@ export default function AlliancePanel({supportTarget,playerAction}){
     <h4>{t("Alliance Market","Пазар на алианса")}</h4>
     {Object.entries(marketProducts).map(([item,{label,bg,cost}])=><div key={item} style={{marginBottom:8}}>
       <img src={baseIcon} alt="" width="28" height="28" style={{verticalAlign:"middle",marginRight:8}} />
-      {t(label,bg)} — {cost.toLocaleString()} {t("AP","ТА")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
+      {t(label,bg)} — {cost.toLocaleString()} {t("AP","АТ")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
     </div>)}
     <p style={{fontSize:12}}>{t("Purchased items must be activated from Inventory. For production and external gathering, only the strongest active bonus applies.","Купените предмети се активират от инвентара. За производството и добива от външни мини действа само най-силният активен бонус.")}</p>
     {(state.economy?.buffs||[]).filter(buff=>Object.hasOwn(marketProducts,buff.kind)).map(buff=><p key={buff.kind}>

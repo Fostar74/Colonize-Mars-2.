@@ -40,7 +40,7 @@ export default function AllianceMineProgress({mine, goal, march}) {
     <p>{label} {format(points)} / {format(goal)}</p>
     <progress aria-label={label} max={goal} value={points} style={{width:"100%"}} />
     <p>{t("Arrived population","Пристигнала популация")} {format(population)} · {format(population)} {t("points/hour","точки/час")}</p>
-    <p>{t("Your contribution","Твоят принос")} {format(personal)} {t("points/hour","точки/час")} · {format(personal/100)} {t("AP/hour","ТА/час")}</p>
+    <p>{t("Your contribution","Твоят принос")} {format(personal)} {t("points/hour","точки/час")} · {format(personal/100)} {t("AP/hour","АТ/час")}</p>
     <p>{t("Construction ETA","Оставащо време за строеж")} · {population>0||points>=goal?eta:t("Paused: no builders have arrived","На пауза: няма пристигнали строители")}</p>
   </div>;
 }

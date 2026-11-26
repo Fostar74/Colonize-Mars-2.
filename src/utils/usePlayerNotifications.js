@@ -1,6 +1,6 @@
 import {useCallback, useEffect, useRef, useState} from "react";
 
-function readPending(key) {
+export function readPending(key) {
   try {
     const ids = JSON.parse(localStorage.getItem(key) || "[]");
     return Array.isArray(ids) ? ids.filter(id => Number.isSafeInteger(id) && id > 0) : [];
@@ -9,7 +9,7 @@ function readPending(key) {
   }
 }
 
-function writePending(key, ids) {
+export function writePending(key, ids) {
   try {
     if (ids.size) localStorage.setItem(key, JSON.stringify([...ids]));
     else localStorage.removeItem(key);
@@ -20,6 +20,7 @@ function writePending(key, ids) {
 
 export default function usePlayerNotifications(api, userId) {
   const [notifications, setNotifications] = useState([]);
+  const [allianceUnreadIds,setAllianceUnreadIds]=useState([]);
   const key = "colonize-mars-pending-notification-reads:" + userId;
   const pending = useRef(null);
   const hidden = useRef(new Set());
@@ -91,6 +92,7 @@ export default function usePlayerNotifications(api, userId) {
         if (!response.ok || !active) return;
         const data = await response.json();
         if (!active) return;
+        setAllianceUnreadIds(Array.isArray(data.allianceUnreadIds)?data.allianceUnreadIds:[]);
         const unique = new Map(data.notifications.map(item => [item.id, item]));
         setNotifications([...unique.values()].filter(item => !hidden.current.has(item.id)));
       } catch {
@@ -109,5 +111,5 @@ export default function usePlayerNotifications(api, userId) {
     };
   }, [acknowledge, endpoint, key, userId]);
 
-  return {notifications, dismiss};
+  return {notifications, dismiss, allianceUnreadIds};
 }

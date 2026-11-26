@@ -1,4 +1,9 @@
 export default {
+  "Join an alliance to view its chat.": "Присъедини се към алианс, за да видиш съобщенията му.",
+  "Could not load alliance messages.": "Съобщенията на алианса не можаха да се заредят.",
+  "Only the alliance leader or co-leader can send a mass message.": "Само лидерът или заместник-лидерът може да изпраща съобщения до всички.",
+  "Your alliance has no other members to notify.": "В алианса няма други членове, които да бъдат уведомени.",
+  "Wait a moment before sending another message.": "Изчакай малко, преди да изпратиш друго съобщение.",
   "Activate one item at a time.": "Активирай по един предмет наведнъж.",
   "This booster is already active.": "Този бонус вече е активен.",
   "Labyrinth battle is unavailable.": "Битката в Лабиринта не е достъпна.",

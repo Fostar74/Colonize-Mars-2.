@@ -76,7 +76,9 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
         <strong>{message.messageType==="system"?t("Game System","Система на играта"):playerAction ? playerAction({id:message.senderId,username:message.sender}) : message.sender}</strong>
         {!alliance && message.messageType!=="system" && <> → {playerAction ? playerAction({id:message.recipientId,username:message.recipient}) : message.recipient}</>}
         {" · "}<time>{new Date(message.sentAt).toLocaleString()}</time>
-        <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{message.body}</div>
+        <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{message.messageType==="system"
+          ? message.body.replace(/(^|\n)(Alliance points \/ )Точки на алианса:/g,"$1$2Алианс точки:")
+          : message.body}</div>
       </article>)}
     </div>
     {!alliance && !recipient && <p>{t("Select a player and choose Message to start a conversation.","Избери играч и натисни „Съобщение“, за да започнеш разговор.")}</p>}

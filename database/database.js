@@ -362,6 +362,14 @@ function initializeDatabase() {
       CREATE INDEX IF NOT EXISTS messages_sender ON player_messages(sender_id,id);
       CREATE INDEX IF NOT EXISTS messages_recipient ON player_messages(recipient_id,id);
       CREATE INDEX IF NOT EXISTS messages_alliance ON player_messages(alliance_id,id);`);
+    db.exec(`CREATE TABLE IF NOT EXISTS alliance_message_receipts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      recipient_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      message_id INTEGER NOT NULL REFERENCES player_messages(id) ON DELETE CASCADE,
+      read_at INTEGER,
+      UNIQUE(message_id,recipient_id)
+    );
+    CREATE INDEX IF NOT EXISTS alliance_message_unread ON alliance_message_receipts(recipient_id,id) WHERE read_at IS NULL;`);
     db.exec("CREATE TABLE IF NOT EXISTS trade_message_notifications (trade_id INTEGER PRIMARY KEY REFERENCES interbase_trades(id), message_id INTEGER NOT NULL REFERENCES player_messages(id))");
     db.exec(`CREATE TABLE IF NOT EXISTS player_notifications (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1243,28 +1251,59 @@ class DatabaseManager {
         body="🔎 Espionage / Шпионаж #"+row.id+" · "+target.username+" ("+target.x+":"+target.y+")\nScouts / Разузнавачи: "+row.quantity+" · Survivors / Оцелели: "+(report.survivors??0)+"\nUnprotected resources / Незащитени ресурси: "+Object.entries(report.resources||{}).map(([k,v])=>k+": "+v).join(", ")+"\nDefenders / Защитници: "+formatArmy(report.army)+"\nBuildings / Сгради: "+Object.entries(report.structures||{}).map(([k,v])=>k+": "+v).join(", ");
       }
       const now=Date.now();
-      const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,'private')");
-      const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'player_message',?,?)");
-      if(scope==="private"){insert.run(userId,recipient.id,null,body,now);notify.run(recipient.id,"",now);}
-      else{
-        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,NULL,?,?,?,'alliance')").run(userId,member.alliance_id,body,now);
-        for(const row of db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId))notify.run(row.user_id,"alliance",now);
-      }
+      if(scope==="private"){
+        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,body,sent_at,message_type) VALUES (?,?,?,?,'private')")
+          .run(userId,recipient.id,body,now);
+        db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'player_message','',?)")
+          .run(recipient.id,now);
+      }else this.storeAllianceMessage(userId,member.alliance_id,body,now,"alliance");
       return {success:true};
     })();
   }
 
+  storeAllianceMessage(userId, allianceId, body, now, type){
+    const message=db.prepare("INSERT INTO player_messages(sender_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?)")
+      .run(userId,allianceId,body,now,type);
+    // A message body is shared. Receipts contain only delivery and read state.
+    return db.prepare(`INSERT INTO alliance_message_receipts(recipient_id,message_id)
+      SELECT user_id,? FROM alliance_members WHERE alliance_id=? AND user_id<>?`)
+      .run(message.lastInsertRowid,allianceId,userId).changes;
+  }
+
   listMessages(userId, scope){
     if(!["private","trade","alliance"].includes(scope))return {error:"Unknown message channel."};
-    const member=scope==="alliance" && db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
-    if(scope==="alliance"&&!member)return {error:"Join an alliance to view its chat."};
-    const filter=scope==="alliance" ? "m.alliance_id=?" : scope==="trade" ? "m.recipient_id=? AND m.message_type='trade'" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type IN ('private','system')";
-    const params=scope==="alliance" ? [member.alliance_id] : scope==="trade" ? [userId] : [userId,userId];
+    if(scope==="alliance"){
+      const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
+      if(!member)return {error:"Join an alliance to view its chat."};
+      // Unscoped historical private copies do not identify their original alliance.
+      // Keep them in their original inboxes. Already scoped shared rows remain visible here.
+      const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,
+        sender.username AS sender,m.message_type AS messageType,
+        CASE WHEN receipt.read_at IS NULL THEN receipt.id END AS unreadId
+        FROM player_messages m JOIN users sender ON sender.id=m.sender_id
+        LEFT JOIN alliance_message_receipts receipt ON receipt.message_id=m.id AND receipt.recipient_id=@userId
+        WHERE m.alliance_id=@allianceId AND m.recipient_id IS NULL AND (
+          receipt.id IS NOT NULL AND receipt.read_at IS NULL OR
+          m.id IN (SELECT id FROM player_messages WHERE alliance_id=@allianceId ORDER BY id DESC LIMIT 50)
+        ) ORDER BY m.id DESC`).all({userId,allianceId:member.alliance_id});
+      return {messages};
+    }
+    const filter=scope==="trade" ? "m.recipient_id=? AND m.message_type='trade'" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type IN ('private','system')";
+    const params=scope==="trade" ? [userId] : [userId,userId];
     const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,m.message_type AS messageType,
       CASE WHEN m.message_type='system' THEN 'Game System' ELSE sender.username END AS sender,recipient.username AS recipient FROM player_messages m
       JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
       WHERE ${filter} ORDER BY m.id DESC LIMIT 50`).all(...params);
     return {messages};
+  }
+
+  acknowledgeAllianceMessages(userId, ids){
+    if(!Array.isArray(ids)||ids.length<1||ids.length>200||ids.some(id=>!Number.isSafeInteger(id)||id<1))
+      return {error:"Choose valid alliance message receipts."};
+    db.prepare(`UPDATE alliance_message_receipts SET read_at=?
+      WHERE recipient_id=? AND read_at IS NULL AND id IN (SELECT value FROM json_each(?))`)
+      .run(Date.now(),userId,JSON.stringify(ids));
+    return {success:true};
   }
 
   sendMessage(userId, scope, recipient, body){
@@ -1280,28 +1319,30 @@ class DatabaseManager {
       if(scope==="broadcast"&&!["Leader","Co-Leader"].includes(member.role))return {error:"Only the alliance leader or co-leader can send a mass message."};
       const target=scope==="private" && typeof recipient==="string" && this.findUserByUsername(recipient.trim());
       if(scope==="private"&&(!target||target.id===userId))return {error:"Choose another existing player."};
-      const notify=db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?, 'player_message', ?, ?)");
       if(scope==="broadcast"){
-        const recipients=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId);
-        if(!recipients.length)return {error:"Your alliance has no other members to notify."};
-        const insert=db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?, ?, NULL, ?, ?,'private')");
-        for(const row of recipients){insert.run(userId,row.user_id,content,now);notify.run(row.user_id,"alliance",now);}
-        return {message:"Alliance message sent to "+recipients.length+" members."};
+        if(!db.prepare("SELECT 1 FROM alliance_members WHERE alliance_id=? AND user_id<>?").get(member.alliance_id,userId))
+          return {error:"Your alliance has no other members to notify."};
+        const count=this.storeAllianceMessage(userId,member.alliance_id,content,now,"alliance_broadcast");
+        return {message:"Alliance message sent to "+count+" members."};
       }
-      db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?,?)")
-        .run(userId,target?.id||null,member?.alliance_id||null,content,now,scope);
-      if(scope==="private")notify.run(target.id,"",now);
-      if(scope==="alliance"){
-        const recipients=db.prepare("SELECT user_id FROM alliance_members WHERE alliance_id=? AND user_id<>?").all(member.alliance_id,userId);
-        for(const row of recipients)notify.run(row.user_id,"alliance",now);
+      if(scope==="alliance")this.storeAllianceMessage(userId,member.alliance_id,content,now,"alliance");
+      else {
+        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,body,sent_at,message_type) VALUES (?,?,?,?,'private')")
+          .run(userId,target.id,content,now);
+        db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'player_message','',?)")
+          .run(target.id,now);
       }
       return {message:"Message sent."};
-    })();
+    }).immediate();
   }
 
   listPlayerNotifications(userId){
     const notifications=db.prepare("SELECT id,kind,alliance_name AS allianceName,created_at AS createdAt FROM player_notifications WHERE recipient_id=? AND read_at IS NULL ORDER BY id LIMIT 20").all(userId);
-    return {notifications};
+    const allianceUnreadIds=db.prepare(`SELECT receipt.id FROM alliance_message_receipts receipt
+      JOIN player_messages message ON message.id=receipt.message_id
+      JOIN alliance_members member ON member.user_id=receipt.recipient_id AND member.alliance_id=message.alliance_id
+      WHERE receipt.recipient_id=? AND receipt.read_at IS NULL ORDER BY receipt.id`).pluck().all(userId);
+    return {notifications,allianceUnreadIds};
   }
 
   markPlayerNotificationRead(userId, notificationId){
@@ -2736,7 +2777,7 @@ Personal points / Лични точки: ${Number(player.score||0).toLocaleStrin
 Waves / Вълни: ${player.waves}/20
 Alliance / Алианс: ${player.alliance}
 Alliance rank / Място на алианса: #${allianceRank}
-Alliance points / Точки на алианса: ${Number(ranking[allianceRank-1]?.score||0).toLocaleString("en-US")}
+Alliance points / Алианс точки: ${Number(ranking[allianceRank-1]?.score||0).toLocaleString("en-US")}
 
 YOUR ALLIANCE REWARD / ТВОЯТА НАГРАДА ОТ АЛИАНСА:
 ${prizeText}
