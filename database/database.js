@@ -4,6 +4,8 @@ const marketProducts = require("../src/shared/allianceMarket");
 const {boostedDuration} = require("./marketBoosts");
 const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCombat");
 const {createMine,replenishMissingMines} = require("./externalMines");
+const {placedMapObjects}=require("./mapObjects");
+const {tileKey,touchesTile,blockedMapTiles}=require("../src/shared/mapSpacing");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
 const craftingCosts = require("../src/shared/craftingCosts");
@@ -105,10 +107,6 @@ function calculateLoot(resources={},capacity=0) {
     if(!moved)break;
   }
   return loot;
-}
-
-function activeAllianceMineTiles() {
-  return db.prepare("SELECT x,y FROM alliance_mines WHERE status<>'closed' AND alliance_id IS NOT NULL").all();
 }
 
 function disbandEmptyAlliance(allianceId){
@@ -521,19 +519,19 @@ class DatabaseManager {
     };
   }
 
-  chooseSpawn(occupied) {
+  chooseSpawn(objects=placedMapObjects(db)) {
     // Randomized peripheral spawn: bases start in the outer 15 tiles of
     // the 100x100 map, leaving the central region for exploration.
     // Shuffle all eligible coordinates so a fresh database never
     // deterministically assigns the same first position.
     const crypto = require("crypto");
-    for (const tile of activeAllianceMineTiles()) occupied.add(tile.x + ":" + tile.y);
-    for (const row of db.prepare("SELECT x,y FROM resource_mines").all()) occupied.add(row.x+":"+row.y);
+    const blocked=blockedMapTiles(objects);
+    for(const {x,y} of [...alienBases,...spaceStations])blocked.add(tileKey(x,y));
     const candidates = [];
     for (let x = 1; x <= 100; x++) {
       for (let y = 1; y <= 100; y++) {
         if (x > 15 && x < 86 && y > 15 && y < 86) continue;
-        if (!occupied.has(x + ":" + y)) candidates.push({ x, y });
+        if (!blocked.has(tileKey(x,y))) candidates.push({ x, y });
       }
     }
     if (!candidates.length) throw new Error("No available peripheral spawn position");
@@ -546,30 +544,22 @@ class DatabaseManager {
       const existing = db.prepare("SELECT x, y FROM base_positions WHERE user_id = ?").get(userId);
       if (existing && existing.x <= 100 && existing.y <= 100) return { username, ...existing };
       if (existing) {
-        const occupied = new Set(db.prepare("SELECT x, y FROM base_positions WHERE user_id != ?").all(userId).map(p => p.x + ":" + p.y));
-        const moved = this.chooseSpawn(occupied);
+        const moved = this.chooseSpawn();
         db.prepare("UPDATE base_positions SET x = ?, y = ? WHERE user_id = ?").run(moved.x,moved.y,userId);
         return {username,...moved};
       }
       const progress = this.progressQueries.getProgress.get(userId);
       const old = progress && JSON.parse(progress.castle_data);
-      const occupied = new Set(db.prepare("SELECT x, y FROM base_positions").all().map(p => p.x + ":" + p.y));
-      // Preserve coordinates already saved by legacy users, even before migration.
-      for (const row of db.prepare("SELECT castle_data FROM game_progress ORDER BY id DESC").all()) {
-        try {
-          const castle = JSON.parse(row.castle_data);
-          if (Number.isInteger(castle.x) && Number.isInteger(castle.y)) occupied.add(castle.x + ":" + castle.y);
-        } catch (_) {}
-      }
       const preferred = old && Number.isInteger(old.x) && Number.isInteger(old.y) ? old : null;
-      let selected = null;
-      if (preferred && preferred.x >= 1 && preferred.x <= 100 && preferred.y >= 1 && preferred.y <= 100 &&
-          !db.prepare("SELECT 1 FROM base_positions WHERE x = ? AND y = ?").get(preferred.x, preferred.y) &&
-          !activeAllianceMineTiles().some(tile => tile.x === preferred.x && tile.y === preferred.y)) {
-        selected = { x: preferred.x, y: preferred.y };
-      } else {
-        selected = this.chooseSpawn(occupied);
-      }
+      // A saved legacy position is already placed. Preserve it if its exact tile is free.
+      const exactConflict = preferred && (
+        db.prepare("SELECT 1 FROM base_positions WHERE x=? AND y=? UNION ALL SELECT 1 FROM resource_mines WHERE x=? AND y=? LIMIT 1")
+          .get(preferred.x,preferred.y,preferred.x,preferred.y) ||
+        db.prepare("SELECT 1 FROM alliance_mines WHERE x=? AND y=? AND status<>'closed' AND alliance_id IS NOT NULL")
+          .get(preferred.x,preferred.y)
+      );
+      const selected = preferred && !exactConflict && preferred.x>=1 && preferred.x<=100 && preferred.y>=1 && preferred.y<=100
+        ? {x:preferred.x,y:preferred.y} : this.chooseSpawn();
       if (!selected) throw new Error("Map is full");
       db.prepare("INSERT INTO base_positions(user_id, x, y) VALUES (?, ?, ?)").run(userId, selected.x, selected.y);
       const castle = { username, ...selected };
@@ -588,15 +578,8 @@ class DatabaseManager {
       const result = this.userQueries.createUser.run(email, username, hashedPassword);
       const userId = Number(result.lastInsertRowid);
       this.statsQueries.createStats.run(userId);
-      const occupied = new Set(db.prepare("SELECT x, y FROM base_positions").all().map(p => `${p.x}:${p.y}`));
-      for (const row of db.prepare("SELECT castle_data FROM game_progress").all()) {
-        try { const c = JSON.parse(row.castle_data); if (Number.isInteger(c.x) && Number.isInteger(c.y)) occupied.add(`${c.x}:${c.y}`); } catch (_) {}
-      }
-      const reserve = db.prepare("INSERT INTO base_positions (user_id, x, y) VALUES (?, ?, ?)");
-      let position = null;
-      position = this.chooseSpawn(occupied);
-      reserve.run(userId, position.x, position.y);
-      if (!position) throw new Error("Mars map is full");
+      const position = this.chooseSpawn();
+      db.prepare("INSERT INTO base_positions (user_id,x,y) VALUES (?,?,?)").run(userId,position.x,position.y);
       db.prepare(`INSERT INTO game_progress
         (user_id, castle_data, resources, structures) VALUES (?, ?, ?, ?)`)
         .run(userId, JSON.stringify({ username, ...position }),
@@ -3976,13 +3959,13 @@ Rewards are distributed per participating player, not once per alliance. / На�
       if (db.prepare("SELECT 1 FROM alliance_mines WHERE alliance_id=? AND status<>'closed'").get(alliance.id)) {
         return {error:"Your alliance already has an active mine."};
       }
-      const occupied = db.prepare(`SELECT 1 FROM base_positions WHERE x=@x AND y=@y
-        UNION ALL SELECT 1 FROM resource_mines WHERE x=@x AND y=@y
-        UNION ALL SELECT 1 FROM alliance_mines WHERE x=@x AND y=@y AND status<>'closed' AND alliance_id IS NOT NULL
-        UNION ALL SELECT 1 FROM game_progress WHERE json_valid(castle_data)
-          AND json_extract(castle_data,'$.x')=@x AND json_extract(castle_data,'$.y')=@y LIMIT 1`).get({x,y});
-      if (occupied || (x===50 && y===50) || [...alienBases,...spaceStations].some(tile => tile.x===x && tile.y===y)) {
+      const objects=placedMapObjects(db);
+      if (objects.some(tile=>tile.x===x&&tile.y===y) || (x===50 && y===50) ||
+          [...alienBases,...spaceStations].some(tile => tile.x===x&&tile.y===y)) {
         return {error:"Select an empty map tile."};
+      }
+      if(objects.some(tile=>touchesTile(tile,x,y))){
+        return {error:"Leave at least one empty tile between bases and mines."};
       }
       db.prepare("INSERT INTO alliance_mines(alliance_id,resource,x,y,status) VALUES(?,?,?,?,'construction')").run(alliance.id,resource,x,y);
       this.notifyAllianceMine(alliance.id,"alliance_mine_started",Date.now());

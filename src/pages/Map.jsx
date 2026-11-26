@@ -1,3 +1,4 @@
+import {touchesTile} from "../shared/mapSpacing";
 import {castleMarkerSize,nearestMapMarker} from "../shared/mapHitTargets";
 import {playerLevelFromXp,hasPvpLevelGap} from "../shared/playerTargeting";
 import AllianceMineProgress from "./AllianceMineProgress";
@@ -680,6 +681,8 @@ function Map() {
   };
   const ownUsername=sessionStorage.getItem("username");
   const ownBase=castles.find(base=>base.username===ownUsername);
+  const minePlacementBlocked=selectedTarget?.type==="field"&&allianceMine?.canPlace&&
+    [castles,mapMines,allianceMines].some(objects=>objects.some(tile=>touchesTile(tile,selectedTarget.x,selectedTarget.y)));
   const levelGapBlocked=selectedTarget?.type==="castle"&&ownBase&&hasPvpLevelGap(
     playerLevelFromXp(ownBase.player_xp),playerLevelFromXp(selectedTarget.player_xp),selectedTarget.abandoned);
   const targetIsOwn=selectedTarget?.type==="castle"&&selectedTarget.username===ownUsername;
@@ -1240,7 +1243,8 @@ function Map() {
                 {["Gold","Iron","Water","Solar"].map(resource=><option key={resource} value={resource}>{localLabel(resource)}</option>)}
               </select>
             </label>{" "}
-            <button type="button" disabled={allianceMineBusy} onClick={()=>changeAllianceMine("place",selectedTarget)}>{t("Place alliance mine","Постави алиансна мина")}</button>
+            <button type="button" disabled={allianceMineBusy||minePlacementBlocked} onClick={()=>changeAllianceMine("place",selectedTarget)}>{t("Place alliance mine","Постави алиансна мина")}</button>
+            {minePlacementBlocked&&<p role="status">{localLabel("Leave at least one empty tile between bases and mines.")}</p>}
           </section>}
           {selectedTarget?.type==="allianceMine"&&<section>
             {!selectedAllianceMine ? <p>{t("This mine is depleted.","Мината е изчерпана.")}</p>
