@@ -307,9 +307,42 @@
 .messages-nav-button.messages-unread { animation: messagesLamp 1.4s ease-in-out infinite; }
 .messages-badge { display:inline-grid; place-items:center; min-width:20px; height:20px; margin-left:6px; border-radius:50%; background:#68c5ff; color:#092c43; font-size:13px; font-weight:800; }
 @keyframes messagesLamp { 0%,100% { box-shadow:0 0 0 rgba(72,185,255,0); } 50% { box-shadow:0 0 14px 5px rgba(72,185,255,.8); } }
-.message-notification-alert { position:fixed; top:84px; right:12px; z-index:11000; display:flex; align-items:center; gap:10px; max-width:min(620px,calc(100vw - 24px)); padding:12px 14px; border:1px solid #75c8f5; border-radius:10px; background:linear-gradient(110deg,#0e3852,#176d96); color:#fff; box-shadow:0 8px 28px #0009; }
-.message-notification-alert button { background:#d9f2ff; color:#11364c; }
-@media(max-width:600px) { .message-notification-alert { top:60px; left:12px; flex-wrap:wrap; justify-content:center; text-align:center; } }
+.message-notification-alert {
+  position:fixed;
+  top:84px;
+  right:12px;
+  z-index:998;
+  display:flex;
+  align-items:center;
+  gap:8px;
+  box-sizing:border-box;
+  max-width:min(620px,calc(100vw - 24px));
+  padding:8px 10px;
+  border:1px solid #75c8f5;
+  border-radius:10px;
+  background:linear-gradient(110deg,#0e3852,#176d96);
+  color:#fff;
+  box-shadow:0 8px 28px #0009;
+  pointer-events:none;
+}
+.message-notification-alert button {
+  flex:none;
+  min-height:44px;
+  min-width:44px;
+  padding:4px 8px;
+  background:#d9f2ff;
+  color:#11364c;
+  pointer-events:auto;
+}
+@media(max-width:600px) {
+  .message-notification-alert {
+    top:60px;
+    max-width:min(360px,calc(100vw - 24px));
+    padding:4px 6px;
+    font-size:12px;
+  }
+  .message-notification-alert > [aria-hidden] { display:none; }
+}
 
 /* Restore the existing Mars aircraft background until the new artwork is uploaded. */
 .game-container.game-colony-background {
