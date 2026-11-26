@@ -1,7 +1,6 @@
 import React, {useEffect, useRef, useState} from "react";
 import {useLanguage} from "../language";
 import "./EarthBase.css";
-import "./EarthPerimeter.css";
 
 export const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
@@ -35,20 +34,6 @@ function countdown(end, now) {
   const seconds = Math.max(0, Math.ceil((end - now) / 1000));
   return [Math.floor(seconds / 3600), Math.floor(seconds / 60) % 60, seconds % 60]
     .map(value => String(value).padStart(2, "0")).join(":");
-}
-
-function DefensivePerimeter() {
-  return <div className="earth-perimeter" aria-hidden="true">
-    {["rear", "west", "east", "front-west", "front-east"].map(span =>
-      <div key={span} className={"earth-plasma earth-plasma-" + span}><span /></div>
-    )}
-    {["rear-west", "rear-east", "front-west", "front-east"].map(corner =>
-      <div key={corner} className={"earth-tower earth-tower-" + corner}>
-        <img src={assetRoot + "/perimeter-tower.webp"} alt="" draggable="false" />
-        <span className="earth-tower-salvo" />
-      </div>
-    )}
-  </div>;
 }
 
 function EarthMap({quality, children, t}) {
@@ -138,7 +123,6 @@ function EarthMap({quality, children, t}) {
           <source media={quality === "low" ? "all" : "(max-width: 640px)"} srcSet={assetRoot + "/terrain-small.webp"} />
           <img className="earth-terrain" src={assetRoot + "/terrain.webp"} alt="" draggable="false" />
         </picture>
-        <DefensivePerimeter />
         {children}
       </div>
     </div>
