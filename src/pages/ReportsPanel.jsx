@@ -10,13 +10,13 @@ const countUnits=units=>Object.values(units||{}).reduce((total,count)=>total+(Nu
 const diff=(initial,remaining)=>Object.fromEntries(Object.entries(initial||{}).map(([unit,count])=>[unit,Math.max(0,(Number(count)||0)-(Number(remaining?.[unit])||0))]).filter(([,count])=>count>0));
 const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>unit+": "+Number(count).toLocaleString()).join(", ")||"0";
 
-export default function ReportsPanel({onClose,onRead}) {
+export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
   const {t,label:localLabel}=useLanguage();
   const navigate=useNavigate();
   const coordinateLink=(x,y)=>Number.isInteger(Number(x))&&Number.isInteger(Number(y))&&Number(x)>=1&&Number(x)<=100&&Number(y)>=1&&Number(y)<=100?<button type="button" title={t("Show on map","Покажи на картата")} onClick={()=>{sessionStorage.setItem("mapReportTarget",JSON.stringify({x:Number(x),y:Number(y)}));onClose?.();navigate("/map");}} style={{border:0,background:"transparent",color:"#78d7ff",textDecoration:"underline",cursor:"pointer",font:"inherit",padding:0}}>{x}:{y}</button>:<span>{x??"?"}:{y??"?"}</span>;
   const userId=sessionStorage.getItem("userId");
   const [data,setData]=useState(null);
-  const [activeTab,setActiveTab]=useState("military");
+  const [activeTab,setActiveTab]=useState(initialTab);
   const [error,setError]=useState("");
   const [newReportIds,setNewReportIds]=useState([]);
   const [clock,setClock]=useState(Date.now);
@@ -185,6 +185,7 @@ export default function ReportsPanel({onClose,onRead}) {
     <p>{t("Sent scouts","Изпратени разузнавачи")}: {m.quantity.toLocaleString()} · {t("Your losses","Твои загуби")}: {Number(m.report.attackerLost||0).toLocaleString()} · {t("Enemy scout losses","Загуби на противниковите разузнавачи")}: {Number(m.report.defenderLost||0).toLocaleString()} · {t("Survivors","Оцелели")}: {Number(m.report.survivors??m.quantity).toLocaleString()}</p>
     {m.report.success===false?<p><strong>{t("All your scouts died during espionage. No survivor returned to report.","При шпионажа всичките ви шпиони загинаха и не се завърна оцелял, за да докладва.")}</strong></p>:<>
       {m.report.resources&&<p><strong>{t("Unprotected resources","Незащитени ресурси")}:</strong> {Object.entries(m.report.resources).map(([name,n])=>localLabel(name)+": "+Number(n).toLocaleString()).join(" · ")}</p>}
+      {m.report.resources&&<p>{t("The first 10,000 units of each resource are protected and excluded from this report.","Първите 10 000 единици от всеки ресурс са защитени и не се показват в доклада.")}</p>}
       {m.report.army&&<p><strong>{t("Defending army","Защитна армия")}:</strong> {list(m.report.army)}</p>}
       {m.report.structures&&<div><strong>{t("Buildings and levels","Сгради и нива")}:</strong><ul>{Object.entries(m.report.structures).map(([name,level])=><li key={name}>{localLabel(name)}: {t("Level","Ниво")} {level}</li>)}</ul></div>}
     </>}

@@ -1,3 +1,5 @@
+import ReportsPanel from "./ReportsPanel";
+import usePlayerNotifications from "../utils/usePlayerNotifications";
 import {touchesTile} from "../shared/mapSpacing";
 import {castleMarkerSize,nearestMapMarker} from "../shared/mapHitTargets";
 import {playerLevelFromXp,hasPvpLevelGap} from "../shared/playerTargeting";
@@ -150,6 +152,10 @@ function createEarthDetailTexture(){
 function Map() {
   const navigate=useNavigate();
   const { t , label: localLabel} = useLanguage();
+  const [showEspionageReports,setShowEspionageReports]=useState(false);
+  const notificationApi=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
+  const {notifications,dismiss}=usePlayerNotifications(notificationApi,sessionStorage.getItem("userId"));
+  const espionageNotice=notifications.find(item=>item.kind==="espionage_report");
   const canvasRef = useRef(null);
   const dragRef = useRef(null);
   const suppressClickRef = useRef(false);
@@ -1616,6 +1622,12 @@ function Map() {
           </>}
         </div>
       </div>}
+      {espionageNotice&&!showEspionageReports&&<div className="message-notification-alert">
+        <span role="status">{t("Your espionage report is ready.","Докладът ти от шпионаж е готов.")}</span>
+        <button type="button" onClick={()=>{dismiss(espionageNotice.id);setShowEspionageReports(true);}}>{t("View report","Виж доклада")}</button>
+        <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>dismiss(espionageNotice.id)}>×</button>
+      </div>}
+      {showEspionageReports&&<ReportsPanel initialTab="espionage" onClose={()=>setShowEspionageReports(false)}/>}
     </div>
   );
 }

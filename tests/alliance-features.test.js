@@ -157,6 +157,24 @@ test("alliance mine, protocol reset, and protected resources use persistent tran
     const historicReport = {success:true,resources};
     sql.prepare("UPDATE player_scout_missions SET report=? WHERE id=?").run(JSON.stringify(historicReport),scout.missionId);
     assert.deepEqual(game.getPlayerScoutMissions(member.userId)[0].report.resources,{Gold:1001,Iron:0,Water:0,Solar:50});
+    const notice=game.listPlayerNotifications(member.userId).notifications.find(n=>n.kind==="espionage_report");
+    assert.equal(notice.createdAt,scout.arrivesAt);
+    assert.equal(game.markPlayerNotificationRead(member.userId,notice.id).success,true);
+    now=scout.returnsAt;
+    game.syncGame(member.userId);
+    assert.equal(game.listPlayerNotifications(member.userId).notifications.some(n=>n.kind==="espionage_report"),false);
+    const lastSeen=now-8*86400000;
+    sql.prepare("INSERT INTO player_activity(user_id,last_seen_at) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=excluded.last_seen_at").run(enemy.userId,lastSeen);
+    sql.prepare("UPDATE game_runtime SET production_at=? WHERE user_id=?").run(lastSeen,enemy.userId);
+    sql.prepare("UPDATE game_progress SET resources=?,structures=? WHERE user_id=?")
+      .run(JSON.stringify({Gold:10000,Iron:10000,Water:10000,Solar:10000}),JSON.stringify({"Iron Driller":1}),enemy.userId);
+    const offlineScout=game.launchPlayerScout(member.userId,target,1);
+    now=offlineScout.arrivesAt;
+    const report=game.syncGame(member.userId)&&game.getPlayerScoutMissions(member.userId)[0].report;
+    assert.equal(report.abandoned,true);
+    assert.deepEqual(report.resources,{Gold:0,Iron:Math.floor((now-lastSeen)/10000),Water:0,Solar:0});
+    assert.equal(game.lastPlayerActivity(enemy.userId),lastSeen);
+
     assert.equal(game.donateAlliance(member.userId,"Iron").error,undefined);
     assert.deepEqual(game.syncGame(member.userId).resources.Iron,9900);
     await t.test("5,000 population earns 50 AP per hour in the shared wallet across 720 polls", () => {
