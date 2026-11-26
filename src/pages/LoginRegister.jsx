@@ -1,5 +1,6 @@
 import { useLanguage } from "../language";
 import React, { useEffect, useState } from "react";
+import {useLocation, useNavigate} from "react-router-dom";
 import "./LoginRegister.css";
 import riseImage from "../images/cyber-knight-rise.jpg";
 import continuesImage from "../images/cyber-knight-continues.jpg";
@@ -21,11 +22,14 @@ const dailyResetCountdown = () => {
 
 function LoginRegister() {
   const { t, label: localLabel } = useLanguage();
+  const navigate = useNavigate();
+  const {state} = useLocation();
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(state?.sessionExpired ? "Session expired. Please log in again." : "");
+  const [submitting, setSubmitting] = useState(false);
   const [activeSlide, setActiveSlide] = useState(0);
   const [utcNow, setUtcNow] = useState(currentUtcTime);
   const [resetCountdown, setResetCountdown] = useState(dailyResetCountdown);
@@ -50,51 +54,49 @@ function LoginRegister() {
 
   const handleSubmit = async e => {
     e.preventDefault();
-    const endpoint = isRegister ? "/register" : "/login";
+    if (submitting) return;
     const cleanUsername = username.trim();
     const cleanEmail = email.trim().toLowerCase();
     if (isRegister && (!cleanEmail || !cleanUsername || password.length < 8)) {
-      setMessage("Please enter your email and username and a password with at least 8 characters.");
+      setMessage("Enter a valid email and username, and use a password of at least 8 characters.");
       return;
     }
-    const payload = isRegister ? { email: cleanEmail, username: cleanUsername, password } : { username: cleanUsername, password };
-
+    setSubmitting(true);
+    setMessage("");
+    const controller = new AbortController();
+    const timeout = window.setTimeout(() => controller.abort(), 15000);
     try {
-      const response = await fetch(API_BASE + endpoint, {
+      const response = await fetch(API_BASE + (isRegister ? "/register" : "/login"), {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
+        body: JSON.stringify(isRegister ? {email:cleanEmail,username:cleanUsername,password} : {username:cleanUsername,password}),
+        signal: controller.signal,
       });
-      const data = await response.json();
-
-      if (response.ok) {
-        if (isRegister) {
-          setMessage("✅ Registration successful. Please log in to continue.");
-          setIsRegister(false);
-          setPassword("");
-        } else {
-          setMessage("✅ Login successful! Redirecting...");
-          sessionStorage.setItem("username", data.username || username);
-          sessionStorage.setItem("userId", data.userId);
-          sessionStorage.setItem("authToken", data.token);
-
-          if (data.gameProgress) {
-            sessionStorage.setItem("castle", JSON.stringify(data.gameProgress.castle));
-            sessionStorage.setItem("resources", JSON.stringify(data.gameProgress.resources));
-            sessionStorage.setItem("structures", JSON.stringify(data.gameProgress.structures));
-          } else {
-            sessionStorage.removeItem("castle");
-            sessionStorage.removeItem("resources");
-            sessionStorage.removeItem("structures");
-          }
-          if (data.gameStats) sessionStorage.setItem("gameStats", JSON.stringify(data.gameStats));
-          setTimeout(() => { window.location.href = "/#/game"; }, 1500);
-        }
+      const data = await response.json().catch(() => null);
+      if (!response.ok || !data) {
+        setMessage(data?.message || "The game server is temporarily unavailable. Please try again.");
+      } else if (isRegister) {
+        setMessage("Account created. Enter your password to log in.");
+        setIsRegister(false);
+        setPassword("");
+      } else if (data.token && data.userId && data.gameProgress?.castle) {
+        const {gameProgress,gameStats} = data;
+        sessionStorage.setItem("username", data.username);
+        sessionStorage.setItem("userId", data.userId);
+        sessionStorage.setItem("castle", JSON.stringify(gameProgress.castle));
+        sessionStorage.setItem("resources", JSON.stringify(gameProgress.resources));
+        sessionStorage.setItem("structures", JSON.stringify(gameProgress.structures));
+        if (gameStats) sessionStorage.setItem("gameStats", JSON.stringify(gameStats));
+        sessionStorage.setItem("authToken", data.token);
+        navigate("/game", {replace:true});
       } else {
-        setMessage(data.message || "❌ Something went wrong");
+        setMessage("Your base could not be loaded. Please try logging in again.");
       }
-    } catch (err) {
-      setMessage("❌ Error connecting to server");
+    } catch {
+      setMessage("Could not connect to the game server. Check your connection and try again.");
+    } finally {
+      window.clearTimeout(timeout);
+      setSubmitting(false);
     }
   };
 
@@ -136,7 +138,7 @@ function LoginRegister() {
             {isRegister && (
               <input type="email" placeholder={t("Email", "Имейл")} value={email} required autoComplete="email" onChange={e => setEmail(e.target.value)} />
             )}
-            <input type="text" placeholder={isRegister ? t("Username", "Потребителско име") : t("Username or email", "Потребителско име или имейл")} value={username} required autoComplete="username" onChange={e => setUsername(e.target.value)} />
+            <input type="text" placeholder={isRegister ? t("Username", "Потребителско име") : t("Username or email", "Потребителско име или имейл")} value={username} required autoComplete="username" autoCapitalize="none" spellCheck={false} onChange={e => setUsername(e.target.value)} />
             <input
               type="password"
               minLength={isRegister ? 8 : undefined}
@@ -146,8 +148,8 @@ function LoginRegister() {
               required
               onChange={e => setPassword(e.target.value)}
             />
-            <button type="submit" className="primary-button">{isRegister ? t("Create account", "Създай акаунт") : t("Log in", "Вход")}</button>
-            <button type="button" className="secondary-button" onClick={() => { setIsRegister(!isRegister); setPassword(""); setMessage(""); }}>
+            <button type="submit" className="primary-button" disabled={submitting}>{submitting ? t("Please wait…", "Моля, изчакай…") : isRegister ? t("Create account", "Създай акаунт") : t("Log in", "Вход")}</button>
+            <button type="button" className="secondary-button" disabled={submitting} onClick={() => { setIsRegister(!isRegister); setPassword(""); setMessage(""); }}>
               {isRegister ? t("Already have an account? Log in", "Вече имаш акаунт? Вход") : t("New to Mars? Create an account", "Нов си на Марс? Създай акаунт")}
             </button>
           </form>

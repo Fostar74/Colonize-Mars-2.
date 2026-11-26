@@ -5,7 +5,15 @@ const bcrypt = require("bcrypt");
 const DatabaseManager = require("../database/database");
 
 const db = new DatabaseManager();
-const sessions = new Map();
+const tokenHash = token => crypto.createHash("sha256").update(token).digest("hex");
+const authorizationHash = req => {
+  const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
+  return match ? tokenHash(match[1]) : null;
+};
+const sessionFor = req => {
+  const hash=authorizationHash(req);
+  return hash&&db.findLoginSession(hash,Date.now());
+};
 const SESSION_MS = 24 * 60 * 60 * 1000;
 let settlingEndedEvents=false;
 const eventSettlementTimer=setInterval(()=>{
@@ -16,9 +24,8 @@ const eventSettlementTimer=setInterval(()=>{
 },15000);
 if(typeof eventSettlementTimer.unref==="function")eventSettlementTimer.unref();
 function requireAuthenticatedPlayer(req, res, next) {
-  const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
-  const session = match && sessions.get(match[1]);
-  if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
+  const session = sessionFor(req);
+  if (!session) return res.status(401).json({ message: "Please log in again." });
   const requestedId = req.params.userId ?? req.body?.userId;
   if (String(requestedId) !== String(session.userId)) return res.status(403).json({ message: "Access denied." });
   next();
@@ -33,21 +40,21 @@ function requireSession(req, res, next) {
 }
 
 router.post("/register", async (req, res) => {
-  const { email, password, username } = req.body;
+  const { email, password, username } = req.body || {};
 
   if (typeof email !== "string" || typeof password !== "string" ||
-      typeof username !== "string" || !email.trim() || !username.trim() ||
+      typeof username !== "string" || !/^\S+@[^@\s]+$/.test(email.trim()) || !username.trim() ||
       password.length < 8 || username.length > 32 || email.length > 254) {
     return res.status(400).json({ message: "Enter a valid email and username, and use a password of at least 8 characters." });
   }
 
   try {
-    const existingUserByEmail = db.findUserByEmail(email);
+    const existingUserByEmail = db.findUserByEmail(email.trim().toLowerCase());
     if (existingUserByEmail) {
       return res.status(409).json({ message: "Email is already registered." });
     }
 
-    const existingUserByUsername = db.findUserByUsername(username);
+    const existingUserByUsername = db.findUserByUsername(username.trim());
     if (existingUserByUsername) {
       return res.status(409).json({ message: "Username is already taken." });
     }
@@ -62,7 +69,7 @@ router.post("/register", async (req, res) => {
       position: result.position,
     });
   } catch (error) {
-    console.error("Registration error:", error);
+    console.error("Registration error:", error.code || error.name);
     if (error.code === "SQLITE_CONSTRAINT_UNIQUE") {
       return res.status(409).json({ message: "Email or username already exists." });
     }
@@ -72,33 +79,33 @@ router.post("/register", async (req, res) => {
 
 // LOGIN
 router.post("/login", async (req, res) => {
-  const { username, password } = req.body;
+  const { username, password } = req.body || {};
 
-  if (!username || !password) {
+  if (typeof username !== "string" || !username.trim() || typeof password !== "string" || !password) {
     return res.status(400).json({ message: "Username and password required." });
   }
 
   try {
-    const loginIdentifier = typeof username === "string" ? username.trim() : "";
-    const user = db.findUserByUsername(loginIdentifier) || db.findUserByEmail(loginIdentifier.toLowerCase());
-
-    if (!user) {
-      return res.status(401).json({ message: "Invalid username or password." });
+    const loginIdentifier = username.trim();
+    const nameMatch = db.findUserByUsername(loginIdentifier);
+    const emailMatch = db.findUserByEmail(loginIdentifier);
+    let user = null;
+    for(const candidate of [nameMatch,emailMatch?.id===nameMatch?.id?null:emailMatch]){
+      if(candidate&&await bcrypt.compare(password,candidate.password)){
+        user=candidate;
+        break;
+      }
     }
+    if(!user)return res.status(401).json({message:"Invalid username or password."});
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-
-    if (!isPasswordValid) {
-      return res.status(401).json({ message: "Invalid username or password." });
-    }
-
-    db.ensureBase(user.id, user.username);
+    const gameProgress = db.initializeLogin(user.id,user.username);
     db.markPlayerActive(user.id);
-    const gameProgress = db.getGameProgress(user.id);
     const gameStats = db.getGameStats(user.id);
 
     const token = crypto.randomBytes(32).toString("hex");
-    sessions.set(token, { userId: user.id, expires: Date.now() + SESSION_MS });
+    const now = Date.now();
+    db.storeLoginSession(tokenHash(token),user.id,now+SESSION_MS,now);
+    res.set("Cache-Control","no-store");
     res.status(200).json({
       token,
       message: "Login successful!",
@@ -108,9 +115,15 @@ router.post("/login", async (req, res) => {
       gameStats: gameStats,
     });
   } catch (error) {
-    console.error("Login error:", error);
+    console.error("Login error:", error.code || error.name);
     res.status(500).json({ message: "Internal server error during login." });
   }
+});
+
+router.post("/logout", (req,res)=>{
+  const hash=authorizationHash(req);
+  if(hash)db.revokeLoginSession(hash);
+  res.status(204).end();
 });
 
 router.get("/map/bases", requireSessionForMap, (req, res) => {
@@ -122,9 +135,8 @@ router.get("/map/bases", requireSessionForMap, (req, res) => {
   }
 });
 function requireSessionForMap(req, res, next) {
-  const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
-  const session = match && sessions.get(match[1]);
-  if (!session || session.expires < Date.now()) return res.status(401).json({ message: "Please log in again." });
+  const session = sessionFor(req);
+  if (!session) return res.status(401).json({ message: "Please log in again." });
   req.mapUserId=session.userId;
   db.advanceCampaignTimeline();
   db.markPlayerActive(session.userId);

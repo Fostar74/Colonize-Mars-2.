@@ -18,6 +18,7 @@ const path = require("path");
 const fs = require("fs");
 const migrateSideQuests = require("./sideQuestSchema");
 const SideQuests = require("./sideQuests");
+const {playerLevelFromXp,hasPvpLevelGap}=require("../src/shared/playerTargeting");
 
 const dbDir = path.join(__dirname);
 if (!fs.existsSync(dbDir)) {
@@ -144,6 +145,11 @@ function initializeDatabase() {
       )
     `);
     console.log("Users table created/verified");
+    db.exec(`CREATE TABLE IF NOT EXISTS login_sessions (
+      token_hash TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      expires_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS login_sessions_expiry ON login_sessions(expires_at);`);
     db.exec("CREATE TABLE IF NOT EXISTS player_activity (user_id INTEGER PRIMARY KEY REFERENCES users(id), last_seen_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS beginner_protection_forfeits (user_id INTEGER PRIMARY KEY REFERENCES users(id), forfeited_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS player_profiles (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, avatar_id TEXT NOT NULL DEFAULT 'pilot-m')");
@@ -450,7 +456,7 @@ class DatabaseManager {
       `),
 
       findByEmail: db.prepare(`
-        SELECT * FROM users WHERE email = ?
+        SELECT * FROM users WHERE email = ? COLLATE NOCASE ORDER BY (email = ?) DESC, id
       `),
 
       findByUsername: db.prepare(`
@@ -545,8 +551,8 @@ class DatabaseManager {
         db.prepare("UPDATE base_positions SET x = ?, y = ? WHERE user_id = ?").run(moved.x,moved.y,userId);
         return {username,...moved};
       }
-      const progress = this.getGameProgress(userId);
-      const old = progress && progress.castle;
+      const progress = this.progressQueries.getProgress.get(userId);
+      const old = progress && JSON.parse(progress.castle_data);
       const occupied = new Set(db.prepare("SELECT x, y FROM base_positions").all().map(p => p.x + ":" + p.y));
       // Preserve coordinates already saved by legacy users, even before migration.
       for (const row of db.prepare("SELECT castle_data FROM game_progress ORDER BY id DESC").all()) {
@@ -574,6 +580,11 @@ class DatabaseManager {
 
   createUser(email, username, hashedPassword) {
     return db.transaction(() => {
+      if(this.findUserByEmail(email)||this.findUserByUsername(username)){
+        const error=new Error("Account identifier already in use");
+        error.code="SQLITE_CONSTRAINT_UNIQUE";
+        throw error;
+      }
       const result = this.userQueries.createUser.run(email, username, hashedPassword);
       const userId = Number(result.lastInsertRowid);
       this.statsQueries.createStats.run(userId);
@@ -591,11 +602,38 @@ class DatabaseManager {
         .run(userId, JSON.stringify({ username, ...position }),
           JSON.stringify({ Gold: 10000, Iron: 10000, Water: 10000, Solar: 10000 }), JSON.stringify({}));
       return { success: true, userId, position };
+    }).immediate();
+  }
+
+  initializeLogin(userId, username) {
+    db.transaction(() => {
+      const castle=this.ensureBase(userId,username);
+      if(!this.progressQueries.getProgress.get(userId)){
+        this.progressQueries.saveProgress.run(userId,JSON.stringify(castle),
+          JSON.stringify({Gold:10000,Iron:10000,Water:10000,Solar:10000}),"{}");
+      }
+      if(!this.statsQueries.getStats.get(userId))this.statsQueries.createStats.run(userId);
+    }).immediate();
+    return this.getGameProgress(userId);
+  }
+
+  storeLoginSession(tokenHash,userId,expiresAt,now){
+    db.transaction(()=>{
+      db.prepare("DELETE FROM login_sessions WHERE expires_at<=?").run(now);
+      db.prepare("INSERT INTO login_sessions(token_hash,user_id,expires_at) VALUES (?,?,?)").run(tokenHash,userId,expiresAt);
     })();
   }
 
+  findLoginSession(tokenHash,now){
+    return db.prepare("SELECT user_id AS userId FROM login_sessions WHERE token_hash=? AND expires_at>?").get(tokenHash,now);
+  }
+
+  revokeLoginSession(tokenHash){
+    db.prepare("DELETE FROM login_sessions WHERE token_hash=?").run(tokenHash);
+  }
+
   findUserByEmail(email) {
-    return this.userQueries.findByEmail.get(email);
+    return this.userQueries.findByEmail.get(email,email);
   }
 
   findUserByUsername(username) {
@@ -1107,7 +1145,7 @@ class DatabaseManager {
       ["Forward Operations",[1,3,6],"extra camps"]
     ].map(([name,values,description])=>({name,values,description}));
   }
-  playerLevel(xp){return Math.min(40,1+Math.floor(Math.max(0,xp)/1000));}
+  playerLevel(xp){return playerLevelFromXp(xp);}
   markPlayerActive(userId){
     if(!Number.isSafeInteger(Number(userId))||Number(userId)<1)return;
     db.prepare("INSERT INTO player_activity(user_id,last_seen_at) VALUES (?,?) ON CONFLICT(user_id) DO UPDATE SET last_seen_at=MAX(last_seen_at,excluded.last_seen_at)").run(Number(userId),Date.now());
@@ -1119,6 +1157,9 @@ class DatabaseManager {
   isAbandonedBase(userId,now=Date.now()){
     const last=this.lastPlayerActivity(userId);
     return last>0&&now-last>=7*86400000;
+  }
+  levelGapBlocked(attackerLevel,targetLevel,targetId){
+    return hasPvpLevelGap(attackerLevel,targetLevel,this.isAbandonedBase(targetId));
   }
   pvpPlayerLevel(userId){
     const row=db.prepare("SELECT COALESCE(xp,0) AS xp FROM player_talents WHERE user_id=?").get(userId);
@@ -1899,6 +1940,8 @@ class DatabaseManager {
     if(!targetCoords||typeof targetCoords.username!=="string")return {error:"Choose a player base."};
     const target=db.prepare("SELECT u.id,u.username,b.x,b.y FROM users u JOIN base_positions b ON b.user_id=u.id WHERE u.username=? AND b.x=? AND b.y=?").get(targetCoords.username,targetCoords.x,targetCoords.y);
     if(!target||target.id===userId)return {error:"Invalid scouting target."};
+    if(this.levelGapBlocked(this.pvpPlayerLevel(userId),this.pvpPlayerLevel(target.id),target.id))return {error:"Espionage requires a level difference of less than 6."};
+    if(this.beginnerProtectionUntil(target.id))return {error:"This player has seven-day beginner protection."};
     if(db.prepare("SELECT 1 FROM alliance_market_buffs WHERE user_id=? AND kind='protection' AND expires_at>?").get(target.id,Date.now()))return {error:"Target is protected by a Plasma Shield."};
     if(!Number.isSafeInteger(quantity)||quantity<1||quantity>50000)return {error:"Select between 1 and 50,000 Rover Scouts."};
     return db.transaction(()=>{
@@ -2012,7 +2055,7 @@ class DatabaseManager {
     if (!target) return {error:"Player base not found at those coordinates."};
     if (target.id === userId) return {error:"You cannot attack your own base."};
     const attackerLevel=this.pvpPlayerLevel(userId),defenderLevel=this.pvpPlayerLevel(target.id);
-    if(!this.isAbandonedBase(target.id)&&Math.abs(attackerLevel-defenderLevel)>=6)return {error:"PvP attacks require a level difference of less than 6 (your level: "+attackerLevel+", target: "+defenderLevel+")."};
+    if(this.levelGapBlocked(attackerLevel,defenderLevel,target.id))return {error:"PvP attacks require a level difference of less than 6 (your level: "+attackerLevel+", target: "+defenderLevel+")."};
     if(this.beginnerProtectionUntil(target.id))return {error:"This player has seven-day beginner protection."};
     const attackerAlliance=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId)?.alliance_id;
     if(attackerAlliance&&target.alliance_id&&Number(attackerAlliance)===Number(target.alliance_id))return {error:"You cannot attack a member of your alliance."};

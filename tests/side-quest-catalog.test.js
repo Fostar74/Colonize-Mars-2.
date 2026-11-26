@@ -121,6 +121,7 @@ test("all 34 quests unlock and pay their exact rewards only once",()=>{
           battle(detail,true);
         }
       }else if(kind==="spy"){
+        db.prepare("UPDATE users SET created_at=datetime(?,'unixepoch') WHERE id=?").run(Math.floor(now/1000)-8*86400,other);
         setArmy({"Rover Scout":2});
         const mission=game.launchPlayerScout(id,{...rival.position,username:"Rival"},1);
         assert.ok(mission.arrivesAt,mission.error);

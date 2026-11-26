@@ -301,6 +301,7 @@
     margin-bottom: 3px;
   }
   .login-panel {
+    grid-row: 1;
     max-width: 520px;
     justify-self: center;
   }

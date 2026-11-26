@@ -1,3 +1,5 @@
+import {castleMarkerSize,nearestMapMarker} from "../shared/mapHitTargets";
+import {playerLevelFromXp,hasPvpLevelGap} from "../shared/playerTargeting";
 import AllianceMineProgress from "./AllianceMineProgress";
 import { useLanguage } from "../language";
 
@@ -164,6 +166,7 @@ function Map() {
   const [mapMines,setMapMines]=useState([]);
   const [allianceMines,setAllianceMines]=useState([]);
   const [allianceMine,setAllianceMine]=useState(null);
+  const [selectPlacementTile,setSelectPlacementTile]=useState(false);
   const [mineResource,setMineResource]=useState("Gold");
   const [allianceMineBusy,setAllianceMineBusy]=useState(false);
   const [allianceMineNotice,setAllianceMineNotice]=useState("");
@@ -232,13 +235,25 @@ function Map() {
     const loadBases = async () => {
       try {
         const base = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
-        const response = await fetch(base + "/map/bases", { headers: { Authorization: "Bearer " + sessionStorage.getItem("authToken") } });
-        if (!response.ok) throw new Error(response.status === 401 ? "Session expired. Please log in again." : "Could not load player bases.");
+        const token=sessionStorage.getItem("authToken");
+        const response = await fetch(base + "/map/bases", { headers: { Authorization: "Bearer " + token } });
+        if(response.status===401&&!cancelled&&token===sessionStorage.getItem("authToken")){
+          sessionStorage.clear();
+          navigate("/",{replace:true,state:{sessionExpired:Boolean(token)}});
+          return;
+        }
+        if (!response.ok) throw new Error("Could not load player bases.");
         const data = await response.json();
         if (!cancelled) {
           const own = JSON.parse(sessionStorage.getItem("castle") || "null");
           const bases = Array.isArray(data.bases) ? data.bases : [];
           setCastles(own && !bases.some(b => b.username === own.username) ? [...bases, own] : bases);
+          setSelectedTarget(target=>{
+            if(target?.type!=="castle")return target;
+            const current=bases.find(base=>(target.user_id&&base.user_id===target.user_id)||
+              (base.username===target.username&&base.x===target.x&&base.y===target.y));
+            return current?{...current,type:"castle"}:target;
+          });
           setMapMines(Array.isArray(data.mines)?data.mines:[]);
           setAllianceMines(data.allianceMines||[]);
           setAllianceMine(data.allianceMine||null);
@@ -256,7 +271,7 @@ function Map() {
     fetch((process.env.REACT_APP_API_URL || window.location.origin).replace(/\/$/,"") + "/alien-campaign/" + sessionStorage.getItem("userId"), {headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d && !cancelled)applyCampaign(d)}).catch(()=>{});
     const timer = setInterval(()=>{loadBases();fetch((process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"")+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")}}).then(r=>r.ok?r.json():null).then(d=>{if(d&&!cancelled)applyCampaign(d)}).catch(()=>{});},10000);
     return () => { cancelled = true; clearInterval(timer); };
-  }, []);
+  }, [navigate]);
   useEffect(()=>{
     const raw=sessionStorage.getItem("mapReportTarget");
     if(!raw)return;
@@ -535,7 +550,7 @@ function Map() {
       // Preserve world coordinates while drawing a larger screen-space marker.
       const sx = (c.x-.5)*tileSize + offset.x;
       const sy = (c.y-.5)*tileSize + offset.y;
-      const markerSize = Math.max(108, tileSize * 2.5);
+      const markerSize = castleMarkerSize(tileSize);
       if(sx+markerSize/2<0||sy+markerSize/2<0||sx-markerSize/2>canvas.width||sy-markerSize/2>canvas.height)return;
       const isOwn=c.username===sessionStorage.getItem("username");
       const abandoned=!!c.abandoned;
@@ -595,7 +610,7 @@ function Map() {
   useEffect(() => {
     setOffset({x:viewport.width/2-(viewCenter.x-.5)*tileSize,y:viewport.height/2-(viewCenter.y-.5)*tileSize});
   }, [viewCenter, zoom, tileSize, viewport.width, viewport.height]);
-  const startDrag=e=>{dragRef.current={x:e.clientX,y:e.clientY,moved:false};e.currentTarget.setPointerCapture(e.pointerId);};
+  const startDrag=e=>{suppressClickRef.current=false;dragRef.current={x:e.clientX,y:e.clientY,moved:false};e.currentTarget.setPointerCapture(e.pointerId);};
   const moveDrag=e=>{
     const d=dragRef.current;if(!d)return;
     const dx=e.clientX-d.x,dy=e.clientY-d.y;
@@ -612,8 +627,8 @@ function Map() {
     const x=Math.floor((mouseX-offset.x)/tileSize)+1;
     const y=Math.floor((mouseY-offset.y)/tileSize)+1;
     setCursorCoord(x>=1&&x<=100&&y>=1&&y<=100?{x,y}:null);
-    const hovered=castles.find(c=>c.x===x&&c.y===y);
-    setHoveredTitle(hovered?`${hovered.username} – Headquarter (${x}:${y})`:"");
+    const hovered=nearestMapMarker(castles,{x:mouseX,y:mouseY},offset,tileSize,castleMarkerSize(tileSize)*.54);
+    setHoveredTitle(hovered?`${hovered.username} – Headquarter (${hovered.x}:${hovered.y})`:"");
   };
 
   const handleMapClick = e => {
@@ -625,27 +640,48 @@ function Map() {
     const x=Math.floor((px-offset.x)/tileSize);
     const y=Math.floor((py-offset.y)/tileSize);
     if(x<0||x>=100||y<0||y>=100){setSelectedTarget(null);setSelectedAlien(null);return;}
-    // At low zoom icons are tiny: use nearest marker within a visible hit radius.
-    const hitRadius=Math.max(13,tileSize*.8);
-    const nearest=(items)=>items.map(item=>({
-      item,dist:Math.hypot((Number(item.x)-.5)*tileSize+offset.x-px,(Number(item.y)-.5)*tileSize+offset.y-py)
-    })).filter(hit=>hit.dist<=hitRadius).sort((a,b)=>a.dist-b.dist)[0]?.item;
+    const pixel={x:px,y:py};
+    const mothership=campaign.mothershipEvent;
+    const markers=[
+      ["allianceMine",allianceMines,0],
+      ["castle",castles,castleMarkerSize(tileSize)*.54],
+      ["mothership",mothership?.active?[mothership.coordinates]:[],tileSize*2.55],
+      ["station",campaign.stations?.stations||spaceStations,Math.max(13,tileSize*.8)],
+      ["mine",mineData,Math.max(13,tileSize*.8)],
+      ["alien",alienBases,Math.max(13,tileSize*.8)]
+    ];
     const exact=items=>items.find(item=>Number(item.x)===x+1&&Number(item.y)===y+1);
-    const selectMarker=allianceMine?.canPlace ? exact : nearest;
-    const allianceTile=exact(allianceMines);
-    const castle=selectMarker(castles);
-    const event=campaign.mothershipEvent?.active?selectMarker([campaign.mothershipEvent.coordinates]):null;
-    const station=castle||event?null:selectMarker(campaign.stations?.stations||spaceStations);
-    const mine=castle||event||station?null:selectMarker(mineData);
-    const alien=castle||event||station||mine?null:selectMarker(alienBases);
-    setSelectedAlien(castle||station||allianceTile?null:alien||null);
+    let selection=null;
+    for(const [type,items] of markers){
+      const hit=exact(items);
+      if(hit){selection={...hit,type};break;}
+    }
+    if(!selection&&!selectPlacementTile){
+      let closest=Infinity;
+      for(const [type,items,radius] of markers){
+        if(!radius)continue;
+        const hit=nearestMapMarker(items,pixel,offset,tileSize,radius);
+        if(!hit)continue;
+        const distance=Math.hypot((Number(hit.x)-.5)*tileSize+offset.x-px,(Number(hit.y)-.5)*tileSize+offset.y-py);
+        if(distance<closest){
+          closest=distance;
+          selection={...hit,type};
+        }
+      }
+    }
+    if(selection?.type==="station")selection.stationId=selection.id;
+    setSelectedAlien(selection?.type==="alien"?selection:null);
     setAllianceMineNotice("");
     setMarchDraft(null);
     setStationNotice("");
-    setSelectedTarget(allianceTile?{type:"allianceMine",...allianceTile}:castle?{type:"castle",...castle}:event?{type:"mothership",...campaign.mothershipEvent.coordinates}:station?{type:"station",stationId:station.id,x:station.x,y:station.y}:mine?{type:"mine",...mine}:alien?{type:"alien",...alien}:{type:"field",x:x+1,y:y+1});
+    setSelectedTarget(selection||{type:"field",x:x+1,y:y+1});
+    if(selectPlacementTile)setSelectPlacementTile(false);
     setMarchNotice("");
   };
   const ownUsername=sessionStorage.getItem("username");
+  const ownBase=castles.find(base=>base.username===ownUsername);
+  const levelGapBlocked=selectedTarget?.type==="castle"&&ownBase&&hasPvpLevelGap(
+    playerLevelFromXp(ownBase.player_xp),playerLevelFromXp(selectedTarget.player_xp),selectedTarget.abandoned);
   const targetIsOwn=selectedTarget?.type==="castle"&&selectedTarget.username===ownUsername;
   const sameAllianceTarget=selectedTarget?.type==="castle"&&campaign.stations?.allianceId&&selectedTarget.alliance_id&&String(campaign.stations.allianceId)===String(selectedTarget.alliance_id);
   // Reinforcements are available only to verified members of the same alliance.
@@ -1085,6 +1121,9 @@ function Map() {
           <button type="button" onClick={()=>setZoom(z=>Math.min(1,Math.round((z+.15)*100)/100))}>+</button>
           <button type="button" onClick={()=>setZoom(1)}>100%</button>
         </div>
+        {allianceMine?.canPlace&&<button type="button" aria-pressed={selectPlacementTile} onClick={()=>setSelectPlacementTile(active=>!active)}>
+          {t("Select exact tile for alliance mine","Избери точен сектор за алиансна мина")}
+        </button>}
         <button type="button" onClick={goToMyBase}>{t("My base","Моята база")}</button>
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
@@ -1241,8 +1280,8 @@ function Map() {
                 const field=selectedTarget?.type==="field",own=targetIsOwn,alien=selectedTarget?.type==="alien";
                 const mothership=selectedTarget?.type==="mothership";
                 const shielded=(Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now()||Number(selectedTarget?.beginner_protection_remaining_ms||0)>0);
-                const blockedByShield=shielded&&(type==="Attack"||type==="Espionage");
-                const allowed=!blockedByShield&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own&&!sameAllianceTarget)): type==="Support"?!field&&!alien&&!own&&canSupport:
+                const blocked=(shielded||levelGapBlocked)&&(type==="Attack"||type==="Espionage");
+                const allowed=!blocked&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own&&!sameAllianceTarget)): type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
                   type==="Gather"?selectedTarget?.type==="mine"&&!selectedTarget?.claimed_by:
@@ -1256,6 +1295,7 @@ function Map() {
             </div>
             {selectedTarget?.type==="castle"&&!targetIsOwn&&(Number(selectedTarget?.protected_until||selectedTarget?.protectedUntil||0)>Date.now()||Number(selectedTarget?.beginner_protection_remaining_ms||0)>0)&&<p role="status" style={{color:"#c4f4ff",background:"rgba(41,117,145,.35)",padding:10,borderRadius:7}}>{t("This player has active protection (beginner protection or Plasma Shield). Attacks are blocked until it expires.","Този играч има активна защита (начална или плазмен щит). Атаките са блокирани до изтичането ѝ.")}</p>}
             {selectedTarget?.type==="castle"&&!!selectedTarget.abandoned&&<p role="status" style={{color:"#d1d1d1"}}>{t("Abandoned base — inactive for 7+ days. The PvP level difference limit does not apply.","Необитаема база — неактивна от поне 7 дни. Ограничението за разлика в нивата не важи.")}</p>}
+            {levelGapBlocked&&<p role="status">{t("Attacks and espionage require a level difference of less than 6.","Атаката и шпионажът изискват разлика по-малка от 6 нива.")}</p>}
             {targetIsOwn && <p>{t("This is your own base. Choose another destination.","Това е твоята база. Избери друга цел.")}</p>}
             {sameAllianceTarget&&<p role="status">{t("You cannot attack a member of your alliance.","Не можеш да атакуваш член на своя алианс.")}</p>}
             {selectedTarget?.type==="castle"&&!targetIsOwn&&(campaign.tradeModuleLevel||0)<3 ? <p style={{fontSize:12,color:"#ffdc9c"}}>{t("Inter-base trade unlocks when your Cargo Depot reaches level 3.","Междубазовата търговия се отключва, когато Товарното депо достигне ниво 3.")}</p> : selectedTarget?.type==="alien" || selectedTarget?.type==="mothership" || (selectedTarget?.type==="castle"&&!targetIsOwn) ? <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Select Attack to launch a combat mission.","Избери „Атака“, за да започнеш бойна мисия.")}</p> : <p style={{fontSize:12,color:"#b2c8d8"}}>{t("Unavailable mission types require their own gameplay systems. Select an available type to continue to troop selection from your only base.","Наличните мисии позволяват избор на войски от базата ти.")}</p>}
