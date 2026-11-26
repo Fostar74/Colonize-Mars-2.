@@ -2,7 +2,7 @@ const migrateAllianceMines = require("./allianceMineSchema");
 const {hour, constructionTarget, constructionApUnit, firstTime, gatheringStart, cargoFullAt, settleWork} = require("./allianceMineWork");
 const marketProducts = require("../src/shared/allianceMarket");
 const {boostedDuration} = require("./marketBoosts");
-const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCombat");
+const {labyrinthMonster,createBattle,strike} = require("./labyrinthCombat");
 const {replenishMissingMines} = require("./externalMines");
 const {placedMapObjects}=require("./mapObjects");
 const {tileKey,touchesTile,blockedMapTiles}=require("../src/shared/mapSpacing");
@@ -3159,11 +3159,13 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   runLabyrinthMission(userId,options={}){
-    const start=this.labyrinthBattle(userId,"start",options);
-    if(start.error)return start;
-    let result=start;
-    for(let i=0;i<=roundLimit&&result.battle;i++)result=this.labyrinthBattle(userId,"strike");
-    return {...result,success:!result.error,room:start.battle?.room};
+    return db.transaction(()=>{
+      const start=this.labyrinthBattle(userId,"start",options);
+      if(start.error)return start;
+      let result=start;
+      while(result.battle&&!result.error)result=this.labyrinthBattle(userId,"strike");
+      return {...result,success:!result.error,room:start.battle?.room};
+    }).immediate();
   }
 
   moveLabyrinth(userId,roomId){
