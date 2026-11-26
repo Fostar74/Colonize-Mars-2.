@@ -1,4 +1,7 @@
 export default {
+  "Activate one item at a time.": "Активирай по един предмет наведнъж.",
+  "This booster is already active.": "Този бонус вече е активен.",
+  "Labyrinth battle is unavailable.": "Битката в Лабиринта не е достъпна.",
   "Invalid troop selection.": "Невалиден избор на войски.",
   "Your base could not be found.": "Базата ти не беше намерена.",
   "Alliance Mine": "Алиансна мина",

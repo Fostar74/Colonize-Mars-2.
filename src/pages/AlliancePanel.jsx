@@ -1,11 +1,9 @@
+import AllianceMineProgress from "./AllianceMineProgress";
+import marketProducts from "../shared/allianceMarket";
 import { useNavigate } from "react-router-dom";
 import AllianceResearch from "./AllianceResearch";
 import { useLanguage } from "../language";
 import LinkifiedText from "../shared/LinkifiedText";
-import goldIcon from "../images/gold.png";
-import ironIcon from "../images/iron.png";
-import waterIcon from "../images/water.png";
-import solarIcon from "../images/solar.png";
 import baseIcon from "../images/hq-icon.png";
 import React,{useEffect,useState,useCallback} from "react";
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
@@ -104,13 +102,12 @@ export default function AlliancePanel({supportTarget,playerAction}){
      start={kind=>action("bonus/upgrade",{kind})}/>}
    {tab==="mine"&&state.allianceMine&&<section>
     <h4>{localLabel("Alliance Mine")}</h4>
-    {state.allianceMine.active ? <p>
-      {localLabel(state.allianceMine.active.resource)} · {state.allianceMine.active.x}:{state.allianceMine.active.y} · {
-        state.allianceMine.active.status==="construction"
-          ? t("Construction points","Строителни точки")+" "+state.allianceMine.active.constructionPoints.toLocaleString(undefined,{maximumFractionDigits:2})+" / "+state.allianceMine.constructionGoal.toLocaleString()
-          : t("Shared resources remaining","Оставащи общи ресурси")+" "+state.allianceMine.active.amount.toLocaleString()
-      }
-    </p> : <p>{state.allianceMine.canPlace
+    {state.allianceMine.active ? <>
+      <p>{localLabel(state.allianceMine.active.resource)} · {state.allianceMine.active.x}:{state.allianceMine.active.y}</p>
+      {state.allianceMine.active.status==="construction"
+        ? <AllianceMineProgress mine={state.allianceMine.active} goal={state.allianceMine.constructionGoal} march={state.allianceMine.march}/>
+        : <p>{t("Shared resources remaining","Оставащи общи ресурси")} {state.allianceMine.active.amount.toLocaleString()} · {t("2,000 per hour per player","2 000 на час за играч")}</p>}
+    </> : <p>{state.allianceMine.canPlace
       ? t("Select an empty map tile to place an alliance mine.","Избери свободно поле на картата, за да поставиш алиансна мина.")
       : t("Your alliance has no active mine.","Алиансът ти няма активна мина.")}</p>}
     {(state.allianceMine.active||state.allianceMine.canPlace)&&<button type="button" onClick={()=>{
@@ -149,13 +146,13 @@ export default function AlliancePanel({supportTarget,playerAction}){
     </div>
     {Number.isSafeInteger(Number(exchangeAmount))&&Number(exchangeAmount)>0&&Number(exchangeAmount)%5===0&&<p>{t("You receive","Получаваш")}: {Number(exchangeAmount)*0.8} {localLabel(exchangeTo)} · {t("Alliance donation","Дарение за алианса")}: {Number(exchangeAmount)*0.2} {localLabel(exchangeFrom)}</p>}
     <h4>{t("Alliance Market","Пазар на алианса")}</h4>
-    {Object.entries({gold:["500 Gold",30],iron:["500 Iron",30],water:["500 Water",30],solar:["500 Solar",30],landing:["1 Mars Landing Token",100],attack:["+10% Army Attack (1h)",80],health:["+10% Army Health (1h)",80],protection:["Plasma Shield (24h)",150],protocol_reset:["Protocol Reset",50000]}).map(([item,[label,cost]])=><div key={item} style={{marginBottom:8}}>
-      <img src={{gold:goldIcon,iron:ironIcon,water:waterIcon,solar:solarIcon}[item] || baseIcon} alt="" width="28" height="28" style={{verticalAlign:"middle",marginRight:8}} />
-      {localLabel(label)} — {cost.toLocaleString()} {t("AP","ТА")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
+    {Object.entries(marketProducts).map(([item,{label,bg,cost}])=><div key={item} style={{marginBottom:8}}>
+      <img src={baseIcon} alt="" width="28" height="28" style={{verticalAlign:"middle",marginRight:8}} />
+      {t(label,bg)} — {cost.toLocaleString()} {t("AP","ТА")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
     </div>)}
-    <p style={{fontSize:12}}>{t("Purchased items are added to Inventory and stay inactive until you use them. Use attack and health boosts for Alien Base missions; protection blocks incoming player attacks for one day. Using another boost while one is active adds its duration.","Купените предмети отиват в инвентара и остават неактивни, докато не ги използваш. Бонусите за атака и живот важат за походи срещу извънземни бази; щитът спира атаките от играчи за един ден. Ако използваш още един бонус, докато действа предишен, срокът му се удължава.")}</p>
-    {(state.economy?.buffs||[]).filter(buff=>buff.kind==="attack"||buff.kind==="health"||buff.kind==="protection").map(buff=><p key={buff.kind}>
-      {buff.kind==="protection"?t("Plasma Shield","Плазмен щит"):buff.kind==="attack"?t("Attack Boost","Бонус атака"):t("Health Boost","Бонус здраве")} {t("active until","активен до")} {new Date(buff.expires_at).toLocaleString()}
+    <p style={{fontSize:12}}>{t("Purchased items must be activated from Inventory. For production and external gathering, only the strongest active bonus applies.","Купените предмети се активират от инвентара. За производството и добива от външни мини действа само най-силният активен бонус.")}</p>
+    {(state.economy?.buffs||[]).filter(buff=>Object.hasOwn(marketProducts,buff.kind)).map(buff=><p key={buff.kind}>
+      {t(marketProducts[buff.kind].label,marketProducts[buff.kind].bg)} {t("active until","активен до")} {new Date(buff.expires_at).toLocaleString()}
     </p>)}
    </div>}
    {tab==="reinforcements"&&<div>
