@@ -535,6 +535,7 @@ function Game() {
   const [hospitalWoundedCount,setHospitalWoundedCount]=useState(0);
   const [hospitalEntries,setHospitalEntries]=useState([]);
   const [incomingAlert,setIncomingAlert]=useState(false);
+  const [shieldImpact,setShieldImpact]=useState(0);
   const lastUnreadRef=useRef(0);
   const handleReportsRead=useCallback(async()=>{
     setIncomingAlert(false);
@@ -643,6 +644,8 @@ function Game() {
   },[api]);
   useEffect(()=>{
     let active=true;
+    let firstReport=true;
+    const seenImpacts=new Set();
     const refreshAttackAlerts=async()=>{
       try{
         const userId=sessionStorage.getItem("userId");
@@ -650,6 +653,10 @@ function Game() {
         if(!response.ok)return;
         const data=await response.json();
         if(!active)return;
+        const impacts=data.shieldImpacts||[];
+        if(!firstReport&&impacts.some(id=>!seenImpacts.has(id)))setShieldImpact(Date.now());
+        for(const id of impacts)seenImpacts.add(id);
+        firstReport=false;
         const count=Number(data.unreadIncoming)||0;
         setUnreadIncoming(count);
         setUnreadBattleReports(unreadBattleReportCount(data,userId));
@@ -857,7 +864,7 @@ function Game() {
         <div className="utc-clock" aria-label={t("Server time in UTC","Сървърно време UTC")}><span>{t("Server time","Сървърно време")}</span><strong>{utcClock} UTC</strong></div>
       </div>
 
-      <EarthBase progress={baseProgress} hospitalEntries={hospitalEntries}
+      <EarthBase progress={baseProgress} hospitalEntries={hospitalEntries} playerId={notificationUserId} shieldImpact={shieldImpact}
         onBuilding={building=>{setQuestTarget({building,tab:"structures"});setShowPopup(true);}}
         onHospital={()=>setShowHospital(true)}
         onHeadquarters={()=>{setQuestTarget(null);setShowPopup(true);}} />

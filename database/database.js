@@ -2241,6 +2241,11 @@ class DatabaseManager {
     return {success:true};
   }
 
+  getRecentInvasionImpacts(userId, since) {
+    return db.prepare(`SELECT id FROM saturday_invasion_attacks
+      WHERE resolved_at>=? AND user_id=? AND json_type(result,'$.level')='integer'`).pluck().all(since,userId);
+  }
+
   getPlayerMissions(userId) {
     return db.prepare(`SELECT m.*,a.username AS attacker_name,d.username AS defender_name
       FROM player_missions m
