@@ -18,6 +18,7 @@ import "./Game.css";
 import EarthBase from "./EarthBase";
 import usePlayerNotifications from "../utils/usePlayerNotifications";
 import useAllianceMessageReads from "../utils/useAllianceMessageReads";
+import {useNotificationReads} from "../utils/useNotificationReads";
 import labyrinthKnightArt from "../images/cyber-knight-expanded.jpg";
 import labyrinthMonsterArt from "../images/labyrinth-monster.svg";
 import labyrinthCavernArt from "../images/labyrinth-cavern.svg";
@@ -562,6 +563,37 @@ function Game() {
 
   const api=useMemo(()=> (process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,""),[]);
   const notificationUserId=sessionStorage.getItem("userId");
+  const [sideReward,setSideReward]=useState(null);
+  const sideQuestEndpoint="/side-quests/"+encodeURIComponent(notificationUserId);
+  const {unreadCount:sideQuestUnread,markDisplayed:acknowledgeSideRewards}=useNotificationReads(
+    api,notificationUserId,sideReward?[sideReward]:[],"colonize-mars-pending-side-quest-reads:"+notificationUserId,sideQuestEndpoint+"/read");
+  useEffect(()=>{
+    if(!notificationUserId)return;
+    const controller=new AbortController();
+    let revision=0;
+    const refresh=async()=>{
+      const current=++revision;
+      try{
+        const response=await fetch(api+sideQuestEndpoint+"/reward",{
+          headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store",signal:controller.signal
+        });
+        if(response.ok){
+          const {id}=await response.json();
+          if(!controller.signal.aborted&&current===revision)setSideReward(id);
+        }
+      }catch{}
+    };
+    void refresh();
+    const timer=window.setInterval(refresh,10000);
+    window.addEventListener("online",refresh);
+    window.addEventListener("game-progress-updated",refresh);
+    return ()=>{
+      controller.abort();
+      window.clearInterval(timer);
+      window.removeEventListener("online",refresh);
+      window.removeEventListener("game-progress-updated",refresh);
+    };
+  },[api,notificationUserId,sideQuestEndpoint]);
   const {notifications,dismiss:dismissNotification,allianceUnreadIds}=usePlayerNotifications(api,notificationUserId);
   const {unreadCount:allianceUnread,markDisplayed:markAllianceMessagesDisplayed}=useAllianceMessageReads(api,notificationUserId,allianceUnreadIds);
   const allianceBadge=showAlliance&&allianceTab==="messages"?0:allianceUnread;
@@ -833,7 +865,12 @@ function Game() {
       <div className="bottom-bar">
         <button onClick={() => setShowCyberKnight(true)}>{t("Cyber Knight","Киберрицар")}</button>
         <button onClick={()=>setShowTalents(true)}>{t("Commander Protocols","Протоколи на командира")}</button>
-        <button onClick={() => {setQuestTab("main");setShowQuests(true);}}>{t("Quests","Мисии")}</button>
+        <button className={sideQuestUnread?"messages-nav-button messages-unread":""} onClick={()=>{
+          if(sideQuestUnread)acknowledgeSideRewards([sideReward]);
+          setQuestTab(sideQuestUnread?"side":"main");
+          setShowQuests(true);
+        }}>{t("Quests","Мисии")}{Boolean(sideQuestUnread)&&<span className="messages-badge"
+          aria-label={t("Side quest reward available","Налична награда за странична мисия")}>1</span>}</button>
         <button onClick={() => navigate("/map?campaign=1")}>{t("Campaign","Кампании")}</button>
         <button onClick={()=>setShowEvents(true)}>{t("Events","Събития")}</button>
         <button onClick={()=>setShowMarket(true)}>{t("Market","Пазар")}</button>
@@ -999,7 +1036,7 @@ function Game() {
             </button>
           </div>
           <div className="popup-content">
-            <Quests initialTab={questTab} onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} onOpenProtocols={() => setShowTalents(true)} onOpenAlliance={() => openAlliance()} />
+            <Quests onSideRewardDisplayed={acknowledgeSideRewards} initialTab={questTab} onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} onOpenProtocols={() => setShowTalents(true)} onOpenAlliance={() => openAlliance()} />
           </div>
         </div>
       )}

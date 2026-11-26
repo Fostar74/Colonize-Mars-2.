@@ -8,7 +8,7 @@ import ironIcon from "../images/iron.png";
 import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
-const Quests = ({ initialTab="main", onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance }) => {
+const Quests = ({ initialTab="main", onSideRewardDisplayed, onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance }) => {
   const { t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState(initialTab);
   const [loginRewards, setLoginRewards] = useState(null);
@@ -171,7 +171,7 @@ const Quests = ({ initialTab="main", onShowBase, onOpenUpgrades, onOpenProtocols
     </div>
   );
 
-  const renderSideQuests = () => <SideQuests />;
+  const renderSideQuests = () => <SideQuests onRewardDisplayed={onSideRewardDisplayed} />;
 
   const renderActivityRewards = () => <ActivityWheel />;
 
