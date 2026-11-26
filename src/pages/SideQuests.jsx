@@ -2,11 +2,13 @@ import React, {useEffect,useRef,useState} from "react";
 import {useLanguage} from "../language";
 
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
-export default function SideQuests(){
+export default function SideQuests({onRewardDisplayed}){
   const {language,t,label}=useLanguage();
   const [missions,setMissions]=useState(null);
   const [notice,setNotice]=useState("");
   const [busy,setBusy]=useState(false);
+  const activeCard=useRef(null);
+  const scrollNext=useRef(false);
   const claimRevision=useRef(0);
   const userId=sessionStorage.getItem("userId");
   const headers={"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")};
@@ -36,12 +38,25 @@ export default function SideQuests(){
       const data=await response.json();
       if(!response.ok)throw Error(data.message);
       claimRevision.current++;
+      scrollNext.current=true;
       setMissions(data.missions);
       window.dispatchEvent(new Event("game-progress-updated"));
       setNotice(t("Reward collected.","Наградата е взета."));
     }catch(error){setNotice(label(error.message));}
     finally{setBusy(false);}
   };
+
+  const currentMission=missions?.find(quest=>quest.status==="active"||quest.status==="complete");
+  const readyId=currentMission?.status==="complete"?currentMission.id:null;
+  useEffect(()=>{
+    if(readyId)onRewardDisplayed?.([readyId]);
+  },[onRewardDisplayed,readyId]);
+  useEffect(()=>{
+    if(!scrollNext.current)return;
+    scrollNext.current=false;
+    const reducedMotion=window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
+    activeCard.current?.scrollIntoView?.({block:"nearest",behavior:reducedMotion?"instant":"smooth"});
+  },[currentMission?.id]);
 
   const condition=quest=>{
     const {kind,target,detail}=quest;
@@ -77,25 +92,48 @@ export default function SideQuests(){
     return amount.toLocaleString()+" "+label(name);
   };
   const pathName=path=>path==="defender"?t("Defender","Защитник"):t("Conqueror","Завоевател");
-  return <section className="quest-section">
+  const completed=missions?.filter(quest=>quest.status==="claimed")||[];
+  const locked=missions?.filter(quest=>quest.status==="locked")||[];
+  const visibleLocked=4;
+  const overallLabel=t("Overall progress","Общ напредък");
+  return <section className="quest-section side-quests">
     <h3>{t("Side Quests","Странични мисии")}</h3>
     <p>{t("Prepare Earth’s expedition to Mars. Claim each reward to unlock the next mission.","Подготви експедицията от Земята до Марс. Вземи всяка награда, за да отключиш следващата мисия.")}</p>
     {notice&&<p role="status">{notice}</p>}
-    {missions===null?<p>{t("Loading side quests…","Зареждане на страничните мисии…")}</p>:<ol>
-      {missions.map(quest=><li key={quest.id}>
-        {quest.status==="locked"?t("Locked","Заключена"):<strong>{quest.title[language]}</strong>}
-        {quest.status==="claimed"&&" · "+t("Reward claimed","Наградата е взета")}
-        {["active","complete"].includes(quest.status)&&<>
-          {quest.story&&<p>{quest.story[language]}</p>}
-          <p>{condition(quest)}</p>
-          <p>{quest.progress.toLocaleString()} / {quest.target.toLocaleString()}</p>
-          {quest.choices
-            ? quest.path?<p>{pathName(quest.path)} · {quest.choices[quest.path].map(reward).join(" · ")}</p>
-              : Object.entries(quest.choices).map(([path,rewards])=><p key={path}>{pathName(path)} · {rewards.map(reward).join(" · ")}</p>)
-            : <p>{t("Reward","Награда")} · {quest.rewards.map(reward).join(" · ")}</p>}
-          {quest.status==="complete"&&<button type="button" disabled={busy} onClick={()=>claim(quest.id)}>{t("Claim reward","Вземи наградата")}</button>}
-        </>}
-      </li>)}
-    </ol>}
+    {missions===null?<p>{t("Loading side quests…","Зареждане на страничните мисии…")}</p>:<>
+      <div className="quest-box side-quest-overall">
+        <strong>{overallLabel} · {completed.length} / {missions.length}</strong>
+        <progress aria-label={overallLabel} value={completed.length} max={missions.length} />
+      </div>
+      <ol className="side-quest-list">
+        {completed.map(quest=><li key={quest.id} className="quest-box side-quest-claimed">
+          <strong className="quest-title">{quest.title[language]}</strong>
+          <span>{t("Reward claimed","Наградата е взета")}</span>
+        </li>)}
+        {currentMission&&<li key={currentMission.id} ref={activeCard} className="quest-box side-quest-active" aria-current="step">
+          <h4 className="quest-title">{currentMission.title[language]}</h4>
+          {currentMission.story&&<p>{currentMission.story[language]}</p>}
+          <p><strong>{t("Objective","Цел")}</strong> · {condition(currentMission)}</p>
+          <div className="quest-progress">{currentMission.progress.toLocaleString()} / {currentMission.target.toLocaleString()}</div>
+          <progress aria-label={t("Mission progress","Напредък на мисията")} value={currentMission.progress} max={currentMission.target} />
+          <div className="quest-rewards">
+            <strong>{t("Reward","Награда")}</strong>
+            {currentMission.choices
+              ? Object.entries(currentMission.choices).filter(([path])=>!currentMission.path||path===currentMission.path)
+                  .map(([path,rewards])=><p key={path}>{pathName(path)} · {rewards.map(reward).join(" · ")}</p>)
+              : <p>{currentMission.rewards.map(reward).join(" · ")}</p>}
+          </div>
+          <button type="button" disabled={busy||currentMission.status!=="complete"} onClick={()=>claim(currentMission.id)}>
+            {t("Claim reward","Вземи наградата")}
+          </button>
+        </li>}
+        {locked.slice(0,visibleLocked).map(quest=><li key={quest.id} className="quest-box side-quest-locked">
+          <span aria-hidden="true">🔒</span> {t("Mission","Мисия")} {quest.id} · <span>{t("Locked","Заключена")}</span>
+        </li>)}
+      </ol>
+      {locked.length>visibleLocked&&<p className="side-quest-remaining">
+        {locked.length-visibleLocked} {t("more locked missions","други заключени мисии")}
+      </p>}
+    </>}
   </section>;
 }

@@ -8,6 +8,11 @@ function migrateSideQuests(db) {
         path TEXT,
         unlocked_at INTEGER NOT NULL DEFAULT 0
       );
+      CREATE TABLE IF NOT EXISTS side_quest_reward_reads (
+        user_id INTEGER NOT NULL REFERENCES users(id),
+        mission INTEGER NOT NULL,
+        PRIMARY KEY(user_id,mission)
+      );
       CREATE TABLE IF NOT EXISTS mobilization_requests (
         user_id INTEGER NOT NULL REFERENCES users(id),
         origin TEXT NOT NULL,

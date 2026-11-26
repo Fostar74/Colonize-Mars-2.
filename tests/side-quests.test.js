@@ -50,7 +50,17 @@ test("sequential side quests persist, hide future content, and count only eligib
     game.mobilizeBarracks(user,"Railgunner",20,retryId);
     assert.equal(active().progress,20);
     assert.equal(await runInWorker(`return g.sideQuests.state(${user}).missions[0].progress;`),20);
+    assert.equal(game.sideQuests.unreadReward(user),null);
+    game.sideQuests.acknowledgeReward(user,[1,2]);
     game.mobilizeBarracks(user,"Railgunner",30);
+    db.exec("DROP TABLE side_quest_reward_reads");
+    require("../database/sideQuestSchema")(db);
+    assert.equal(game.sideQuests.unreadReward(user),1);
+    assert.equal(game.sideQuests.unreadReward(other),null);
+    game.sideQuests.acknowledgeReward(user,[1,2]);
+    game.sideQuests.acknowledgeReward(user,[1]);
+    assert.equal(await runInWorker(`return g.sideQuests.unreadReward(${user});`),null);
+    assert.equal(active().progress,50);
     const claimCode=`return g.sideQuests.claim(${user},1).error?"denied":"claimed";`;
     assert.deepEqual((await Promise.all([runInWorker(claimCode),runInWorker(claimCode)])).sort(),["claimed","denied"]);
     assert.equal(game.getInventory(user).army.Railgunner,50);
@@ -60,6 +70,9 @@ test("sequential side quests persist, hide future content, and count only eligib
     assert.equal(active().progress,0);
     game.mobilizeBarracks(user,"ALL",0);
     assert.equal(active().progress,100);
+    assert.equal(game.sideQuests.unreadReward(user),2);
+    game.sideQuests.acknowledgeReward(user,[1]);
+    assert.equal(game.sideQuests.unreadReward(user),2);
     assert.equal(game.listPlayerNotifications(user).notifications[0].kind,"side_quest_unlocked");
 
     const unlock=(id)=>db.prepare("UPDATE player_side_quests SET mission=?,progress=0,path=NULL,unlocked_at=? WHERE user_id=?").run(id,now,user);

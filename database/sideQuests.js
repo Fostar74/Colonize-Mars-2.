@@ -45,6 +45,20 @@ class SideQuests {
     }
   }
 
+  unreadReward(userId){
+    const row=this.db.prepare("SELECT * FROM player_side_quests WHERE user_id=?").get(userId);
+    const quest=row&&catalog[row.mission-1];
+    if(!quest||this.db.prepare("SELECT 1 FROM side_quest_reward_reads WHERE user_id=? AND mission=?").get(userId,quest.id))return null;
+    return this.progress(userId,quest,row.progress)>=quest.target?quest.id:null;
+  }
+
+  acknowledgeReward(userId,ids){
+    const mission=this.unreadReward(userId);
+    if(mission!==null&&ids.includes(mission)){
+      this.db.prepare("INSERT OR IGNORE INTO side_quest_reward_reads(user_id,mission) VALUES (?,?)").run(userId,mission);
+    }
+  }
+
   state(userId){
     const row=this.db.prepare("SELECT * FROM player_side_quests WHERE user_id=?").get(userId)||
       {mission:1,progress:0,path:null};

@@ -574,6 +574,17 @@ router.post("/market/offers/:offerId/cancel",requireSession,(req,res)=>{
   }catch(error){console.error("Cancel market offer:",error);res.status(500).json({message:"Offer could not be cancelled."});}
 });
 
+router.get("/side-quests/:userId/reward",requireSession,(req,res)=>{
+  res.set("Cache-Control","no-store").json({id:db.sideQuests.unreadReward(Number(req.params.userId))});
+});
+router.post("/side-quests/:userId/read",requireSession,(req,res)=>{
+  const ids=req.body.ids;
+  if(!Array.isArray(ids)||ids.length>34||!ids.every(id=>Number.isInteger(id)&&id>=1&&id<=34)){
+    return res.status(400).json({message:"Invalid side quest IDs."});
+  }
+  db.sideQuests.acknowledgeReward(Number(req.params.userId),ids);
+  res.json({success:true});
+});
 router.get("/side-quests/:userId",requireSession,(req,res)=>{
   res.json(db.sideQuests.state(Number(req.params.userId)));
 });
