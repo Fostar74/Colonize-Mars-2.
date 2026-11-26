@@ -261,6 +261,18 @@ router.route("/messages/:scope/:userId")
     const result=db.sendMessage(Number(req.params.userId),req.params.scope,req.body.recipient,req.body.body);
     res.status(result.error?400:201).json(result.error?{message:result.error}:result);
   });
+router.get("/alliance/messages/:userId",requireAuthenticatedPlayer,(req,res)=>{
+  try{
+    const result=db.listMessages(Number(req.params.userId),"alliance");
+    res.set("Cache-Control","no-store").status(result.error?403:200).json(result.error?{message:result.error}:result);
+  }catch(error){console.error("Alliance messages:",error);res.status(500).json({message:"Could not load alliance messages."});}
+});
+router.post("/alliance/messages/:userId/read",requireAuthenticatedPlayer,(req,res)=>{
+  try{
+    const result=db.acknowledgeAllianceMessages(Number(req.params.userId),req.body?.ids);
+    res.status(result.error?400:200).json(result.error?{message:result.error}:result);
+  }catch(error){console.error("Alliance message acknowledgment:",error);res.status(500).json({message:"Could not update alliance messages."});}
+});
 router.get("/notifications/:userId",requireAuthenticatedPlayer,(req,res)=>{
   try{res.set("Cache-Control","no-store").json(db.listPlayerNotifications(Number(req.params.userId)));}
   catch(error){console.error("Player notifications:",error);res.status(500).json({message:"Notifications unavailable."});}

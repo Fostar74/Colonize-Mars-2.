@@ -17,6 +17,7 @@ import InformationPanel from "./InformationPanel";
 import "./Game.css";
 import EarthBase from "./EarthBase";
 import usePlayerNotifications from "../utils/usePlayerNotifications";
+import useAllianceMessageReads from "../utils/useAllianceMessageReads";
 import labyrinthKnightArt from "../images/cyber-knight-expanded.jpg";
 import labyrinthMonsterArt from "../images/labyrinth-monster.svg";
 import labyrinthCavernArt from "../images/labyrinth-cavern.svg";
@@ -466,7 +467,7 @@ function EventsPanel({onOpenInventory}) {
         </>}
 
       <h3>{t("Individual Labyrinth standings","Индивидуално класиране в Лабиринта")}</h3>
-      <p style={{color:"#cfbde9",marginTop:0}}>{t("Solo event: every Cyber Knight competes independently. Rankings are based on the highest room reached, then permanent HP. Alliance points are not counted.","Индивидуално събитие: всеки Cyber Knight се състезава самостоятелно. Класирането е по най-висока достигната стая, след това по постоянен HP. Точки на алианса не се събират.")}</p>
+      <p style={{color:"#cfbde9",marginTop:0}}>{t("Solo event: every Cyber Knight competes independently. Rankings are based on the highest room reached, then permanent HP. Alliance points are not counted.","Индивидуално събитие: всеки Cyber Knight се състезава самостоятелно. Класирането е по най-висока достигната стая, след това по постоянен HP. Алианс точки не се събират.")}</p>
       {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Room","Стая")}</th><th>{t("Permanent HP","Постоянен HP")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{Math.min(30,Math.ceil(row.combat_room/10))}-{(row.combat_room-1)%10+1}</td><td>+{row.combat_hp_bonus}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights yet.","Все още няма Киберрицари.")}</p>}
     </section>
 
@@ -511,6 +512,7 @@ function Game() {
     }catch{}
   },[]);
   const [showAlliance,setShowAlliance]=useState(false);
+  const [allianceTab,setAllianceTab]=useState("members");
   const [showRankings,setShowRankings]=useState(false);
   const [showEvents,setShowEvents]=useState(false);
   const [showTalents,setShowTalents]=useState(false);
@@ -527,7 +529,15 @@ function Game() {
   const [inviting,setInviting]=useState(false);
 
   const api=useMemo(()=> (process.env.REACT_APP_API_URL || (window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,""),[]);
-  const {notifications,dismiss:dismissNotification}=usePlayerNotifications(api,sessionStorage.getItem("userId"));
+  const notificationUserId=sessionStorage.getItem("userId");
+  const {notifications,dismiss:dismissNotification,allianceUnreadIds}=usePlayerNotifications(api,notificationUserId);
+  const {unreadCount:allianceUnread,markDisplayed:markAllianceMessagesDisplayed}=useAllianceMessageReads(api,notificationUserId,allianceUnreadIds);
+  const allianceBadge=showAlliance&&allianceTab==="messages"?0:allianceUnread;
+  const openAlliance=(tab="members",target=null)=>{
+    setSupportTarget(target);
+    setAllianceTab(tab);
+    setShowAlliance(true);
+  };
   const messageNotifications=notifications.filter(item=>item.kind==="player_message"||item.kind==="game_message"||
     item.kind==="trade_message"||item.kind==="gathering_return"||item.kind?.startsWith("alliance_mine_"));
   const activeNotice=notifications.find(item=>item.kind==="saturday_invasion_started") || messageNotifications[0];
@@ -760,7 +770,7 @@ function Game() {
   const openBlueNotification=notification=>{
     dismissNotification(notification.id);
     if(notification?.kind==="gathering_return")navigate("/map");
-    else if(notification?.kind.startsWith("alliance_mine_")){setSupportTarget(null);setShowAlliance(true);}
+    else if(notification?.kind.startsWith("alliance_mine_"))openAlliance();
     else setMessageRecipient("");
   };
 
@@ -800,7 +810,9 @@ function Game() {
           setShowHospital(true);
         }}>{t("Hospital","Болница")}{hospitalWoundedCount>0&&<span className="reports-badge">{hospitalWoundedCount}</span>}</button>
         <button onClick={() => navigate("/map")}>{t("Map","Карта")}</button>
-        <button onClick={()=>{setSupportTarget(null);setShowAlliance(true);}}>{t("Alliance","Алианс")}</button>
+        <button className="messages-nav-button" onClick={()=>openAlliance(allianceUnread?"messages":"members")}>
+          {t("Alliance","Алианс")}{allianceBadge>0&&<span className="messages-badge">{allianceBadge}</span>}
+        </button>
         <button onClick={()=>setShowRankings(true)}>{t("Rankings","Класиране")}</button>
         <button className={messageNotifications.length?"messages-nav-button messages-unread":""} onClick={()=>setMessageRecipient("")}>{t("Messages","Съобщения")}{messageNotifications.length>0&&<span className="messages-badge">{messageNotifications.length}</span>}</button>
         <button className={unreadIncoming+unreadBattleReports>0?"reports-nav-button reports-unread":""} onClick={()=>{setShowReports(true);setIncomingAlert(false);}}>{t("Reports","Доклади")}{unreadIncoming+unreadBattleReports>0&&<span className="reports-badge">{unreadIncoming+unreadBattleReports}</span>}</button>
@@ -879,7 +891,7 @@ function Game() {
 
       {showTalents&&<div className="popup"><div className="popup-header"><span>{t("COMMANDER PROTOCOLS","ПРОТОКОЛИ НА КОМАНДИРА")}</span><button className="close-button" onClick={()=>setShowTalents(false)}>X</button></div><div className="popup-content"><PlayerTalents/></div></div>}
       {showEvents&&<div className="popup" style={{zIndex:1004}}><div className="popup-header"><span>{t("EVENTS","СЪБИТИЯ")}</span><button className="close-button" onClick={()=>setShowEvents(false)}>X</button></div><div className="popup-content"><EventsPanel onOpenInventory={()=>{setShowEvents(false);setShowInventory(true);}}/></div></div>}
-      {showAlliance&&<div className="popup"><div className="popup-header"><span>{t("ALLIANCE","АЛИАНС")}</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction}/></div></div>}
+      {showAlliance&&<div className="popup"><div className="popup-header"><span>{t("ALLIANCE","АЛИАНС")}</span><button className="close-button" onClick={()=>setShowAlliance(false)}>X</button></div><div className="popup-content"><AlliancePanel key={supportTarget?.id || "alliance"} supportTarget={supportTarget} playerAction={playerAction} tab={allianceTab} setTab={setAllianceTab} markMessagesDisplayed={markAllianceMessagesDisplayed}/></div></div>}
       {showRankings&&<div className="popup"><div className="popup-header"><span>{t("RANKINGS","КЛАСИРАНЕ")}</span><button className="close-button" onClick={()=>setShowRankings(false)}>X</button></div><div className="popup-content"><Rankings playerAction={playerAction}/></div></div>}
       {messageRecipient!==null&&<div className="popup" style={{zIndex:1002}}>
         <div className="popup-header"><span>{t("MESSAGES","СЪОБЩЕНИЯ")}</span><button className="close-button" onClick={()=>setMessageRecipient(null)}>X</button></div>
@@ -900,7 +912,7 @@ function Game() {
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
           <button onClick={showPlayerBase}>{t("View Base","Виж базата")}</button>
           <button disabled={playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setMessageRecipient(playerMenu.username);setPlayerMenu(null);}}>{t("Message","Съобщение")}</button>
-          <button disabled={!playerMenu.ally || playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setSupportTarget(playerMenu);setShowRankings(false);setShowAlliance(true);setPlayerMenu(null);}}>{t("Support","Подкрепление")}</button>
+          <button disabled={!playerMenu.ally || playerMenu.username===sessionStorage.getItem("username")} onClick={()=>{setShowRankings(false);openAlliance("reinforcements",playerMenu);setPlayerMenu(null);}}>{t("Support","Подкрепление")}</button>
           <button disabled title={playerMenu.ally?"You cannot attack an ally.":"Player battles are not enabled yet."}>{t("Attack","Атака")}</button>
           <button disabled={!playerMenu.canInvite || inviting} onClick={invitePlayer}>{t("Invite to Alliance","Покани в алианса")}</button>
           <button type="button" disabled={String(playerMenu.id)===String(sessionStorage.getItem("userId"))} onClick={()=>{setGiftOpen(v=>!v);setPlayerNotice("");}}>{t("Send resources","Изпрати ресурси")}</button>
@@ -953,7 +965,7 @@ function Game() {
             </button>
           </div>
           <div className="popup-content">
-            <Quests onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} onOpenProtocols={() => setShowTalents(true)} onOpenAlliance={() => { setSupportTarget(null); setShowAlliance(true); }} />
+            <Quests onShowBase={openQuestTarget} onOpenUpgrades={() => setShowUpgradeCenter(true)} onOpenProtocols={() => setShowTalents(true)} onOpenAlliance={() => openAlliance()} />
           </div>
         </div>
       )}
