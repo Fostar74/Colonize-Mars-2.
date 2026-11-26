@@ -1,3 +1,4 @@
+import AllianceMineProgress from "./AllianceMineProgress";
 import { useLanguage } from "../language";
 
 // Colonize Mars Map.jsx with full formatting, mines, and alien bases
@@ -285,6 +286,7 @@ function Map() {
   const [hoveredTitle, setHoveredTitle] = useState("");
   const [cursorCoord, setCursorCoord] = useState(null);
   const [mineIcons, setMineIcons] = useState({});
+  const [allianceMineArt,setAllianceMineArt]=useState({});
   const [alienIcon, setAlienIcon] = useState(null);
   const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
@@ -324,6 +326,25 @@ function Map() {
 
     [gold, iron, solar, water, alien].forEach((img) => { img.onload = onLoad; });
   }, []);
+
+  useEffect(()=>{
+    let active=true;
+    const dir=(process.env.PUBLIC_URL||"").replace(/\/$/,"")+"/alliance-mines/";
+    fetch(dir+"manifest.json").then(response=>response.ok?response.json():null).then(manifest=>{
+      if(!active||!manifest)return;
+      for(const stage of ["construction","completed"]){
+        if(!Array.isArray(manifest[stage]))continue;
+        for(const resource of ["gold","iron","water","solar"]){
+          if(!manifest[stage].includes(resource))continue;
+          const key=resource+"-"+stage;
+          const image=new Image();
+          image.onload=()=>{if(active)setAllianceMineArt(current=>({...current,[key]:image}));};
+          image.src=dir+key+".webp";
+        }
+      }
+    }).catch(()=>{});
+    return ()=>{active=false;};
+  },[]);
 
   useEffect(() => {
     const img = new Image();
@@ -413,19 +434,22 @@ function Map() {
     [...mineData,...allianceMines].forEach((mine) => {
       const px = (mine.x-1) * tileSize + offset.x;
       const py = (mine.y-1) * tileSize + offset.y;
-      const icon = mineIcons[mine.resource];
-
+      const artwork = mine.status && allianceMineArt[mine.resource+"-"+(mine.status==="construction"?"construction":"completed")];
+      const icon = artwork || mineIcons[mine.resource];
       const markerSize = Math.max(78, tileSize * 1.85);
+      const artScale=artwork?markerSize*1.75/Math.max(icon.naturalWidth,icon.naturalHeight):1;
+      const height=artwork?icon.naturalHeight*artScale:markerSize;
+      const width=artwork?icon.naturalWidth*artScale:markerSize;
       const sx = px + tileSize / 2;
       const sy = py + tileSize / 2;
       if (
         icon && icon.complete && icon.naturalWidth > 0 &&
-        sx + markerSize / 2 >= 0 &&
+        sx + width / 2 >= 0 &&
         sy + markerSize / 2 >= 0 &&
-        sx - markerSize / 2 < canvas.width &&
-        sy - markerSize / 2 < canvas.height
+        sx - width / 2 < canvas.width &&
+        sy + markerSize / 2 - height < canvas.height
       ) {
-        ctx.drawImage(icon, sx - markerSize / 2, sy - markerSize / 2, markerSize, markerSize);
+        ctx.drawImage(icon,sx-width/2,sy+markerSize/2-height,width,height);
         if (mine.status) {
           ctx.strokeStyle = mine.ally ? "#77efcd" : "#c6a4fa";
           ctx.lineWidth = 2;
@@ -536,7 +560,7 @@ function Map() {
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
       ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
-  }, [offset, castles, hqIcon, mineIcons, alienIcon, allianceBaseIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, allianceMines, t]);
+  }, [offset, castles, hqIcon, mineIcons, allianceMineArt, alienIcon, allianceBaseIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, allianceMines, t]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
@@ -646,6 +670,22 @@ function Map() {
     ?Math.max(Math.abs(Number(marchDraft.origin.x)-Number(marchDraft.target.x)),Math.abs(Number(marchDraft.origin.y)-Number(marchDraft.target.y))):null;
   const pvpTravelSeconds=pvpDistance===null?null:Math.max(1,pvpDistance)*30;
   const pvpTravelLabel=pvpTravelSeconds===null?"":(Math.floor(pvpTravelSeconds/3600)>0?Math.floor(pvpTravelSeconds/3600)+" "+t("h","ч")+" ":"")+(Math.floor(pvpTravelSeconds%3600/60)>0?Math.floor(pvpTravelSeconds%3600/60)+" "+t("min","мин")+" ":"")+(pvpTravelSeconds%60>0?pvpTravelSeconds%60+" "+t("sec","сек"):"");
+  const openOwnAllianceMine=()=>{
+    const mine=allianceMines.find(tile=>tile.ally && tile.id===allianceMine?.active?.id);
+    if(!mine)return;
+    const target={type:"allianceMine",...mine};
+    centerMapOn(mine.x,mine.y);
+    setSelectedTarget(target);
+    setMarchDraft(null);
+    setMarchNotice("");
+    setAllianceMineNotice("");
+    setMarchHistoryOpen(false);
+    if(allianceMarch)return;
+    const home=castles.find(c=>c.username===ownUsername);
+    if(home)openMarch(mine.status==="construction"?"Construct":"Gather",target,home);
+    else setMarchNotice("Your base could not be found.");
+  };
+
   const allianceMineAction = async (action, payload) => {
     const base=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
     const response=await fetch(base+"/alliance/mine/"+action,{
@@ -1075,7 +1115,13 @@ function Map() {
                 <option value="water">{t("Water","Вода")}</option>
                 <option value="solar">{t("Solar","Слънчева енергия")}</option>
               </select>
-            </label>
+            </label>{" "}
+            {allianceMine?.isMember&&<button type="button" disabled={!allianceMine.active||marchLoading} onClick={openOwnAllianceMine}>
+              {allianceMine.active?.status==="construction"
+                ? t("Help build","Помогни за изграждането")
+                : t("Gather from alliance mine","Събирай от алиансна мина")}
+            </button>}
+            {allianceMine?.isMember&&!allianceMine.active&&<p>{t("Your alliance has no active mine.","Алиансът ти няма активна мина.")}</p>}
             {mineSearchResource&&<div style={{display:"flex",gap:5,flexWrap:"wrap",maxHeight:140,overflowY:"auto",marginTop:6}}>
               {mineData.filter(m=>String(m.resource).toLowerCase()===mineSearchResource).map(m=><button type="button" key={m.id||m.x+":"+m.y} onClick={()=>{centerMapOn(Number(m.x),Number(m.y));setSelectedTarget({type:"mine",...m});setMarchDraft(null);}}>{m.x}:{m.y}</button>)}
               {!mineData.some(m=>String(m.resource).toLowerCase()===mineSearchResource)&&<p>{t("No mines found","Няма намерени мини")}</p>}
@@ -1151,8 +1197,8 @@ function Map() {
               : <>
                 <p>{localLabel(allianceMine?.active?.resource||"")}</p>
                 {selectedAllianceMine.status==="construction"
-                  ? <p>{t("Construction points","Строителни точки")} {Number(allianceMine?.active?.constructionPoints||0).toLocaleString(undefined,{maximumFractionDigits:2})} / {allianceMine?.constructionGoal?.toLocaleString()}</p>
-                  : <p>{t("Shared resources remaining","Оставащи общи ресурси")} {allianceMine?.active?.amount?.toLocaleString()} · {t("1,000 per hour per player","1 000 на час за играч")}</p>}
+                  ? allianceMine?.active&&<AllianceMineProgress mine={allianceMine.active} goal={allianceMine.constructionGoal} march={allianceMarch}/>
+                  : <p>{t("Shared resources remaining","Оставащи общи ресурси")} {allianceMine?.active?.amount?.toLocaleString()} · {t("2,000 per hour per player","2 000 на час за играч")}</p>}
                 <p>{t("Armies at the mine are protected from attacks.","Армиите в мината са защитени от атаки.")}</p>
                 {!marchDraft&&(!allianceMarch
                   ? <button type="button" disabled={marchLoading} onClick={()=>chooseAction(selectedAllianceMine.status==="construction"?"Construct":"Gather")}>{selectedAllianceMine.status==="construction"?t("Send construction army","Изпрати строителна армия"):t("Send gathering army","Изпрати армия за добив")}</button>

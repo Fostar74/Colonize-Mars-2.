@@ -3,6 +3,7 @@ const { mkdtempSync, rmSync } = require("node:fs");
 const { tmpdir } = require("node:os");
 const { join } = require("node:path");
 const { test } = require("node:test");
+const { spawnSync } = require("node:child_process");
 
 const workDir = mkdtempSync(join(tmpdir(), "colonize-mars-tests-"));
 process.env.DATABASE_PATH = join(workDir, "game.sqlite");
@@ -54,45 +55,61 @@ test("alliance mine, protocol reset, and protected resources use persistent tran
     now = first.arrivesAt + hour / 2;
     game.settleAllianceMines();
     game.settleAllianceMines();
-    assert.equal(points(leader.userId),25000);
+    assert.equal(points(leader.userId),250);
     assert.equal(game.withdrawAllianceMine(leader.userId,mineId).success,true);
     assert.match(game.withdrawAllianceMine(leader.userId,mineId).error,/no active/);
     assert.equal(army(leader.userId)[troop],50001);
 
     const builders = launch(member,"construction",50000);
-    now = builders.arrivesAt + 20 * hour;
+    const completion=builders.arrivesAt+19.5*hour;
+    now=completion-1000;
+    game.settleAllianceMines();
+    const late=launch(leader,"construction",5000);
+    assert.ok(late.arrivesAt>completion);
+    assert.equal(game.getAllianceMine(leader.userId).active.arrivedPopulation,50000);
+    now=completion;
+    const restarted=spawnSync(process.execPath,["-e",
+      "Date.now=()=>Number(process.argv[1]); const Game=require('./database/database'); const game=new Game(); game.settleAllianceMines(); game.close();",
+      String(now)],{env:process.env,encoding:"utf8"});
+    assert.equal(restarted.status,0,restarted.stderr);
     game.settleAllianceMines();
     assert.equal(game.getAllianceMine(member.userId).active.status,"gathering");
-    assert.equal(points(member.userId),975000);
-    assert.equal(army(member.userId)[troop],50000);
+    assert.equal(points(member.userId),9750);
+    assert.equal(points(leader.userId),250);
+    assert.equal(army(member.userId)[troop],0);
+    assert.equal(game.getAllianceMineMarch(member.userId).mode,"gathering");
+    assert.equal(game.getAllianceMineMarch(member.userId).gathering_started_at,completion);
+    assert.equal(game.getAllianceMineMarch(leader.userId).gathering_started_at,late.arrivesAt);
+    assert.equal(game.getAllianceMineMarch(leader.userId).gathered,0);
     assert.deepEqual(game.getAllianceMine(member.userId).contributions.map(entry=>entry.points),[975000,25000]);
     assert.deepEqual(game.listPlayerNotifications(member.userId).notifications.map(notice=>notice.kind),
       ["alliance_mine_started","alliance_mine_completed"]);
-
-    const small = launch(leader,"gathering",1);
-    const large = launch(member,"gathering",100);
-    assert.equal(small.success,true);
-    assert.equal(large.success,true);
     assert.match(launch(member,"gathering",1).error,/already/);
-    now = Math.max(small.arrivesAt,large.arrivesAt) + hour;
+
+    now=late.arrivesAt+hour;
+    game.settleAllianceMines();
+    assert.equal(game.getAllianceMineMarch(leader.userId).gathered,2000);
+    assert.equal(game.getAllianceMineMarch(member.userId).gathered,Math.floor((now-completion)/1800));
+    assert.equal(game.withdrawAllianceMine(member.userId,mineId).success,true);
+    const collection = game.getResourceGatheringReports(member.userId)[0];
+    assert.equal(collection.amount,Math.floor((now-completion)/1800));
+    assert.equal(collection.reason,"recalled");
+    assert.equal(collection.source,"alliance");
+    assert.equal(game.withdrawAllianceMine(leader.userId,mineId).success,true);
+    const small=launch(leader,"gathering",1);
+    assert.equal(small.success,true);
+    now=small.arrivesAt+30*1800;
     game.settleAllianceMines();
     assert.equal(game.getAllianceMineMarch(leader.userId),null);
     assert.equal(game.getResourceGatheringReports(leader.userId)[0].reason,"cargo_full");
     assert.equal(game.getResourceGatheringReports(leader.userId)[0].amount,30);
-    assert.ok(game.getAllianceMineMarch(member.userId).gathered>=1000);
-    assert.equal(game.getAllianceMineMarch(member.userId).gathered,Math.floor((now-large.arrivesAt)/3600));
-    assert.equal(game.withdrawAllianceMine(member.userId,mineId).success,true);
-    const collection = game.getResourceGatheringReports(member.userId)[0];
-    assert.equal(collection.amount,Math.floor((now-large.arrivesAt)/3600));
-    assert.equal(collection.reason,"recalled");
-    assert.equal(collection.source,"alliance");
-    assert.equal(game.getAllianceMine(member.userId).active.amount,1000000-30-collection.amount);
+    assert.equal(game.getAllianceMine(member.userId).active.amount,1000000-2000-30-collection.amount);
 
     // A nearly depleted mine with two armies due on the same tick has one winner.
     sql.prepare("UPDATE alliance_mines SET amount=1 WHERE id=?").run(mineId);
     assert.equal(launch(leader,"gathering",100).success,true);
     const final = launch(member,"gathering",100);
-    sql.prepare("UPDATE alliance_mine_marches SET arrives_at=? WHERE mine_id=? AND returned_at IS NULL").run(final.arrivesAt,mineId);
+    sql.prepare("UPDATE alliance_mine_marches SET arrives_at=?,gathering_started_at=? WHERE mine_id=? AND returned_at IS NULL").run(final.arrivesAt,final.arrivesAt,mineId);
     now = final.arrivesAt + 3600;
     game.settleAllianceMines();
     game.settleAllianceMines();
@@ -102,8 +119,9 @@ test("alliance mine, protocol reset, and protected resources use persistent tran
     assert.equal(game.getResourceGatheringReports(member.userId).length,2);
     assert.equal(game.placeAllianceMine(leader.userId,50,mineY,"Water").success,true);
 
+    sql.prepare("UPDATE alliance_wallets SET points=points+50000 WHERE user_id=?").run(member.userId);
     assert.equal(game.buyAllianceMarket(member.userId,"protocol_reset").inventory.items.protocol_reset,1);
-    assert.equal(points(member.userId),925000);
+    assert.equal(points(member.userId),9750);
     game.playerTalents(member.userId);
     sql.prepare("UPDATE player_talents SET xp=? WHERE user_id=?").run(2800,member.userId);
     game.upgradePlayerTalent(member.userId,"Precision Fire");
@@ -141,11 +159,11 @@ test("alliance mine, protocol reset, and protected resources use persistent tran
     assert.deepEqual(game.getPlayerScoutMissions(member.userId)[0].report.resources,{Gold:1001,Iron:0,Water:0,Solar:50});
     assert.equal(game.donateAlliance(member.userId,"Iron").error,undefined);
     assert.deepEqual(game.syncGame(member.userId).resources.Iron,9900);
-    await t.test("two hours of construction credited in 720 polls buys Protocol Reset exactly", () => {
+    await t.test("5,000 population earns 50 AP per hour in the shared wallet across 720 polls", () => {
       const mine = game.getAllianceMine(member.userId).active;
-      sql.prepare("UPDATE alliance_wallets SET points=0,construction_remainder=0 WHERE user_id=?").run(member.userId);
-      setArmy(member.userId,{[troop]:25000});
-      const march = game.launchAllianceMineMarch(member.userId,mine.id,"construction",{[troop]:25000});
+      sql.prepare("UPDATE alliance_wallets SET points=49900,construction_ap_remainder=0 WHERE user_id=?").run(member.userId);
+      setArmy(member.userId,{[troop]:5000});
+      const march = game.launchAllianceMineMarch(member.userId,mine.id,"construction",{[troop]:5000});
       assert.equal(march.success,true);
       for (let tick=1; tick<=720; tick++) {
         now=march.arrivesAt+tick*10000;
@@ -154,7 +172,7 @@ test("alliance mine, protocol reset, and protected resources use persistent tran
       assert.equal(points(member.userId),50000);
       assert.equal(game.buyAllianceMarket(member.userId,"protocol_reset").inventory.items.protocol_reset,1);
       assert.equal(points(member.userId),0);
-      assert.equal(sql.prepare("SELECT construction_remainder FROM alliance_wallets WHERE user_id=?").get(member.userId).construction_remainder,0);
+      assert.equal(sql.prepare("SELECT construction_ap_remainder FROM alliance_wallets WHERE user_id=?").get(member.userId).construction_ap_remainder,0);
     });
 
     await t.test("late processing gives the same PvP outcome and return as on-time processing", () => {
@@ -173,9 +191,9 @@ test("alliance mine, protocol reset, and protected resources use persistent tran
         const attack=game.launchPlayerAttack(raider.userId,{[troop]:1000},null,{username:name+"Defender",...defender.position},false,true);
         assert.ok(attack.arrivesAt,attack.error);
         assert.equal(game.launchAllianceMineMarch(defender.userId,mineId,"gathering",{[troop]:1}).success,true);
-        const mineArrival=attack.arrivesAt-60000;
-        const cargoFull=mineArrival+30*3600;
-        sql.prepare("UPDATE alliance_mine_marches SET arrives_at=? WHERE mine_id=?").run(mineArrival,mineId);
+        const mineArrival=attack.arrivesAt-30000;
+        const cargoFull=mineArrival+30*1800;
+        sql.prepare("UPDATE alliance_mine_marches SET arrives_at=?,gathering_started_at=? WHERE mine_id=?").run(mineArrival,mineArrival,mineId);
         const returnAt=attack.arrivesAt+(attack.arrivesAt-attack.launchedAt);
         if(!late){
           now=attack.arrivesAt;
@@ -223,7 +241,7 @@ test("the additive migration preserves existing report rows and can run twice", 
     migrateAllianceMines(legacy);
     migrateAllianceMines(legacy);
     assert.deepEqual(legacy.prepare("SELECT * FROM alliance_wallets ORDER BY user_id").all(), [
-      {user_id:1,points:50000,construction_remainder:0},{user_id:2,points:17,construction_remainder:900000},
+      {user_id:1,points:50000,construction_remainder:0,construction_ap_remainder:0},{user_id:2,points:17,construction_remainder:900000,construction_ap_remainder:0},
     ]);
     assert.deepEqual(legacy.prepare("SELECT * FROM resource_gathering_reports").all(),
       [{id:7,amount:5000,source:"resource"}]);

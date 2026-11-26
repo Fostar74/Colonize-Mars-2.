@@ -1,6 +1,8 @@
 const hour = 3600000;
 const constructionTarget = 1000000 * hour;
-const gatheringInterval = hour / 1000;
+const constructionApUnit = 100 * hour;
+const gatheringInterval = hour / 2000;
+const legacyGatheringInterval = hour / 1000;
 
 function firstTime(low, high, reached) {
   while (low < high) {
@@ -11,14 +13,31 @@ function firstTime(low, high, reached) {
   return low;
 }
 
+function gatheringStart(march) {
+  return Math.max(march.arrives_at, march.gathering_started_at ?? march.arrives_at);
+}
+
+function priorRateDuration(march) {
+  const start=gatheringStart(march);
+  if (march.gathering_started_at!=null) return 0;
+  return march.gathering_rate_changed_at==null ? Infinity : Math.max(0,march.gathering_rate_changed_at-start);
+}
+
+function cargoFullAt(march) {
+  const prior=priorRateDuration(march);
+  const atOldRate=march.capacity*legacyGatheringInterval;
+  return gatheringStart(march)+(atOldRate<=prior ? atOldRate : prior+Math.ceil((atOldRate-prior)/2));
+}
+
 function settleWork(mine, marches, now) {
   const construction = mine.status === "construction";
   const remaining = construction ? constructionTarget - mine.work : mine.amount;
   const progress = (march, at) => {
-    const elapsed = Math.max(0, at - Math.max(march.arrives_at, construction ? march.credited_at : 0));
-    return construction
-      ? elapsed * march.population
-      : Math.max(0, Math.min(march.capacity, Math.floor(elapsed / gatheringInterval)) - march.gathered);
+    if (construction) return Math.max(0, at - Math.max(march.arrives_at, march.credited_at)) * march.population;
+    const elapsed = Math.max(0, at - gatheringStart(march));
+    const older=Math.min(elapsed,priorRateDuration(march));
+    const collected=Math.floor((older+(legacyGatheringInterval/gatheringInterval)*(elapsed-older))/legacyGatheringInterval);
+    return Math.max(0, Math.min(march.capacity, collected) - march.gathered);
   };
   const total = at => marches.reduce((sum, march) => sum + progress(march, at), 0);
   const finished = total(now) >= remaining;
@@ -28,8 +47,7 @@ function settleWork(mine, marches, now) {
     march,
     amount: progress(march, finished ? at - 1 : at),
   }));
-  // A shared stock can run out during a simultaneous tick. Give each march
-  // its earlier turns first, then break ties by launch order.
+  // Award earlier ticks first, breaking ties by march ID.
   let available = remaining - credits.reduce((sum, credit) => sum + credit.amount, 0);
   if (finished) {
     for (const credit of credits) {
@@ -38,7 +56,7 @@ function settleWork(mine, marches, now) {
       available -= amount;
     }
   }
-  return { credits, remaining: available, finished, at };
+  return {credits, remaining:available, finished, at};
 }
 
-module.exports = { hour, constructionTarget, gatheringInterval, settleWork };
+module.exports = {hour, constructionTarget, constructionApUnit, firstTime, gatheringStart, cargoFullAt, settleWork};

@@ -1,5 +1,8 @@
 const migrateAllianceMines = require("./allianceMineSchema");
-const {hour, constructionTarget, gatheringInterval, settleWork} = require("./allianceMineWork");
+const {hour, constructionTarget, constructionApUnit, firstTime, gatheringStart, cargoFullAt, settleWork} = require("./allianceMineWork");
+const marketProducts = require("../src/shared/allianceMarket");
+const {boostedDuration} = require("./marketBoosts");
+const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCombat");
 const {createMine,replenishMissingMines} = require("./externalMines");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
@@ -394,6 +397,11 @@ function initializeDatabase() {
     )`);
     db.exec("CREATE TABLE IF NOT EXISTS alliance_wallets (user_id INTEGER PRIMARY KEY REFERENCES users(id), points INTEGER NOT NULL DEFAULT 0, donations_today INTEGER NOT NULL DEFAULT 0, donation_date TEXT NOT NULL DEFAULT '')");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_market_buffs (user_id INTEGER NOT NULL REFERENCES users(id), kind TEXT NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(user_id,kind))");
+    db.exec(`CREATE TABLE IF NOT EXISTS market_boost_windows (
+      user_id INTEGER NOT NULL REFERENCES users(id), effect TEXT NOT NULL, percent INTEGER NOT NULL,
+      starts_at INTEGER NOT NULL, expires_at INTEGER NOT NULL, PRIMARY KEY(user_id,effect,percent,starts_at)
+    ); CREATE INDEX IF NOT EXISTS market_boost_period ON market_boost_windows(user_id,effect,expires_at);`);
+    if (!labyrinthColumns.includes("bonus_battles")) db.exec("ALTER TABLE labyrinth_players ADD COLUMN bonus_battles INTEGER NOT NULL DEFAULT 0");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_help_history (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), requester_id INTEGER NOT NULL REFERENCES users(id), helper_id INTEGER NOT NULL REFERENCES users(id), building_name TEXT NOT NULL, building_level INTEGER NOT NULL, reduction_ms INTEGER NOT NULL, helped_at INTEGER NOT NULL)");
     migrateAllianceMines(db);
     db.exec(`
@@ -637,13 +645,16 @@ class DatabaseManager {
       const economyBonus = this.protocolBonus(userId, "Resource Management") / 100;
       const productionCarry = JSON.parse(state.production_carry || "{}");
       const productionMultiplier = (1 + economyBonus) * (1 + allianceBonuses.growth / 100);
+      const productionEnd = state.production_at + elapsedTicks * 10000;
+      const boostedTicks = elapsedTicks ? boostedDuration(state.production_at,productionEnd,
+        this.marketBoostWindows(userId,"production",state.production_at,productionEnd))/10000 : 0;
       const rates = { Gold: "Gold Synthesizer", Iron: "Iron Driller", Water: "Water Extractor", Solar: "Solar Array" };
       for (const [resource, name] of Object.entries(rates)) {
         const level = Number(structures[name] || 0);
         if (level > 0 && elapsedTicks > 0) {
           // Preserve sub-unit production between 10-second ticks; otherwise frequent polling
           // silently discards most of the Resource Management protocol bonus.
-          const produced = level * elapsedTicks * productionMultiplier + (Number(productionCarry[resource]) || 0);
+          const produced = level * boostedTicks * productionMultiplier + (Number(productionCarry[resource]) || 0);
           const whole = Math.floor(produced + 1e-9);
           productionCarry[resource] = Math.max(0, Math.round((produced - whole) * 1000000) / 1000000);
           resources[resource] = (Number(resources[resource]) || 0) + whole;
@@ -1437,7 +1448,10 @@ class DatabaseManager {
     const wallet=db.prepare("SELECT points,donations_today,donation_date FROM alliance_wallets WHERE user_id=?").get(userId);
     const today=new Date().toISOString().slice(0,10);
     const treasury=db.prepare("SELECT resources FROM alliance_treasury WHERE alliance_id=?").get(allianceId);
-    const buffs=db.prepare("SELECT kind,expires_at FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,Date.now());
+    const now=Date.now();
+    const buffs=db.prepare("SELECT kind,expires_at FROM alliance_market_buffs WHERE user_id=? AND expires_at>?").all(userId,now);
+    buffs.push(...db.prepare(`SELECT effect || '_' || percent AS kind,expires_at FROM market_boost_windows
+      WHERE user_id=? AND starts_at<=? AND expires_at>?`).all(userId,now,now));
     return {points:wallet.points,donationsRemaining:20-(wallet.donation_date===today?wallet.donations_today:0),treasury:JSON.parse(treasury.resources),...this.researchState(allianceId),buffs};
   }
   donateAlliance(userId,resource){
@@ -1501,8 +1515,8 @@ class DatabaseManager {
     }).immediate();
   }
   buyAllianceMarket(userId,item){
-    const catalog={gold:{cost:30},iron:{cost:30},water:{cost:30},solar:{cost:30},landing:{cost:100},attack:{cost:80},health:{cost:80},protection:{cost:150},protocol_reset:{cost:50000}};
-    const product=catalog[item];if(!Object.hasOwn(catalog,item))return {error:"Unknown market item."};
+    if(!Object.hasOwn(marketProducts,item))return {error:"Unknown market item."};
+    const product=marketProducts[item];
     return db.transaction(()=>{
       const member=db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId);
       if(!member)return {error:"Join an alliance first."};
@@ -1510,21 +1524,21 @@ class DatabaseManager {
       const e=this.allianceEconomy(userId,member.alliance_id);
       if(e.points<product.cost)return {error:"Not enough alliance points."};
       const inventory=this.getInventory(userId);
-      if(["gold","iron","water","solar"].includes(item)){
-        const resource=item[0].toUpperCase()+item.slice(1);
-        inventory.resources[resource]=(inventory.resources[resource]||0)+500;
-        db.prepare("UPDATE inventory_reserves SET resources=? WHERE user_id=?").run(JSON.stringify(inventory.resources),userId);
-      }else{
-        inventory.items[item]=(inventory.items[item]||0)+1;
-        db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
-      }
+      inventory.items[item]=(inventory.items[item]||0)+1;
+      db.prepare("UPDATE inventory_reserves SET items=? WHERE user_id=?").run(JSON.stringify(inventory.items),userId);
       db.prepare("UPDATE alliance_wallets SET points=points-? WHERE user_id=?").run(product.cost,userId);
       return {item,inventory:this.getInventory(userId),economy:this.allianceEconomy(userId,member.alliance_id)};
-    })();
+    }).immediate();
+  }
+  marketBoostWindows(userId,effect,start,end){
+    return db.prepare("SELECT percent,starts_at,expires_at FROM market_boost_windows WHERE user_id=? AND effect=? AND starts_at<? AND expires_at>?")
+      .all(userId,effect,end,start);
   }
   useInventoryItem(userId,item,amount){
     const catalog={landing:"token",attack:"buff",health:"buff",protection:"buff",protocol_reset:"reset"};
-    if(!Object.hasOwn(catalog,item))return {error:"This item cannot be used."};
+    if(!Object.hasOwn(marketProducts,item))return {error:"This item cannot be used."};
+    const {effect,percent}=marketProducts[item];
+    if(effect&&amount!==1)return {error:"Activate one item at a time."};
     if(!Number.isSafeInteger(amount)||amount<1||amount>10000)return {error:"Enter a valid item quantity."};
     return db.transaction(()=>{
       this.advanceCampaignTimeline();
@@ -1540,6 +1554,19 @@ class DatabaseManager {
         if(this.hasActiveCombatMission(userId))return {error:"Protocol Reset is unavailable during active combat missions."};
         if(!Object.values(this.playerTalents(userId).talents).some(tier=>Number(tier)>0))return {error:"No Commander Protocol points are allocated."};
         db.prepare("UPDATE player_talents SET talents='{}' WHERE user_id=?").run(userId);
+      }
+      if (percent) {
+        const now=Date.now();
+        if (db.prepare("SELECT 1 FROM market_boost_windows WHERE user_id=? AND effect=? AND percent=? AND expires_at>?").get(userId,effect,percent,now))
+          return {error:"This booster is already active."};
+        db.prepare("INSERT INTO market_boost_windows(user_id,effect,percent,starts_at,expires_at) VALUES (?,?,?,?,?)")
+          .run(userId,effect,percent,now,now+8*hour);
+      } else if (effect==="alien") {
+        db.prepare("INSERT INTO alien_rewards(user_id,bonus_missions) VALUES (?,1) ON CONFLICT(user_id) DO UPDATE SET bonus_missions=bonus_missions+1").run(userId);
+      } else if (effect==="labyrinth") {
+        const status=this.getLabyrinthStatus(userId);
+        if (!status.unlocked || status.medicineFound) return {error:"Labyrinth battle is unavailable."};
+        db.prepare("UPDATE labyrinth_players SET bonus_battles=bonus_battles+1 WHERE user_id=?").run(userId);
       }
       inventory.items[item]-=amount;
       if(inventory.items[item]<=0)delete inventory.items[item];
@@ -2889,15 +2916,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   labyrinthMonster(room){
-    const stage=Math.max(1,Math.min(30,Math.ceil(room/10)));
-    const chamber=((room-1)%10)+1;
-    const boss=chamber===10;
-    const base=1000+(chamber-1)*500+(boss?4500:0);
-    const hp=base+(stage-1)*10000;
-    const damage=Math.round((65+chamber*17)*(stage===1?1:8*Math.pow(1.22,stage-2)));
-    const heal=stage<4?0:Math.min(15,2+Math.floor((stage-4)/3)*2+(boss?1:0));
-    const names=["Spore Mutant","Xeno Stalker","Plasma Beast","Cave Reaper","Void Sentinel","Alien Warden","Abyss Predator","Crystal Devourer","Nightmare Guardian","Alien Overlord"];
-    return {room,stage,chamber,boss,name:names[chamber-1],hp,damage,heal};
+    return labyrinthMonster(room);
   }
 
   labyrinthKnight(userId){
@@ -2933,40 +2952,6 @@ Rewards are distributed per participating player, not once per alliance. / На�
       db.prepare("UPDATE labyrinth_players SET mission_day=?,missions_today=0,last_mission_at=0 WHERE user_id=?").run(today,userId);
       row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
     }
-    // One-time test recovery for MazeRunner only; does not alter earned HP, crystals or progress.
-    if(Number(row.combat_one_time_reset||0)<2&&db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"){
-      db.prepare("UPDATE labyrinth_players SET missions_today=0,combat_active='',combat_one_time_reset=2 WHERE user_id=?").run(userId);
-      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-    }
-    // One-time recovery for MazeRunner after the Labyrinth balance change.
-    // Preserve historical progress, earned HP and crystals; restart at floor 2,
-    // room 1 with fresh attempts for the recovery day.
-    if(db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="MazeRunner"){
-      db.exec("CREATE TABLE IF NOT EXISTS labyrinth_recovery_log (user_id INTEGER NOT NULL, recovery_key TEXT NOT NULL, previous_room INTEGER NOT NULL, previous_missions INTEGER NOT NULL, recovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,recovery_key))");
-      const recoveryKey="mazerunner-floor-2-recovery-2026-11-21";
-      db.transaction(()=>{
-        if(db.prepare("SELECT 1 FROM labyrinth_recovery_log WHERE user_id=? AND recovery_key=?").get(userId,recoveryKey))return;
-        const previous=db.prepare("SELECT combat_room,missions_today FROM labyrinth_players WHERE user_id=?").get(userId);
-        if(!previous||Number(previous.combat_room)<11)return;
-        db.prepare("INSERT INTO labyrinth_recovery_log(user_id,recovery_key,previous_room,previous_missions) VALUES (?,?,?,?)").run(userId,recoveryKey,previous.combat_room,previous.missions_today);
-        db.prepare("UPDATE labyrinth_players SET combat_room=11,missions_today=0,combat_active='',combat_log='[]' WHERE user_id=?").run(userId);
-      })();
-      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-    }
-    // One-time recovery for KakaMarianka to retry floor 2 fairly.
-    // Preserve earned HP, equipment, crystals and record prior progress.
-    if(db.prepare("SELECT username FROM users WHERE id=?").get(userId)?.username==="KakaMarianka"){
-      db.exec("CREATE TABLE IF NOT EXISTS labyrinth_recovery_log (user_id INTEGER NOT NULL, recovery_key TEXT NOT NULL, previous_room INTEGER NOT NULL, previous_missions INTEGER NOT NULL, recovered_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP, PRIMARY KEY(user_id,recovery_key))");
-      const recoveryKey="kak amarianka-floor-2-retry-2026-11-21";
-      db.transaction(()=>{
-        if(db.prepare("SELECT 1 FROM labyrinth_recovery_log WHERE user_id=? AND recovery_key=?").get(userId,recoveryKey))return;
-        const previous=db.prepare("SELECT combat_room,missions_today FROM labyrinth_players WHERE user_id=?").get(userId);
-        if(!previous||Number(previous.combat_room)<11)return;
-        db.prepare("INSERT INTO labyrinth_recovery_log(user_id,recovery_key,previous_room,previous_missions) VALUES (?,?,?,?)").run(userId,recoveryKey,previous.combat_room,previous.missions_today);
-        db.prepare("UPDATE labyrinth_players SET combat_room=11,missions_today=0,combat_active='',combat_log='[]' WHERE user_id=?").run(userId);
-      })();
-      row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
-    }
     // Credit Labyrinth green crystals to the same wallet used by alliance donations.
     // Reconcile previously earned Labyrinth crystals once per player, without touching donations.
     db.exec("CREATE TABLE IF NOT EXISTS labyrinth_green_wallet_sync (user_id INTEGER PRIMARY KEY, synced_at INTEGER NOT NULL)");
@@ -2984,13 +2969,13 @@ Rewards are distributed per participating player, not once per alliance. / На�
     if(!alreadySynced)db.prepare("INSERT OR IGNORE INTO labyrinth_green_wallet_sync(user_id,synced_at) VALUES (?,?)").run(userId,Date.now());
     const crystals=JSON.parse(row.crystals||"{}");
     const room=Math.max(1,Math.min(301,Number(row.combat_room)||1));
-    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
+    return {unlocked:true,version:4,knightLevel,room,stage:Math.min(30,Math.ceil(room/10)),chamber:((room-1)%10)+1,monster:room<=300?this.labyrinthMonster(room):null,knight:this.labyrinthKnight(userId),missionsToday:Number(row.missions_today||0),missionsPerDay:10,bonusBattles:Number(row.bonus_battles),nextMissionAt:Number(row.last_mission_at||0)+1000,crystals,dailyRewardClaimed:row.combat_reward_day===today,levelCompletedToday:row.combat_level_day===today,medicineFound:room>300,combatLog:JSON.parse(row.combat_log||"[]"),rankings};
   }
 
   labyrinthBattle(userId,action="status",options={}){
-    const status=this.getLabyrinthStatus(userId);
-    if(!status.unlocked)return {error:"Labyrinth is locked."};
     return db.transaction(()=>{
+      const status=this.getLabyrinthStatus(userId);
+      if(!status.unlocked)return {error:"Labyrinth is locked."};
       const today=new Date().toISOString().slice(0,10);
       const row=db.prepare("SELECT * FROM labyrinth_players WHERE user_id=?").get(userId);
       let active;try{active=JSON.parse(row.combat_active||"null");}catch(e){active=null;}
@@ -3002,36 +2987,21 @@ Rewards are distributed per participating player, not once per alliance. / На�
       }
       if(action==="start"){
         if(active)return {error:"Finish the current battle before starting another."};
-        if(Number(row.missions_today)>=10)return {error:"All 10 daily battles have been used."};
+        const extra=Number(row.missions_today)>=10;
+        if(extra&&!row.bonus_battles)return {error:"All 10 daily battles have been used."};
         const progress=Math.max(1,Math.min(301,Number(row.combat_room)||1));
         if(progress>300)return {error:"The final medicine has already been found."};
         const requested=Number(options.room);
         const room=Number.isInteger(requested)&&requested>=1&&requested<progress?requested:progress;
 
         const monster=this.labyrinthMonster(room),knight=this.labyrinthKnight(userId);
-        const monsterMaxHp=Math.max(1,Math.round(monster.hp*(1-knight.enemyHpReduction/100)));
-        active={room,monster,knight,knightHp:knight.maxHp,monsterHp:monsterMaxHp,monsterMaxHp,round:0,log:[],startedAt:Date.now()};
-        db.prepare("UPDATE labyrinth_players SET combat_active=?,missions_today=missions_today+1 WHERE user_id=?").run(JSON.stringify(active),userId);
+        active=createBattle(monster,knight,Date.now());
+        db.prepare("UPDATE labyrinth_players SET combat_active=?,missions_today=missions_today+?,bonus_battles=bonus_battles-? WHERE user_id=?").run(JSON.stringify(active),extra?0:1,extra?1:0,userId);
         return {battle:active,status:this.getLabyrinthStatus(userId)};
       }
       if(action!=="strike"||!active)return {error:"Start a battle first."};
-      if(active.round>=150){active.knightHp=0;}
-      active.round++;
-      const {knight,monster}=active;
-      const damage=knight.attack;
-      active.monsterHp=Math.max(0,active.monsterHp-damage);
-      active.log.push({round:active.round,actor:"knight",damage,knightHp:active.knightHp,monsterHp:active.monsterHp});
-      if(active.monsterHp>0){
-        const monsterDamage=Math.max(1,Math.round(monster.damage*(1-knight.enemyAttackReduction/100)));
-        active.knightHp=Math.max(0,active.knightHp-monsterDamage);
-        if(active.knightHp>0&&knight.healing>0)active.knightHp=Math.min(knight.maxHp,active.knightHp+Math.floor((knight.maxHp-active.knightHp)*knight.healing/100));
-        active.log.push({round:active.round,actor:"monster",damage:monsterDamage,knightHp:active.knightHp,monsterHp:active.monsterHp});
-        if(active.knightHp>0&&monster.heal>0){
-          const heal=Math.max(0,monster.heal*(1-knight.enemyHealingReduction/100));
-          active.monsterHp=Math.min(active.monsterMaxHp,active.monsterHp+Math.floor((active.monsterMaxHp-active.monsterHp)*heal/100));
-        }
-      }
-      const victory=active.monsterHp<=0,defeat=active.knightHp<=0;
+      const {monster}=active;
+      const {victory,defeat}=strike(active);
       if(!victory&&!defeat){
         db.prepare("UPDATE labyrinth_players SET combat_active=? WHERE user_id=?").run(JSON.stringify(active),userId);
         return {battle:active,status:this.getLabyrinthStatus(userId)};
@@ -3050,14 +3020,14 @@ Rewards are distributed per participating player, not once per alliance. / На�
       db.prepare("UPDATE labyrinth_players SET combat_active='',combat_room=?,combat_hp_bonus=combat_hp_bonus+?,combat_level_day=?,combat_log=?,crystals=?,medicine_found=?,completed_at=? WHERE user_id=?")
         .run(nextRoom,gainedHp,completedLevel?today:row.combat_level_day,JSON.stringify(active.log),JSON.stringify(crystals),finished?1:row.medicine_found,finished?Date.now():row.completed_at,userId);
       return {battle:null,victory,defeat,gainedHp,crystalReward,monster,log:active.log,medicineFound:finished,status:this.getLabyrinthStatus(userId)};
-    })();
+    }).immediate();
   }
 
   runLabyrinthMission(userId,options={}){
     const start=this.labyrinthBattle(userId,"start",options);
     if(start.error)return start;
     let result=start;
-    for(let i=0;i<150&&result.battle;i++)result=this.labyrinthBattle(userId,"strike");
+    for(let i=0;i<=roundLimit&&result.battle;i++)result=this.labyrinthBattle(userId,"strike");
     return {...result,success:!result.error,room:start.battle?.room};
   }
 
@@ -3814,7 +3784,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
 
   getAllianceMineMarch(userId) {
     return db.prepare(`SELECT m.id,m.mode,m.origin_x,m.origin_y,m.launched_at,m.arrives_at,
-      m.work,m.gathered,m.capacity,a.id AS mineId,a.x,a.y,a.resource
+      m.work,m.gathered,m.capacity,m.population,m.gathering_started_at,a.id AS mineId,a.x,a.y,a.resource
       FROM alliance_mine_marches m JOIN alliance_mines a ON a.id=m.mine_id
       WHERE m.user_id=? AND m.returned_at IS NULL`).get(userId) || null;
   }
@@ -3828,10 +3798,20 @@ Rewards are distributed per participating player, not once per alliance. / На�
       FROM alliance_mine_marches m JOIN alliance_mines a ON a.id=m.mine_id
       JOIN users u ON u.id=m.user_id WHERE a.alliance_id=? AND m.work>0
       GROUP BY u.id ORDER BY points DESC,u.id`).all(member.id) : [];
+    const now = Date.now();
+    const march = this.getAllianceMineMarch(userId);
+    const arrivedPopulation = mine?.status === "construction" ? db.prepare(
+      "SELECT COALESCE(SUM(population),0) AS total FROM alliance_mine_marches WHERE mine_id=? AND returned_at IS NULL AND arrives_at<=?"
+    ).get(mine.id,now).total : 0;
+    const incomingBuilders = mine?.status === "construction" ? db.prepare(
+      `SELECT arrives_at AS arrivesAt,SUM(population) AS population FROM alliance_mine_marches
+       WHERE mine_id=? AND returned_at IS NULL AND arrives_at>? GROUP BY arrives_at ORDER BY arrives_at`
+    ).all(mine.id,now) : [];
     const state = {
-      active: mine ? {...mine, constructionPoints:mine.work/hour} : null,
+      active: mine ? {...mine, constructionPoints:mine.work/hour, arrivedPopulation,incomingBuilders,measuredAt:now} : null,
+      isMember: Boolean(member),
       canPlace: !!member && member.leader_id===userId && !mine,
-      march: this.getAllianceMineMarch(userId),
+      march,
       contributions,
       constructionGoal: constructionTarget/hour,
     };
@@ -3899,8 +3879,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
       for (const [unit,count] of Object.entries(selected)) current.army[unit] -= count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
       db.prepare(`INSERT INTO alliance_mine_marches
-        (mine_id,user_id,mode,units,population,capacity,origin_x,origin_y,launched_at,arrives_at,credited_at)
-        VALUES(?,?,?,?,?,?,?,?,?,?,?)`).run(mine.id,userId,mode,JSON.stringify(selected),population,capacity,origin.x,origin.y,now,arrivesAt,arrivesAt);
+        (mine_id,user_id,mode,units,population,capacity,origin_x,origin_y,launched_at,arrives_at,credited_at,gathering_started_at)
+        VALUES(?,?,?,?,?,?,?,?,?,?,?,?)`).run(mine.id,userId,mode,JSON.stringify(selected),population,capacity,origin.x,origin.y,now,arrivesAt,arrivesAt,mode==="gathering"?arrivesAt:null);
       return {success:true,arrivesAt,...this.getMapResources(userId)};
     }).immediate();
   }
@@ -3928,36 +3908,39 @@ Rewards are distributed per participating player, not once per alliance. / На�
     return db.transaction(() => {
       const mines = db.prepare(`SELECT * FROM alliance_mines WHERE status<>'closed' AND alliance_id IS NOT NULL
         AND EXISTS (SELECT 1 FROM alliance_mine_marches WHERE mine_id=alliance_mines.id AND returned_at IS NULL)`).all();
+      const activeMarches = db.prepare("SELECT * FROM alliance_mine_marches WHERE mine_id=? AND returned_at IS NULL ORDER BY id");
       for (const mine of mines) {
-        const marches = db.prepare("SELECT * FROM alliance_mine_marches WHERE mine_id=? AND returned_at IS NULL ORDER BY id").all(mine.id);
-        const {credits,remaining,finished,at} = settleWork(mine,marches,now);
         if (mine.status==="construction") {
+          const {credits,remaining,finished,at} = settleWork(mine,activeMarches.all(mine.id),now);
           for (const {march,amount} of credits) {
-            if (amount>0) {
-              db.prepare("UPDATE alliance_mine_marches SET work=work+?,credited_at=? WHERE id=?").run(amount,at,march.id);
-              db.prepare(`INSERT INTO alliance_wallets(user_id,points,construction_remainder)
-                VALUES (@userId,CAST(@work AS INTEGER)/${hour},CAST(@work AS INTEGER)%${hour})
-                ON CONFLICT(user_id) DO UPDATE SET
-                  points=points+(construction_remainder+CAST(@work AS INTEGER))/${hour},
-                  construction_remainder=(construction_remainder+CAST(@work AS INTEGER))%${hour}`).run({userId:march.user_id,work:amount});
-            }
-            if (finished) this.returnAllianceMineMarch(mine,march,"completed",at);
+            if (!amount) continue;
+            db.prepare("UPDATE alliance_mine_marches SET work=work+?,credited_at=? WHERE id=?").run(amount,at,march.id);
+            db.prepare(`INSERT INTO alliance_wallets(user_id,points,construction_ap_remainder)
+              VALUES (@userId,CAST(@work AS INTEGER)/${constructionApUnit},CAST(@work AS INTEGER)%${constructionApUnit})
+              ON CONFLICT(user_id) DO UPDATE SET
+                points=points+(construction_ap_remainder+CAST(@work AS INTEGER))/${constructionApUnit},
+                construction_ap_remainder=(construction_ap_remainder+CAST(@work AS INTEGER))%${constructionApUnit}`)
+              .run({userId:march.user_id,work:amount});
           }
           db.prepare("UPDATE alliance_mines SET work=?,status=? WHERE id=?")
             .run(constructionTarget-remaining,finished?"gathering":"construction",mine.id);
-          if (finished) this.notifyAllianceMine(mine.alliance_id,"alliance_mine_completed",at);
-        } else {
-          for (const {march,amount} of credits) {
-            march.gathered += amount;
-            if (amount>0) db.prepare("UPDATE alliance_mine_marches SET gathered=? WHERE id=?").run(march.gathered,march.id);
-            if (finished || march.gathered>=march.capacity) {
-              const fullAt = march.arrives_at + march.capacity * gatheringInterval;
-              const depleted = finished && fullAt>=at;
-              this.returnAllianceMineMarch(mine,march,depleted?"depleted":"cargo_full",depleted?at:fullAt);
-            }
-          }
-          db.prepare("UPDATE alliance_mines SET amount=?,status=? WHERE id=?").run(remaining,finished?"closed":"gathering",mine.id);
+          if (!finished) continue;
+          db.prepare(`UPDATE alliance_mine_marches SET mode='gathering', gathering_started_at=MAX(arrives_at,?)
+            WHERE mine_id=? AND returned_at IS NULL`).run(at,mine.id);
+          this.notifyAllianceMine(mine.alliance_id,"alliance_mine_completed",at);
+          mine.status="gathering";
         }
+        const {credits,remaining,finished,at} = settleWork(mine,activeMarches.all(mine.id),now);
+        for (const {march,amount} of credits) {
+          march.gathered += amount;
+          if (amount>0) db.prepare("UPDATE alliance_mine_marches SET gathered=? WHERE id=?").run(march.gathered,march.id);
+          const fullAt = cargoFullAt(march);
+          if (finished || (march.gathered>=march.capacity && now>=gatheringStart(march))) {
+            const depleted = finished && fullAt>=at;
+            this.returnAllianceMineMarch(mine,march,depleted?"depleted":"cargo_full",depleted?at:fullAt);
+          }
+        }
+        db.prepare("UPDATE alliance_mines SET amount=?,status=? WHERE id=?").run(remaining,finished?"closed":"gathering",mine.id);
       }
     }).immediate();
   }
@@ -3979,6 +3962,16 @@ Rewards are distributed per participating player, not once per alliance. / На�
     return 4 + [0,1,3,5][Math.max(0,Math.min(3,tier))];
   }
 
+  externalGatheringProgress(mine,now,cargo){
+    const start=Math.max(mine.arrives_at,mine.gathering_started_at);
+    const limit=Math.min(mine.amount,cargo);
+    const windows=this.marketBoostWindows(mine.claimed_by,"external",start,Math.max(start,now));
+    const amountAt=at=>boostedDuration(start,at,windows)*mine.gathering_rate/hour;
+    const amount=Math.min(limit,Math.floor(amountAt(now)+1e-9));
+    const finishAt=now>=start&&amount>=limit ? firstTime(start,now,at=>amountAt(at)+1e-9>=limit) : null;
+    return {amount,finishAt};
+  }
+
   settleResourceMines(now=Date.now()) {
     if (!this.advancingCampaignTimeline) return this.advanceCampaignTimeline(now);
     return db.transaction(()=>{
@@ -3988,9 +3981,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
         if(!mine.gathering_started_at || !mine.gathering_rate) continue;
         const units=JSON.parse(mine.gathering_units||"{}");
         const cargo=Math.floor(calculateCargoCapacity(units));
-        const collectedLimit=Math.min(Number(mine.amount)||0,cargo);
-        const finishAt=mine.gathering_started_at+Math.ceil(collectedLimit*3600000/mine.gathering_rate);
-        if(now<finishAt) continue;
+        const {amount:collectedLimit,finishAt}=this.externalGatheringProgress(mine,now,cargo);
+        if(finishAt===null) continue;
         const depleted=Number(mine.amount)>0&&collectedLimit===Number(mine.amount);
         const current=this.syncGame(mine.claimed_by,finishAt);
         if(!current)continue;
@@ -4044,9 +4036,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
     const mines=db.prepare(`SELECT m.id,m.resource,m.x,m.y,m.amount,m.claimed_by,m.launched_at,m.arrives_at,
       m.origin_x,m.origin_y,m.gathering_started_at,m.gathering_rate,m.gathering_units,u.username AS owner
       FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by ORDER BY m.id`).all().map(mine=>{
-        const elapsed=Math.max(0,now-Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now));
         const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
-        const gathered=mine.claimed_by&&mine.gathering_rate?Math.min(mine.amount,cargo,elapsed*mine.gathering_rate/3600000):0;
+        const gathered=mine.claimed_by&&mine.gathering_rate?this.externalGatheringProgress(mine,now,cargo).amount:0;
         return {...mine,amount:Math.max(0,mine.amount-Math.floor(gathered))};
       });
     const activeMineCount=mines.filter(mine=>Number(mine.claimed_by)===Number(userId)).length;
@@ -4101,9 +4092,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
       }
       const current=this.syncGame(userId);
       if(!current)return {error:"Player not found."};
-      const startAt=Math.max(Number(mine.gathering_started_at)||now,Number(mine.arrives_at)||now);
       const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
-      const gathered=mine.gathering_rate?Math.min(Number(mine.amount)||0,cargo,Math.floor(Math.max(0,now-startAt)*Number(mine.gathering_rate)/3600000)):0;
+      const gathered=mine.gathering_rate?this.externalGatheringProgress(mine,now,cargo).amount:0;
       const resourceKey={gold:"Gold",iron:"Iron",water:"Water",solar:"Solar"}[mine.resource];
       if(resourceKey)current.resources[resourceKey]=(Number(current.resources[resourceKey])||0)+gathered;
       const returnedUnits=JSON.parse(mine.gathering_units||"{}");

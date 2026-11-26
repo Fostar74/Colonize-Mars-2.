@@ -402,7 +402,7 @@ function EventsPanel({onOpenInventory}) {
       {!labyrinth?<p>{t("Loading…","Зареждане…")}</p>:!labyrinth.unlocked?<p>{t("Unlocks at Cyber Knight level 7.","Отключва се на ниво 7 на Cyber Knight.")} · {labyrinth.knightLevel}/7</p>:<>
         <div style={{display:"flex",justifyContent:"space-between",flexWrap:"wrap",gap:10,marginBottom:14}}>
           <strong>🛡️ {t("Stage","Ниво")} {labyrinth.stage} / 30 · {t("Room","Стая")} {labyrinth.chamber} / 10</strong>
-          <strong>⚔️ {t("Daily battles","Дневни битки")}: {labyrinth.missionsToday} / 10</strong>
+          <strong>⚔️ {t("Daily battles","Дневни битки")}: {labyrinth.missionsToday} / {labyrinth.missionsPerDay} · {t("Extra battles","Допълнителни битки")}: {labyrinth.bonusBattles||0}</strong>
           <span>💚 {t("Green crystals","Зелени кристали")}: {labyrinth.crystals?.green||0}</span>
           <span>💛 {labyrinth.crystals?.yellow||0} · 💙 {labyrinth.crystals?.blue||0} · 🧡 {labyrinth.crystals?.orange||0} · 💜 {labyrinth.crystals?.purple||0}</span>
         </div>
@@ -449,14 +449,14 @@ function EventsPanel({onOpenInventory}) {
           {labyrinthBattle?<div style={{display:"flex",gap:12,flexWrap:"wrap",marginBottom:12}}>
             <button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("strike")} style={{padding:"14px 28px",fontWeight:900,fontSize:18,background:"#b65b18",color:"white",borderRadius:10}}>⚔️ {t("ATTACK","АТАКУВАЙ")} · {t("Round","Рунд")} {labyrinthBattle.round+1}</button>
 
-          </div>:<button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10} onClick={()=>labyrinthCombat("start")} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{t("Enter chamber and face monster","Влез в залата и се изправи срещу чудовището")}</button>}
+          </div>:<button type="button" disabled={labyrinthBusy||(labyrinth.missionsToday>=labyrinth.missionsPerDay&&!labyrinth.bonusBattles)} onClick={()=>labyrinthCombat("start")} style={{padding:"12px 24px",fontWeight:800,background:"#7452b1",color:"white",borderRadius:9}}>{t("Enter chamber and face monster","Влез в залата и се изправи срещу чудовището")}</button>}
           {labyrinthBattle&&<div style={{marginTop:12}}><p style={{color:"#e6cda7"}}>{t("You can leave this battle to replay an easier cleared room. The attempt is not refunded.","Можеш да напуснеш тази битка и да повториш по-лесна спечелена стая. Опитът не се връща.")}</p><button type="button" disabled={labyrinthBusy} onClick={()=>labyrinthCombat("retreat")} style={{padding:"9px 16px",background:"#6d4050",color:"white",borderRadius:8}}>{t("Leave battle","Напусни битката")}</button></div>}
           {labyrinth.room>1&&<div style={{marginTop:12}}>
             <label htmlFor="labyrinth-replay-room">{t("Repeat a cleared room (automatic battle)","Повтори спечелена стая (автоматична битка)")}: </label>
             <select id="labyrinth-replay-room" defaultValue={Math.max(1,labyrinth.room-1)} onChange={e=>{e.currentTarget.dataset.room=e.target.value;}} style={{padding:7,background:"#28213b",color:"white"}}>
               {Array.from({length:Math.min(300,labyrinth.room-1)},(_,i)=><option key={i+1} value={i+1}>{Math.ceil((i+1)/10)}-{i%10+1}</option>)}
             </select>
-            <button type="button" disabled={labyrinthBusy||labyrinth.missionsToday>=10} onClick={()=>replayClearedLabyrinthRoom(Number(document.getElementById("labyrinth-replay-room")?.value)||1)} style={{marginLeft:8,padding:"8px 14px"}}>{t("Auto battle","Автоматична битка")}</button>
+            <button type="button" disabled={labyrinthBusy||(labyrinth.missionsToday>=labyrinth.missionsPerDay&&!labyrinth.bonusBattles)} onClick={()=>replayClearedLabyrinthRoom(Number(document.getElementById("labyrinth-replay-room")?.value)||1)} style={{marginLeft:8,padding:"8px 14px"}}>{t("Auto battle","Автоматична битка")}</button>
           </div>}
         </>}
         <p>💚 {labyrinth.dailyRewardClaimed?t("Today's green crystal collected.","Днешният зелен кристал е получен."):t("Your first battle today awards a green crystal.","Първата битка за деня носи зелен кристал.")}</p>

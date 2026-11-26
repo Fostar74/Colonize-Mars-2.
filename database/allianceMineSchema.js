@@ -36,6 +36,16 @@ function migrateAllianceMines(db) {
         ON alliance_mine_marches(user_id) WHERE returned_at IS NULL;
       CREATE INDEX IF NOT EXISTS alliance_mine_marches_mine ON alliance_mine_marches(mine_id);
     `);
+    const marchColumns = db.prepare("PRAGMA table_info(alliance_mine_marches)").all().map(column => column.name);
+    if (!marchColumns.includes("gathering_started_at")) db.exec("ALTER TABLE alliance_mine_marches ADD COLUMN gathering_started_at INTEGER");
+    if (!marchColumns.includes("gathering_rate_changed_at")) {
+      db.exec("ALTER TABLE alliance_mine_marches ADD COLUMN gathering_rate_changed_at INTEGER");
+      db.prepare("UPDATE alliance_mine_marches SET gathering_rate_changed_at=? WHERE mode='gathering' AND returned_at IS NULL").run(Date.now());
+    }
+    if (!marchColumns.includes("legacy_construction_work")) {
+      db.exec("ALTER TABLE alliance_mine_marches ADD COLUMN legacy_construction_work INTEGER NOT NULL DEFAULT 0");
+      db.exec("UPDATE alliance_mine_marches SET legacy_construction_work=work WHERE work>0");
+    }
     const walletColumns = db.prepare("PRAGMA table_info(alliance_wallets)").all();
     if (!walletColumns.some(column => column.name === "construction_remainder")) {
       db.exec("ALTER TABLE alliance_wallets ADD COLUMN construction_remainder INTEGER NOT NULL DEFAULT 0");
@@ -46,6 +56,10 @@ function migrateAllianceMines(db) {
         WHERE typeof(points)='real';
         UPDATE alliance_wallets SET points=CAST(points AS INTEGER)+construction_remainder/3600000,
           construction_remainder=construction_remainder%3600000 WHERE typeof(points)='real'`);
+    }
+    // Keep the old rounding carry and wallet balance for audit. New AP uses a separate unit.
+    if (!walletColumns.some(column => column.name === "construction_ap_remainder")) {
+      db.exec("ALTER TABLE alliance_wallets ADD COLUMN construction_ap_remainder INTEGER NOT NULL DEFAULT 0");
     }
     if (!db.prepare("PRAGMA table_info(resource_gathering_reports)").all().some(column => column.name === "source")) {
       db.exec("ALTER TABLE resource_gathering_reports ADD COLUMN source TEXT NOT NULL DEFAULT 'resource'");

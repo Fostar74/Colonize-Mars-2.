@@ -1,3 +1,4 @@
+import marketProducts from "../shared/allianceMarket";
 import { useLanguage } from "../language";
 import React,{useEffect,useState,useCallback} from "react";
 import unitEconomy from "../shared/unitEconomy";
@@ -15,7 +16,16 @@ const marketItems=[
   {id:"landing",label:"Mars Landing Token",description:"Adds one Mars Landing Token to your account.",bulgarianLabel:"Жетон за кацане на Марс",bulgarianDescription:"Добавя жетон за кацане на Марс към акаунта ти.",icon:marketItemIcon},
   {id:"attack",label:"Army Attack +10% (1h)",description:"Increases army attack for one hour.",bulgarianLabel:"Атака на армията +10% (1 ч.)",bulgarianDescription:"Увеличава атаката на армията за един час.",icon:marketItemIcon},
   {id:"health",label:"Army Health +10% (1h)",description:"Increases army health for one hour.",bulgarianLabel:"Здраве на армията +10% (1 ч.)",bulgarianDescription:"Увеличава здравето на армията за един час.",icon:marketItemIcon},
-  {id:"protection",label:"Plasma Shield (24h)",description:"Surrounds your base with a protective plasma bubble for 24 hours.",bulgarianLabel:"Плазмен щит (24 ч.)",bulgarianDescription:"Обгръща базата ти със защитен плазмен балон за 24 часа.",icon:marketItemIcon}
+  {id:"protection",label:"Plasma Shield (24h)",description:"Surrounds your base with a protective plasma bubble for 24 hours.",bulgarianLabel:"Плазмен щит (24 ч.)",bulgarianDescription:"Обгръща базата ти със защитен плазмен балон за 24 часа.",icon:marketItemIcon},
+  ...Object.entries(marketProducts).filter(([,item])=>item.effect).map(([id,item])=>({
+    id,label:item.label,bulgarianLabel:item.bg,icon:marketItemIcon,single:true,
+    description:item.percent
+      ? "Lasts eight hours. Only the strongest active bonus for this activity applies."
+      : "Adds one attempt after the regular daily attempts are used. Normal access requirements still apply.",
+    bulgarianDescription:item.percent
+      ? "Действа осем часа. За тази дейност важи само най-силният активен бонус."
+      : "Добавя един опит след изчерпване на дневните опити. Условията за достъп остават в сила."
+  }))
 ];
 export default function Inventory(){
   const { t , label: localLabel} = useLanguage();
@@ -99,7 +109,7 @@ export default function Inventory(){
           <img src={item.icon} alt="" width="72" height="72" style={{objectFit:"contain"}}/>
           <div><h3 style={{margin:"0 0 6px"}}>{t(item.label,item.bulgarianLabel)}</h3><div>{t(item.description,item.bulgarianDescription)}</div></div>
         </div>
-        {selectedItem!=="protocol_reset"&&<label style={{display:"block",marginTop:14}}>{t("How many items do you want to activate?","Колко предмета искаш да активираш?")}
+        {selectedItem!=="protocol_reset"&&!item.single&&<label style={{display:"block",marginTop:14}}>{t("How many items do you want to activate?","Колко предмета искаш да активираш?")}
           <input type="number" min="1" max={count} step="1" value={itemAmount} onChange={event=>setItemAmount(event.target.value)} style={{display:"block",width:130,padding:8,marginTop:6}}/>
         </label>}
         <p>{t("Available:","Налични:")} {count.toLocaleString()}</p>
