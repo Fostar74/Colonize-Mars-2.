@@ -1,6 +1,7 @@
 import React, {useEffect, useRef, useState} from "react";
 import {useLanguage} from "../language";
 import "./EarthBase.css";
+import "./EarthShieldDome.css";
 
 export const structureTypes = {
   Resources: ["Gold Synthesizer", "Iron Driller", "Solar Array", "Water Extractor"],
@@ -36,7 +37,7 @@ function countdown(end, now) {
     .map(value => String(value).padStart(2, "0")).join(":");
 }
 
-function EarthMap({quality, children, t}) {
+function EarthMap({quality, shieldEnabled, shieldImpact, children, t}) {
   const [camera, setCamera] = useState(initialCamera);
   const viewport = useRef(null);
   const pointers = useRef(new Map());
@@ -123,6 +124,11 @@ function EarthMap({quality, children, t}) {
           <source media={quality === "low" ? "all" : "(max-width: 640px)"} srcSet={assetRoot + "/terrain-small.webp"} />
           <img className="earth-terrain" src={assetRoot + "/terrain.webp"} alt="" draggable="false" />
         </picture>
+        {shieldEnabled && <div className="earth-shield" aria-hidden="true">
+          <img src={assetRoot + "/shield-dome.webp"} alt="" draggable="false" />
+          {shieldImpact && <img key={shieldImpact} className="earth-shield-impact"
+            src={assetRoot + "/shield-dome.webp"} alt="" draggable="false" />}
+        </div>}
         {children}
       </div>
     </div>
@@ -134,10 +140,22 @@ function EarthMap({quality, children, t}) {
   </div>;
 }
 
-export default function EarthBase({progress, hospitalEntries = [], onBuilding, onHospital, onHeadquarters}) {
+export default function EarthBase({progress, hospitalEntries = [], playerId, shieldImpact = 0, onBuilding, onHospital, onHeadquarters}) {
   const {t, label} = useLanguage();
   const [view, setView] = useState(() => savedSetting("earth-base-view", ["map", "compact"], "map"));
   const [quality, setQuality] = useState(() => savedSetting("earth-base-quality", ["low", "medium", "high"], "medium"));
+  const shieldSetting = "earth-base-shield:" + playerId;
+  const [shieldEnabled, setShieldEnabled] = useState(() => savedSetting(shieldSetting, ["on", "off"], "on") === "on");
+  const [activeImpact, setActiveImpact] = useState(null);
+  useEffect(() => {
+    if (!shieldImpact || !shieldEnabled || quality === "low" || Date.now() - shieldImpact >= 1200) return;
+    setActiveImpact(shieldImpact);
+    const timeout = window.setTimeout(() => setActiveImpact(null), 1200);
+    return () => {
+      window.clearTimeout(timeout);
+      setActiveImpact(null);
+    };
+  }, [quality, shieldEnabled, shieldImpact]);
   const [now, setNow] = useState(Date.now);
   const construction = progress?.buildingJob;
   const healing = hospitalEntries.find(entry => entry.status === "healing");
@@ -231,7 +249,16 @@ export default function EarthBase({progress, hospitalEntries = [], onBuilding, o
       </div>}
     </header>
     {!progress ? <p role="status">{t("Loading your base…", "Зареждане на твоята база…")}</p> :
-      view === "map" ? <EarthMap quality={quality} t={t}>{sites}</EarthMap> :
+      view === "map" ? <>
+        <EarthMap quality={quality} shieldEnabled={shieldEnabled} shieldImpact={activeImpact} t={t}>{sites}</EarthMap>
+        <div className="earth-options earth-shield-options">
+          <button type="button" aria-pressed={shieldEnabled} onClick={() => {
+            const next = !shieldEnabled;
+            setShieldEnabled(next);
+            localStorage.setItem(shieldSetting, next ? "on" : "off");
+          }}>{shieldEnabled ? t("Shield Dome: On", "Плазмен купол: Вкл.") : t("Shield Dome: Off", "Плазмен купол: Изкл.")}</button>
+        </div>
+      </> :
         <div className="earth-compact">{sites}</div>}
   </main>;
 }
