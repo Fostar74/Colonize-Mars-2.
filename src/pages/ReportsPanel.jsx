@@ -8,10 +8,11 @@ const auth=()=>({Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 const reportReadStorageKey=userId=>`colonize-mars-read-battle-reports:${userId}`;
 const countUnits=units=>Object.values(units||{}).reduce((total,count)=>total+(Number(count)||0),0);
 const diff=(initial,remaining)=>Object.fromEntries(Object.entries(initial||{}).map(([unit,count])=>[unit,Math.max(0,(Number(count)||0)-(Number(remaining?.[unit])||0))]).filter(([,count])=>count>0));
-const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>unit+": "+Number(count).toLocaleString()).join(", ")||"0";
+
 
 export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
   const {t,label:localLabel}=useLanguage();
+  const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>localLabel(unit)+": "+Number(count).toLocaleString()).join(", ")||"0";
   const navigate=useNavigate();
   const coordinateLink=(x,y)=>Number.isInteger(Number(x))&&Number.isInteger(Number(y))&&Number(x)>=1&&Number(x)<=100&&Number(y)>=1&&Number(y)<=100?<button type="button" title={t("Show on map","Покажи на картата")} onClick={()=>{sessionStorage.setItem("mapReportTarget",JSON.stringify({x:Number(x),y:Number(y)}));onClose?.();navigate("/map");}} style={{border:0,background:"transparent",color:"#78d7ff",textDecoration:"underline",cursor:"pointer",font:"inherit",padding:0}}>{x}:{y}</button>:<span>{x??"?"}:{y??"?"}</span>;
   const userId=sessionStorage.getItem("userId");
