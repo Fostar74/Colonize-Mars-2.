@@ -3770,7 +3770,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       const level = Number(item.level ?? item.levelRequirement ?? 0);
       if (level !== expectedLevel) return {error:"Item level changed. Reopen the equipment panel."};
       if (level >= 50) return {error:"Maximum equipment level reached."};
-      if (level + 1 > Number(equipment.knightLevel || 1)) return {error:"Upgrade requires Cyber Knight level " + (level + 1) + "."};
+      if (level + 1 > Number(equipment.knightLevel || 1) && Object.values(equipment.equippedItems || {}).some(equipped => equipped?.id === itemId)) return {error:"Upgrade requires Cyber Knight level " + (level + 1) + "."};
       const cost = craftingCosts[String(item.rarity).toLowerCase()];
       if (!Number.isInteger(cost)) return {error:"Unknown equipment rarity."};
       const slot = String(item.slot || item.type || "").toUpperCase();
