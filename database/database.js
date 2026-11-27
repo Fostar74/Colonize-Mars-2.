@@ -1407,6 +1407,18 @@ class DatabaseManager {
     const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
     const cyberKnights=db.prepare("SELECT u.id,u.username,COALESCE(ar.knight_level,1) AS knightLevel,COALESCE(ar.prestige,0) AS prestige FROM users u LEFT JOIN alien_rewards ar ON ar.user_id=u.id ORDER BY knightLevel DESC,prestige DESC,u.username COLLATE NOCASE").all();
+    if(process.env.ORANGE_EMPIRE_ENABLED==="true"){
+      const npcs=db.prepare("SELECT id,state FROM orange_empire_commanders ORDER BY id").all().map(row=>{
+        const state=JSON.parse(row.state);
+        return {id:"orange-empire-"+row.id,commanderId:row.id,npc:true,emperor:row.id===10,username:row.id===10?"Emperor":"Commander "+row.id,alliance:"The Orange Empire",points:Number(state.xp)||0,avatarId:"pilot-m",knightLevel:Number(state.knight?.level)||1,prestige:Number(state.knight?.prestige)||0};
+      });
+      players.push(...npcs);
+      cyberKnights.push(...npcs);
+      if(npcs.length)alliances.push({id:"orange-empire",npc:true,name:"The Orange Empire",leader:"Emperor",memberCount:npcs.length,points:npcs.reduce((sum,p)=>sum+p.points,0),description:"Autonomous alien civilization."});
+      players.sort((a,b)=>b.points-a.points||a.username.localeCompare(b.username));
+      cyberKnights.sort((a,b)=>b.knightLevel-a.knightLevel||b.prestige-a.prestige||a.username.localeCompare(b.username));
+      alliances.sort((a,b)=>b.points-a.points||b.memberCount-a.memberCount||a.name.localeCompare(b.name));
+    }
     return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member})),cyberKnights};
   }
   inviteToAlliance(userId, targetId){
