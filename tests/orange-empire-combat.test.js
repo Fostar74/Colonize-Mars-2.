@@ -29,7 +29,7 @@ test("weekly dispatch, protected players, per-owner defense, and station gates",
     return id;
   };
   try {
-    const leader = addPlayer("Leader",39000,false,{"Explorer Trooper":90000});
+    const leader = addPlayer("Leader",39000,false,{"Explorer Trooper":900000});
     const solo = addPlayer("Solo",39000,false,{});
     const lower = addPlayer("Lower",38999);
     const beginner = addPlayer("Beginner",39000,true);

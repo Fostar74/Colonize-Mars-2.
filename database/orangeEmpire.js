@@ -1,9 +1,9 @@
 const {placedMapObjects} = require("./mapObjects");
 const {playerLevelFromXp, maxPlayerLevel} = require("../src/shared/playerTargeting");
 const {marchLimit} = require("../src/shared/formations");
-const {armyPopulation, unitUpgradeMaxLevel} = require("../src/shared/unitProfiles");
+const {armyPopulation, profileFor, unitUpgradeMaxLevel} = require("../src/shared/unitProfiles");
 const {
-  categories, buildingPrice, buildingRequirements, buildingDuration, unitRequirement,
+  categories, buildingNames, buildingMaxLevel, buildingPrice, buildingRequirements, buildingDuration, unitRequirement,
   unitPrice, unitTrainingDuration, unitUpgradeDetails, upgradePrice, upgradeDuration
 } = require("../src/shared/unitEconomy");
 
@@ -33,6 +33,10 @@ function migrate(db) {
       last_processed_at INTEGER NOT NULL,
       state TEXT NOT NULL,
       UNIQUE (x,y)
+    );
+    CREATE TABLE IF NOT EXISTS orange_empire_bootstrap (
+      commander_id INTEGER PRIMARY KEY REFERENCES orange_empire_commanders(id),
+      applied_at INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS orange_empire_attacks (
       id INTEGER PRIMARY KEY,
@@ -70,6 +74,29 @@ function initialState(army) {
     structures: {}, army, upgrades: {}, protocols: {}, knight: {level: 1, equippedItems: {}},
     jobs: {}, xp: 0, productionCarry: {}
   };
+}
+
+function bootstrap(state, id, template) {
+  const emperor = id === commanderCount;
+  const targetLevel = emperor ? 25 : 14 + id;
+  for (const name of buildingNames) {
+    state.structures[name] = Math.max(state.structures[name] || 0, Math.min(targetLevel, buildingMaxLevel(name)));
+  }
+
+  const targetPopulation = emperor ? 500000 : 80000 + 20000 * id;
+  const deficit = targetPopulation - armyPopulation(state.army);
+  if (deficit <= 0) return;
+
+  // Scale the existing seed mix by its actual population, keeping every
+  // already-earned troop. The one-population infantry absorbs rounding.
+  const templatePopulation = armyPopulation(template);
+  const reinforcements = Object.fromEntries(Object.entries(template)
+    .filter(([unit,count]) => militaryUnits.includes(unit) && count > 0)
+    .map(([unit,count]) => [unit, Math.floor(count * deficit / templatePopulation)]));
+  reinforcements["Explorer Trooper"] += (deficit - armyPopulation(reinforcements)) / profileFor("Explorer Trooper").population;
+  for (const [unit,count] of Object.entries(reinforcements)) {
+    if (count) state.army[unit] = (state.army[unit] || 0) + count;
+  }
 }
 
 function canSpend(resources, cost) {
@@ -115,7 +142,10 @@ function settle(state, previous, now, catalog) {
     const ticks = Math.max(0, Math.floor((job.endsAt - cursor) / tickMs));
     produce(state, ticks, catalog);
     cursor += ticks * tickMs;
-    if (key === "building") state.structures[job.name] = job.level;
+    if (key === "building") {
+      // A paid job can finish after the one-time boost has raised its building.
+      state.structures[job.name] = Math.max(state.structures[job.name] || 0, job.level);
+    }
     else if (key === "upgrade") {
       state.upgrades[job.unit] ??= {};
       state.upgrades[job.unit][job.stat] = job.level;
@@ -201,7 +231,9 @@ function advance(db, {chooseSpawn, garrison, catalog}, now = Date.now()) {
   db.transaction(() => {
     db.prepare("INSERT OR IGNORE INTO orange_empire_alliance(id,name) VALUES (?,?)")
       .run(allianceId, "The Orange Empire");
-    const rows = db.prepare("SELECT * FROM orange_empire_commanders ORDER BY id").all();
+    const rows = db.prepare(`SELECT c.*, b.commander_id AS bootstrapped FROM orange_empire_commanders c
+      LEFT JOIN orange_empire_bootstrap b ON b.commander_id=c.id ORDER BY c.id`).all();
+    const markBootstrap = db.prepare("INSERT INTO orange_empire_bootstrap(commander_id,applied_at) VALUES (?,?)");
     if (rows.length < commanderCount) {
       const occupied = placedMapObjects(db);
       const ids = new Set(rows.map(row => row.id));
@@ -211,20 +243,27 @@ function advance(db, {chooseSpawn, garrison, catalog}, now = Date.now()) {
         if (ids.has(id)) continue;
         const tile = chooseSpawn(occupied);
         occupied.push(tile);
-        const state = initialState(garrison(id));
+        const template = garrison(id);
+        const state = initialState({...template});
+        bootstrap(state, id, template);
         allocateProtocols(state);
         startJobs(state, now, catalog);
         insert.run(id, allianceId, tile.x, tile.y, now, JSON.stringify(state));
+        markBootstrap.run(id, now);
       }
     }
     const save = db.prepare("UPDATE orange_empire_commanders SET last_processed_at=?,state=? WHERE id=?");
     for (const row of rows) {
       const ticks = Math.floor((now - row.last_processed_at) / tickMs);
-      if (ticks < 1) continue;
-      const through = row.last_processed_at + ticks * tickMs;
+      if (ticks < 1 && row.bootstrapped) continue;
+      const through = row.last_processed_at + Math.max(0,ticks) * tickMs;
       const state = JSON.parse(row.state);
-      settle(state, row.last_processed_at, through, catalog);
-      startJobs(state, through, catalog);
+      if (ticks > 0) settle(state, row.last_processed_at, through, catalog);
+      if (!row.bootstrapped) {
+        bootstrap(state, row.id, garrison(row.id));
+        markBootstrap.run(row.id, now);
+      }
+      if (ticks > 0) startJobs(state, through, catalog);
       save.run(through, JSON.stringify(state), row.id);
     }
   }).immediate();
