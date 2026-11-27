@@ -192,7 +192,7 @@ function CyberKnightPanel({ onClose }) {
       </div>
 
       {selectedSlot && (
-        <div className="equipment-popup">
+        <div className="equipment-popup" style={{boxSizing:"border-box",maxHeight:"85dvh",overflowY:"auto",overscrollBehavior:"contain"}}>
           <div className="equipment-header">
             <h3>{t("View","Виж")} {localLabel(selectedSlot)} {t("Items","Предмети")}</h3>
             <button onClick={handleCloseAll} className="close-button">
@@ -286,9 +286,9 @@ function CyberKnightPanel({ onClose }) {
       {craftMessage && <p role="status">{craftMessage}</p>}
 
       {activeModal === "craft" && selectedItem && (
-        <div className="modal-window">
+        <div className="modal-window" style={{boxSizing:"border-box",width:"min(550px, calc(100vw - 24px))",maxHeight:"85dvh",display:"flex",flexDirection:"column",overflow:"hidden",padding:12,zIndex:1200}}>
           <h3>{t("Craft Upgrade","Подобри предмет")}</h3>
-          <div className="craft-columns">
+          <div style={{overflowY:"auto",minHeight:0,flex:"1 1 auto",overscrollBehavior:"contain"}}><div className="craft-columns">
             <div>
               <h4>{t("Current Item","Текущ предмет")}</h4>
               <p>
@@ -314,10 +314,12 @@ function CyberKnightPanel({ onClose }) {
           </div>
           <p>{t("Cost:","Цена:")} {craftCost ?? "Unavailable"} {t("Crafting Points","точки за изковаване")}</p>
           <p>{localLabel(selectedSlot)}: {slotPoints} {t("· Universal Forge:","· Универсални точки:")} {universalPoints}</p>
+          </div><div style={{flexShrink:0,background:"#101c27",paddingTop:6,display:"flex",flexWrap:"wrap"}}>
           <button disabled={crafting || itemLevel >= 50 || !craftCost || slotPoints + universalPoints < craftCost} onClick={handleCraft}>
             {itemLevel >= 50 ? localLabel("Max level") : crafting ? localLabel("Crafting…") : localLabel("Craft")}
           </button>
           <button onClick={() => setActiveModal(null)}>{t("Cancel","Отказ")}</button>
+          </div>
         </div>
       )}
     </div>
