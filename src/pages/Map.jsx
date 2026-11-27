@@ -229,6 +229,9 @@ function Map() {
     return ()=>clearInterval(timer);
   },[marchHistoryOpen,hasRoutes]);
   const [castles, setCastles] = useState([]);
+  const [orangeEmpireBases, setOrangeEmpireBases] = useState([]);
+  const [orangeEmpireAttacks, setOrangeEmpireAttacks] = useState([]);
+  const [orangeEmpireReports, setOrangeEmpireReports] = useState([]);
   const [mapError, setMapError] = useState("");
   const [selectedAlien, setSelectedAlien] = useState(null);
   const [viewCenter, setViewCenter] = useState({x:50,y:50});
@@ -255,7 +258,15 @@ function Map() {
           const own = JSON.parse(sessionStorage.getItem("castle") || "null");
           const bases = Array.isArray(data.bases) ? data.bases : [];
           setCastles(own && !bases.some(b => b.username === own.username) ? [...bases, own] : bases);
+          const empireBases = data.orangeEmpireBases || [];
+          setOrangeEmpireBases(empireBases);
+          setOrangeEmpireAttacks(data.orangeEmpireAttacks || []);
+          setOrangeEmpireReports(data.orangeEmpireReports || []);
           setSelectedTarget(target=>{
+            if (target?.type === "orangeEmpire") {
+              const current = empireBases.find(base => base.id === target.id);
+              return current ? {...current, type: "orangeEmpire"} : null;
+            }
             if(target?.type!=="castle")return target;
             const current=bases.find(base=>(target.user_id&&base.user_id===target.user_id)||
               (base.username===target.username&&base.x===target.x&&base.y===target.y));
@@ -498,6 +509,27 @@ function Map() {
       }
     });
 
+    orangeEmpireBases.forEach(base => {
+      const sx = (base.x - 0.5) * tileSize + offset.x;
+      const sy = (base.y - 0.5) * tileSize + offset.y;
+      const radius = Math.max(8, tileSize * 0.42);
+      if (sx + radius < 0 || sy + radius < 0 || sx - radius > canvas.width || sy - radius > canvas.height) return;
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(sx, sy, radius, 0, Math.PI * 2);
+      ctx.fillStyle = "#8e3c1a";
+      ctx.strokeStyle = "#ffb260";
+      ctx.lineWidth = 2;
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = "#fff4e8";
+      ctx.font = "bold " + Math.max(10, radius * 0.85) + "px Arial";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(String(base.level), sx, sy);
+      ctx.restore();
+    });
+
     alienBases.forEach((base) => {
       const px = (base.x-1) * tileSize + offset.x;
       const py = (base.y-1) * tileSize + offset.y;
@@ -600,7 +632,7 @@ function Map() {
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
       ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
-  }, [offset, castles, hqIcon, mineIcons, allianceMineArt, alienIcon, allianceBaseIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, allianceMines, t]);
+  }, [offset, castles, orangeEmpireBases, hqIcon, mineIcons, allianceMineArt, alienIcon, allianceBaseIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, allianceMines, t]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
@@ -652,6 +684,7 @@ function Map() {
     const markers=[
       ["allianceMine",allianceMines,0],
       ["castle",castles,castleMarkerSize(tileSize)*.54],
+      ["orangeEmpire",orangeEmpireBases,Math.max(8,tileSize*.42)],
       ["mothership",mothership?.active?[mothership.coordinates]:[],tileSize*2.55],
       ["station",campaign.stations?.stations||spaceStations,Math.max(13,tileSize*.8)],
       ["mine",mineData,Math.max(13,tileSize*.8)],
@@ -688,7 +721,7 @@ function Map() {
   const ownUsername=sessionStorage.getItem("username");
   const ownBase=castles.find(base=>base.username===ownUsername);
   const minePlacementBlocked=selectedTarget?.type==="field"&&allianceMine?.canPlace&&
-    [castles,mapMines,allianceMines].some(objects=>objects.some(tile=>touchesTile(tile,selectedTarget.x,selectedTarget.y)));
+    [castles,mapMines,allianceMines,orangeEmpireBases].some(objects=>objects.some(tile=>touchesTile(tile,selectedTarget.x,selectedTarget.y)));
   const levelGapBlocked=selectedTarget?.type==="castle"&&ownBase&&hasPvpLevelGap(
     playerLevelFromXp(ownBase.player_xp),playerLevelFromXp(selectedTarget.player_xp),selectedTarget.abandoned);
   const targetIsOwn=selectedTarget?.type==="castle"&&selectedTarget.username===ownUsername;
@@ -808,7 +841,7 @@ function Map() {
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
       const payload=isEspionage ? {userId:sessionStorage.getItem("userId"),quantity:Number(marchUnits["Rover Scout"]),target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}}
         : isSupport
-        ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected}
+        ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected,orangeEmpireAttackId:marchDraft.target.orangeEmpireAttackId}
         : isGathering
         ? {userId:sessionStorage.getItem("userId"),mineId:marchDraft.target.id,units:selected}
         : isAlienAttack
@@ -1134,6 +1167,39 @@ function Map() {
           {t("Select exact tile for alliance mine","Избери точен сектор за алиансна мина")}
         </button>}
         <button type="button" onClick={goToMyBase}>{t("My base","Моята база")}</button>
+        {orangeEmpireBases.length > 0 && <details>
+          <summary>{t("The Orange Empire", "Оранжевата империя")}</summary>
+          {orangeEmpireBases.map(base => <button type="button" key={base.id} onClick={() => {
+            centerMapOn(base.x, base.y);
+            setMarchDraft(null);
+            setSelectedTarget({...base, type: "orangeEmpire"});
+          }}>
+            {base.emperor ? t("Emperor", "Император") : t("Commander", "Командир") + " " + base.id}
+            {" · "}{base.x}:{base.y}
+          </button>)}
+          {orangeEmpireAttacks.length > 0 && <h3>{t("Incoming attacks","Входящи нападения")}</h3>}
+          {orangeEmpireAttacks.map(attack => {
+            const ally = castles.find(base => base.user_id === attack.player_id);
+            const canReinforce = ally && ally.username !== ownUsername && !attack.station_id &&
+              !attack.joined && attack.support_count < 3;
+            return <div key={attack.id}>
+              <button type="button" onClick={() => centerMapOn(attack.x, attack.y)}>
+                {attack.username} · {attack.x}:{attack.y} · {new Date(attack.arrives_at).toLocaleString()}
+              </button>
+              {canReinforce && <button type="button" onClick={() => {
+                if (!ownBase) return;
+                const target = {...ally,type:"castle",orangeEmpireAttackId:attack.id};
+                setSelectedTarget(target);
+                openMarch("Support",target,ownBase);
+              }}>{t("Reinforce","Изпрати подкрепление")}</button>}
+            </div>;
+          })}
+          {orangeEmpireReports.length > 0 && <h3>{t("Battle results","Резултати от битки")}</h3>}
+          {orangeEmpireReports.map(({id,result,arrives_at}) => <div key={id}>
+            {new Date(arrives_at).toLocaleString()} · {result.cancelled ? t("Attack cancelled","Нападението е отменено")
+              : result.victory ? t("Orange Empire victory","Победа за Оранжевата империя") : t("Attack repelled","Нападението е отблъснато")}
+          </div>)}
+        </details>}
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
         <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>
@@ -1242,7 +1308,13 @@ function Map() {
               <div style={{maxHeight:180,overflowY:"auto"}}>{(campaign.mothershipEvent.attacks||[]).slice().reverse().map(attack=><div key={attack.id}>{attack.username} · {attack.origin_x}:{attack.origin_y} → 50:50 · {attack.resolved_at?Number(attack.damage).toLocaleString()+" "+t("damage","щети")+" · "+Number(attack.xp||0).toLocaleString()+" XP":t("en route","на път")}</div>)}</div>
             </details>
           </section>}
-          <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Attack the Alien Command Ship · Global Event","Атакувай Командния кораб на извънземните · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):selectedTarget?.type==="allianceMine"?localLabel("Alliance Mine"):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>
+          {selectedTarget?.type === "orangeEmpire" && <section>
+            <h3>{t("The Orange Empire", "Оранжевата империя")}</h3>
+            <p>{selectedTarget.emperor ? t("Emperor", "Император") : t("Commander", "Командир") + " " + selectedTarget.id}
+              {" · "}{t("Level", "Ниво")} {selectedTarget.level}{" · "}{selectedTarget.x}:{selectedTarget.y}</p>
+            <p>{t("Cyber Knight", "Кибер рицар")} · {t("Level", "Ниво")} {selectedTarget.knightLevel}</p>
+          </section>}
+          {selectedTarget?.type !== "orangeEmpire" && <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Attack the Alien Command Ship · Global Event","Атакувай Командния кораб на извънземните · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):selectedTarget?.type==="allianceMine"?localLabel("Alliance Mine"):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>}
           {selectedTarget?.type==="field"&&allianceMine?.canPlace&&!marchDraft&&<section>
             <label>{t("Mine resource","Ресурс на мината")}{" "}
               <select value={mineResource} onChange={event=>setMineResource(event.target.value)}>
@@ -1283,7 +1355,7 @@ function Map() {
             </div> : <p>{t("Loading fixed garrison data...","Зареждане на гарнизона…")}</p>}
             <p style={{fontSize:12}}>{t("Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.","По-високите нива имат по-големи и по-силни гарнизони. Крепостта на ниво 20 има извънземен владетел.")}</p>
           </div>}
-          {!marchDraft && !["station","allianceMine"].includes(selectedTarget?.type) && <div>
+          {!marchDraft && !["station","allianceMine","orangeEmpire"].includes(selectedTarget?.type) && <div>
             <p>{t("Choose mission type:","Избери вид мисия:")}</p>
             <div style={{display:"flex",gap:10,flexWrap:"wrap",margin:"18px 0"}}>
               {(selectedTarget?.type==="alien"||selectedTarget?.type==="mothership"?["Attack"]:selectedTarget?.type==="mine"?["Gather"]:["Attack","Support","Espionage","Gather","Trade"]).map(type=>{

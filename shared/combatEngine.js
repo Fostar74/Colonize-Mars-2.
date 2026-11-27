@@ -48,7 +48,12 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     createGroups(attackerArmy,attackerIsAlien?alienTypes:playerTypes,formation),
     createGroups(defenderArmy,defenderIsPlayer?playerTypes:alienTypes,defenderIsPlayer?options.defenderFormation:null)
   ];
+  for(const contingent of options.defenderContingents||[]){
+    sides[1].push(...createGroups(contingent.army,playerTypes,contingent.formation)
+      .map(group=>({...group,contingent:{...contingent,special:specialUnitCombatBonuses(contingent.army)}})));
+  }
   const playerBonusesForSide=side=>side===playerSide?bonuses:(defenderIsPlayer&&side===1?options.defenderBonuses||null:null);
+  const bonusesForGroup=(side,group)=>group.contingent?.bonuses||playerBonusesForSide(side);
   // Each side's deployed special units provide their bonuses for the entire battle.
   const specialBonuses = [
     specialUnitCombatBonuses(attackerIsAlien ? null : attackerArmy),
@@ -56,10 +61,9 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
   ];
   // Apply unit-specific upgrades and equipment to player units, and enemy debuffs to the opposing side.
   for(let side=0;side<2;side++)for(const group of sides[side]){
-    const isPlayerSide=!!playerBonusesForSide(side);
-    const ownerBonuses=playerBonusesForSide(side)||{};
+    const ownerBonuses=bonusesForGroup(side,group)||{};
     const enemyBonuses=side===playerSide?(options.defenderBonuses||{}):bonuses;
-    const upgrades=side===playerSide?bonuses.unitUpgrades?.[group.unit]:(options.defenderUnitUpgrades||options.defenderBonuses?.unitUpgrades||bonuses.unitUpgrades)?.[group.unit];
+    const upgrades=group.contingent?ownerBonuses.unitUpgrades?.[group.unit]:side===playerSide?bonuses.unitUpgrades?.[group.unit]:(options.defenderUnitUpgrades||options.defenderBonuses?.unitUpgrades||bonuses.unitUpgrades)?.[group.unit];
     if(profileFor(group.unit)){const stats=unitCombatStats(group.unit,upgrades||{});group.hp=stats.health;group.attackVs=stats.attack;}
     const categoryBonus=group.category==="ranged"?ownerBonuses.rangedAttack:group.category==="infantry"?ownerBonuses.infantryAttack:group.category==="mobile"?ownerBonuses.mobileAttack:group.category==="artillery"?ownerBonuses.artilleryAttack:0;
     const research=ownerBonuses.unitResearch?.[group.unit]||options.defenderUnitResearch?.[group.unit];
@@ -67,13 +71,13 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     // Helmet/weapon and armor/shield are FLAT per-soldier modifiers, not percentages.
     const flatAttack=(Number(unitEffect.attack)||0)-(Number(enemyDebuff.attack)||0);
     const flatHealth=(Number(unitEffect.health)||0)-(Number(enemyDebuff.health)||0);
-    const attackMultiplier=Math.max(0,1+((Number(categoryBonus)||0)+(Number(ownerBonuses.leadership)||0)+(Number(ownerBonuses.allAttack)||0)+specialBonuses[side].attack+(research?.attack||0))/100);
+    const attackMultiplier=Math.max(0,1+((Number(categoryBonus)||0)+(Number(ownerBonuses.leadership)||0)+(Number(ownerBonuses.allAttack)||0)+(group.contingent?.special.attack??specialBonuses[side].attack)+(research?.attack||0))/100);
     group.attack=Math.max(0,group.attack>0?group.attack+flatAttack:0)*attackMultiplier;
     if(group.attackVs)for(const key of Object.keys(group.attackVs)){
       const base=Number(group.attackVs[key])||0;
       group.attackVs[key]=Math.max(0,base>0?base+flatAttack:0)*attackMultiplier;
     }
-    const healthMultiplier=Math.max(.01,1+((Number(ownerBonuses.allHealth)||0)+specialBonuses[side].health+(research?.health||0)+(group.category==="infantry"?(Number(ownerBonuses.infantryHealth)||0):0))/100);
+    const healthMultiplier=Math.max(.01,1+((Number(ownerBonuses.allHealth)||0)+(group.contingent?.special.health??specialBonuses[side].health)+(research?.health||0)+(group.category==="infantry"?(Number(ownerBonuses.infantryHealth)||0):0))/100);
     group.hp=Math.max(1,group.hp+flatHealth)*healthMultiplier;
   }
   const report=[];let rounds=0;
@@ -81,6 +85,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
   while(alive(sides[0])&&alive(sides[1])&&rounds<80){
     rounds++;
     for(const group of sides[0])group.roundStartCount=group.count;
+    for(const group of sides[1])if(group.contingent)group.roundStartCount=group.count;
     const round={round:rounds,events:[]};
     for(let step=0;step<4;step++){
       // All groups in the same phase fire using their numbers at phase start.
@@ -98,7 +103,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         // Probability Matrix reduces each incoming enemy volley by a random
         // whole percentage from five points below the tier maximum up to max.
         shot.evadedPercent=0;
-        const targetBonuses=playerBonusesForSide(1-shot.side)||{},dodgeMax=Math.max(0,Math.min(15,Number(targetBonuses.dodge)||0));
+        const targetBonuses=bonusesForGroup(1-shot.side,shot.target)||{},dodgeMax=Math.max(0,Math.min(15,Number(targetBonuses.dodge)||0));
         if(dodgeMax>0){
           const minimum=Math.max(0,dodgeMax-5);
           shot.evadedPercent=minimum+Math.floor(random()*(dodgeMax-minimum+1));
@@ -137,9 +142,9 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     // Restore a percentage of casualties at the end of each round, capped
     // at the original deployed group size. Fractions accumulate per group.
     for(let side=0;side<2;side++){
-      const reviveRate=Math.max(0,Math.min(0.15,(Number(playerBonusesForSide(side)?.revive)||0)/100));
-      if(!reviveRate)continue;
       for(const group of sides[side]){
+        const reviveRate=Math.max(0,Math.min(0.15,(Number(bonusesForGroup(side,group)?.revive)||0)/100));
+        if(!reviveRate)continue;
         const missing=group.original-group.count;
         if(missing<=0)continue;
         // Only casualties suffered during this round are eligible for regeneration.
@@ -159,6 +164,9 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
   }
   // A dispatched battle counts as at least one round, even against an empty defense.
   if(rounds===0){rounds=1;report.push({round:1,events:[]});}
-  return {victory:alive(sides[0])&&!alive(sides[1]),rounds,report,survivors:Object.fromEntries(Object.keys(attackerArmy).map(unit=>[unit,sides[0].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defenderSurvivors:Object.fromEntries(Object.keys(defenderArmy).map(unit=>[unit,sides[1].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defendersRemaining:sides[1].reduce((a,g)=>a+g.count,0),provisional:true};
+  const contingentSurvivors=Object.fromEntries((options.defenderContingents||[]).map(({id,army})=>[
+    id,Object.fromEntries(Object.keys(army).map(unit=>[unit,sides[1].filter(g=>g.contingent?.id===id&&g.unit===unit).reduce((sum,g)=>sum+g.count,0)]))
+  ]));
+  return {victory:alive(sides[0])&&!alive(sides[1]),rounds,report,survivors:Object.fromEntries(Object.keys(attackerArmy).map(unit=>[unit,sides[0].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defenderSurvivors:Object.fromEntries(Object.keys(defenderArmy).map(unit=>[unit,sides[1].filter(g=>!g.contingent&&g.unit===unit).reduce((a,g)=>a+g.count,0)])),defendersRemaining:sides[1].reduce((a,g)=>a+g.count,0),provisional:true,...(options.defenderContingents?{contingentSurvivors}:{})};
 }
 module.exports={fight,playerTypes,alienTypes};

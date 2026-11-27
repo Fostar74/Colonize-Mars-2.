@@ -5,6 +5,8 @@ const {boostedDuration} = require("./marketBoosts");
 const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCombat");
 const {replenishMissingMines} = require("./externalMines");
 const {placedMapObjects}=require("./mapObjects");
+const orangeEmpire = require("./orangeEmpire");
+const orangeEmpireCombat = require("./orangeEmpireCombat");
 const {tileKey,touchesTile,blockedMapTiles}=require("../src/shared/mapSpacing");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
@@ -20,7 +22,7 @@ const path = require("path");
 const fs = require("fs");
 const migrateSideQuests = require("./sideQuestSchema");
 const SideQuests = require("./sideQuests");
-const {playerLevelFromXp,hasPvpLevelGap}=require("../src/shared/playerTargeting");
+const {playerLevelFromXp,hasPvpLevelGap,maxPlayerLevel}=require("../src/shared/playerTargeting");
 
 const dbDir = path.join(__dirname);
 if (!fs.existsSync(dbDir)) {
@@ -443,6 +445,7 @@ class DatabaseManager {
     initializeDatabase();
     this.initializeQueries();
     migrateSideQuests(db);
+    orangeEmpire.migrate(db);
     this.sideQuests = new SideQuests(db,this);
   }
 
@@ -556,7 +559,8 @@ class DatabaseManager {
         db.prepare("SELECT 1 FROM base_positions WHERE x=? AND y=? UNION ALL SELECT 1 FROM resource_mines WHERE x=? AND y=? LIMIT 1")
           .get(preferred.x,preferred.y,preferred.x,preferred.y) ||
         db.prepare("SELECT 1 FROM alliance_mines WHERE x=? AND y=? AND status<>'closed' AND alliance_id IS NOT NULL")
-          .get(preferred.x,preferred.y)
+          .get(preferred.x,preferred.y) ||
+        db.prepare("SELECT 1 FROM orange_empire_commanders WHERE x=? AND y=?").get(preferred.x,preferred.y)
       );
       const selected = preferred && !exactConflict && preferred.x>=1 && preferred.x<=100 && preferred.y>=1 && preferred.y<=100
         ? {x:preferred.x,y:preferred.y} : this.chooseSpawn();
@@ -1160,7 +1164,7 @@ class DatabaseManager {
     const level=this.playerLevel(row.xp),talents=JSON.parse(row.talents);
     const earned=Array.from({length:level},(_,i)=>i+1).reduce((sum,n)=>sum+(n%5===0?2:1),0);
     const spent=Object.values(talents).reduce((sum,t)=>sum+([0,1,3,6][Math.max(0,Math.min(3,Number(t)||0))]||0),0);
-    return {level,xp:row.xp,nextLevelXp:level>=40?null:level*1000,skillPoints:Math.max(0,earned-spent),talents,catalog:this.talentCatalog()};
+    return {level,xp:row.xp,nextLevelXp:level>=maxPlayerLevel?null:level*1000,skillPoints:Math.max(0,earned-spent),talents,catalog:this.talentCatalog()};
   }
   awardPlayerXp(userId,amount){
     if(!Number.isSafeInteger(amount)||amount<1)return 0;
@@ -2100,6 +2104,9 @@ class DatabaseManager {
         let settledResourceMines = 0;
         const nextEvent = db.prepare(`SELECT MIN(at) AS at FROM (
           SELECT MIN(arrives_at) AS at FROM player_missions WHERE resolved_at IS NULL
+          UNION ALL SELECT MIN(arrives_at) FROM orange_empire_attacks WHERE result IS NULL
+          UNION ALL SELECT MIN(returns_at) FROM orange_empire_attacks WHERE returned_at IS NULL
+          UNION ALL SELECT MIN(returns_at) FROM orange_empire_support WHERE returned_at IS NULL
           UNION ALL SELECT MIN(returns_at) FROM player_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL
           UNION ALL SELECT MIN(arrives_at) FROM alien_missions WHERE resolved_at IS NULL
           UNION ALL SELECT MIN(returns_at) FROM alien_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL
@@ -2136,6 +2143,7 @@ class DatabaseManager {
             if (!this.syncGame(user_id,at)) throw new Error("Scout march has no player progress");
           }
           this.settlePlayerMissionsAt(at);
+          orangeEmpireCombat.settle(db,this,at);
           if (db.prepare(`SELECT 1 FROM saturday_invasion_attacks attack
             JOIN saturday_invasion_runs run ON run.id=attack.run_id AND run.status='active'
             JOIN saturday_invasion_seasons season ON season.week_start=run.week_start AND season.settled=0
@@ -4234,6 +4242,46 @@ Rewards are distributed per participating player, not once per alliance. / На�
         gathering_started_at=NULL,gathering_rate=NULL,gathering_units='{}' WHERE id=? AND claimed_by=?`).run(Math.max(0,Number(mine.amount)-gathered),mine.id,userId);
       return {success:true,returnedUnits,resource:resourceKey,amountCollected:gathered,...this.getMapResources(userId)};
     })();
+  }
+
+  advanceOrangeEmpire(now) {
+    orangeEmpire.advance(db, {
+      chooseSpawn: objects => this.chooseSpawn(objects),
+      catalog: this.talentCatalog(),
+      garrison: id => {
+        const existing = this.getAlienArmy(id + 10);
+        return {
+          "Explorer Trooper": existing["Alien Infantry"],
+          "Exo-Soldier": existing["Xeno Warrior"],
+          Railgunner: existing["Spore Archer"],
+          "Plasma Bladesman": existing["Plasma Stalker"],
+          "Mech Walker": existing["War Drone"],
+          "Missile Carrier": existing["Siege Behemoth"],
+          "Nano Shieldman": existing["Praetorian Guard"] || 0
+        };
+      }
+    }, now);
+  }
+
+  scheduleOrangeEmpireAttacks(now=Date.now()) {
+    if (!orangeEmpire.combatEnabled()) return;
+    this.advanceCampaignTimeline(now);
+    orangeEmpireCombat.schedule(db,this,now);
+  }
+
+  sendOrangeEmpireSupport(userId, attackId, units, now=Date.now()) {
+    if (!Number.isSafeInteger(attackId) || attackId < 1) return {error:"Invalid Orange Empire attack."};
+    return orangeEmpireCombat.sendSupport(db,this,userId,attackId,units,now);
+  }
+
+  getOrangeEmpireCombat(userId) {
+    if (!orangeEmpire.combatEnabled()) return {};
+    return {orangeEmpireAttacks:orangeEmpireCombat.mapAttacks(db,userId),
+      orangeEmpireReports:orangeEmpireCombat.reports(db,userId)};
+  }
+
+  getOrangeEmpireBases() {
+    return orangeEmpire.mapBases(db);
   }
 
   getPublicBases() {

@@ -11,6 +11,9 @@ function placedMapObjects(db) {
   if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='alliance_mines'").get()) {
     objects.push(...db.prepare("SELECT x,y FROM alliance_mines WHERE status<>'closed' AND alliance_id IS NOT NULL").all());
   }
+  if (db.prepare("SELECT 1 FROM sqlite_master WHERE type='table' AND name='orange_empire_commanders'").get()) {
+    objects.push(...db.prepare("SELECT x,y FROM orange_empire_commanders").all());
+  }
   return objects;
 }
 
