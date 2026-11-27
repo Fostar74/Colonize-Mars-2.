@@ -32,8 +32,7 @@ const resolvedBattleReportIds = data => [
   ...(data?.missions || []).filter(mission => mission.result).map(mission => `alien:${mission.id}`),
   ...(data?.playerMissions || []).filter(mission => mission.result).map(mission => `player:${mission.id}`),
   ...(data?.scoutMissions || []).filter(mission => mission.returned_at || mission.returnedAt).map(mission => `spy:${mission.id}`),
-  ...(data?.mothershipReports || []).map(report => `mothership:${report.id}`),
-  ...(data?.gatheringReports || []).map(report => `gathering:${report.id}`)
+  ...(data?.mothershipReports || []).map(report => `mothership:${report.id}`)
 ];
 const unreadBattleReportCount = (data,userId) => {
   let seen=[];
