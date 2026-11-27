@@ -9,7 +9,7 @@ import waterIcon from "../images/water.png";
 import solarIcon from "../images/solar.png";
 
 const Quests = ({ initialTab="main", onSideRewardDisplayed, onShowBase, onOpenUpgrades, onOpenProtocols, onOpenAlliance }) => {
-  const { t , label: localLabel} = useLanguage();
+  const {locale, t , label: localLabel} = useLanguage();
   const [activeTab, setActiveTab] = useState(initialTab);
   const [loginRewards, setLoginRewards] = useState(null);
   const [loginBusy, setLoginBusy] = useState(false);
@@ -161,7 +161,7 @@ const Quests = ({ initialTab="main", onSideRewardDisplayed, onShowBase, onOpenUp
           {m.kind==="alliance" && m.available && !m.claimed && <div style={{fontSize:13,marginTop:8,lineHeight:1.7}}>
             <div>{m.inAlliance?"✓ ":"○ "}{t("Create or join an alliance", "Създай алианс или се присъедини към съществуващ")}</div>
           </div>}
-          <div className="quest-rewards">{t("Reward","Награда")}: {m.reward.toLocaleString()} {t("each of Gold, Iron, Water and Solar + 100 Wheel Tokens","от всеки ресурс: злато, желязо, вода и слънчева енергия + 100 жетона")}</div>
+          <div className="quest-rewards">{t("Reward","Награда")}: {m.reward.toLocaleString(locale)} {t("each of Gold, Iron, Water and Solar + 100 Wheel Tokens","от всеки ресурс: злато, желязо, вода и слънчева енергия + 100 жетона")}</div>
           {m.claimed ? <button disabled>{t("Reward claimed","Наградата е взета")}</button> :
             !m.unlocked || !m.available ? <button disabled>{m.unlocked?t("Coming soon","Очаквайте скоро"):t("Locked","Заключена")}</button> :
             m.completed ? <button disabled={claimBusy} onClick={()=>claimTutorial(m.id)}>{t("Claim reward","Вземи наградата")}</button> :
@@ -190,15 +190,15 @@ const Quests = ({ initialTab="main", onSideRewardDisplayed, onShowBase, onOpenUp
   const renderLoginRewards = () => (
     <div className="quest-section">
       <h3>{t("30-Day Login Rewards","30-дневни награди за вход")}</h3>
-      <p>{t("Collect one reward per UTC calendar day. Each player has their own Cyber Knight and equipment inventory.","Вземай по една награда на календарен ден по UTC. Всеки играч има собствен Киберрицар и екипировка.")}</p>
+      <p>{t("Collect one reward per UTC calendar day. Each player has their own Cyber Knight and equipment inventory.","Вземай по една награда на календарен ден по UTC. Всеки играч има собствен Cyber Knight и екипировка.")}</p>
       {loginMessage && <p role="status">{localLabel(loginMessage)}</p>}
       {!loginRewards ? <p>{t("Loading daily rewards...","Зареждане на дневните награди…")}</p> : <>
-        <p>{loginRewards.claimedToday?"Today's reward collected. Come back tomorrow!":loginRewards.nextDay<=30?"Day "+loginRewards.nextDay+" is ready to claim.":"All 30 rewards collected!"}</p>
+        <p>{loginRewards.claimedToday?t("Today's reward collected. Come back tomorrow!","Днешната награда е взета. Върни се утре!"):loginRewards.nextDay<=30?t("Day "+loginRewards.nextDay+" is ready to claim.","Наградата за ден "+loginRewards.nextDay+" е достъпна."):t("All 30 rewards collected!","Всички 30 награди са получени!")}</p>
         <div className="login-calendar">
           {loginRewards.days.map(d=>(
             <div key={d.day} className="login-day" style={{opacity:d.claimed?0.6:1,padding:10}}>
               <strong>{t("Day","Ден")} {d.day}</strong>
-              <div>{d.reward.type==="resources"?d.reward.amount+" each: Gold, Iron, Water, Solar":d.reward.type==="army"?d.reward.amount+" "+d.reward.label:(d.reward.amount || 1)+" × "+d.reward.label+" (Rare)"}</div>
+              <div>{d.reward.type==="resources"?d.reward.amount+t(" each: Gold, Iron, Water, Solar"," от всеки ресурс: злато, желязо, вода и слънчева енергия"):d.reward.type==="army"?d.reward.amount+" "+localLabel(d.reward.label):(d.reward.amount || 1)+" × "+localLabel(d.reward.label)+" ("+localLabel("Rare")+")"}</div>
               <div>{d.claimed?localLabel("✓ Collected"):d.day===loginRewards.nextDay&&!loginRewards.claimedToday?localLabel("Available"):t("Locked","Заключена")}</div>
               {d.day===loginRewards.nextDay&&!loginRewards.claimedToday&&<button disabled={loginBusy} onClick={claimLoginReward}>{loginBusy?localLabel("Claiming..."):localLabel("Claim reward")}</button>}
             </div>

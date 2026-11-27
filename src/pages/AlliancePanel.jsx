@@ -12,7 +12,7 @@ const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost
 const getUserId=()=>sessionStorage.getItem("userId");
 const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 export default function AlliancePanel({supportTarget,playerAction,tab,setTab,markMessagesDisplayed}){
-  const { t , label: localLabel} = useLanguage();
+  const {locale, t , label: localLabel} = useLanguage();
   const navigate=useNavigate();
  const playerName=player=>playerAction ? playerAction(player) : player.username;
  const [reinforceRecipient,setReinforceRecipient]=useState(supportTarget?.id || ""),[reinforceUnit,setReinforceUnit]=useState("Explorer Trooper"),[reinforceCount,setReinforceCount]=useState(1);
@@ -28,7 +28,7 @@ export default function AlliancePanel({supportTarget,playerAction,tab,setTab,mar
   <h2>{t("Alliance Command","Командване на алианса")}</h2>
   {message&&<p role="status">{localLabel(message)}</p>}
   {loadError&&<div role="alert" style={{padding:12,background:"#49332d",borderRadius:8}}>{localLabel(loadError)} <button onClick={refresh}>{t("Retry","Опитай пак")}</button></div>}
-  {!state?<p>{loadError?"Alliance data could not be loaded.":localLabel("Loading…")}</p>:!state.alliance?<div>
+  {!state?<p>{loadError?t("Alliance data could not be loaded.","Данните за алианса не можаха да се заредят."):localLabel("Loading…")}</p>:!state.alliance?<div>
    {!!state.invitations?.length && <section>
     <h3>{t("Alliance Invitations","Покани за алианс")}</h3>
     {state.invitations.map(invite=><p key={invite.id}>
@@ -71,11 +71,11 @@ export default function AlliancePanel({supportTarget,playerAction,tab,setTab,mar
       <td style={{padding:8}}><PlayerAvatar player={m} size={30} /> {playerName({...m,ally:true})}{String(m.id)===String(getUserId())?localLabel(" (You)"):""}</td>
       <td>{localLabel(m.role)}</td>
       <td style={{padding:8}}>
-       {state.alliance.role==="Leader"&&m.role!=="Leader"&&<><select aria-label={"Role for "+m.username} value={m.role} onChange={e=>action("role",{targetId:m.id,role:e.target.value})} disabled={busy}>
+       {state.alliance.role==="Leader"&&m.role!=="Leader"&&<><select aria-label={t("Role for ","Роля на ")+m.username} value={m.role} onChange={e=>action("role",{targetId:m.id,role:e.target.value})} disabled={busy}>
         {["Member","Co-Leader","Treasurer","Diplomat","General","Strategist"].map(role=><option key={role} value={role}>{localLabel(role)}</option>)}
-       </select> <button disabled={busy} onClick={()=>{if(window.confirm("Transfer leadership to "+m.username+"?"))action("transfer",{targetId:m.id});}}>{t("Transfer Leader","Предай лидерството")}</button> </>}
-       {String(m.id)===String(getUserId())&&<button disabled={busy} onClick={()=>{const isLastLeader=m.role==="Leader"&&(state.members||[]).length===1;const prompt=m.role==="Leader"?(isLastLeader?"Leave and disband this alliance? It will be removed from the rankings.":"Leave this alliance? Leadership will pass automatically to another member."):"Leave this alliance?";if(window.confirm(prompt))action("leave",{targetId:m.id});}}>{t("Leave","Напусни")}</button>}
-       {String(m.id)!==String(getUserId())&&m.role!=="Leader"&&["Leader","Co-Leader"].includes(state.alliance.role)&&<button disabled={busy} onClick={()=>{if(window.confirm("Remove "+m.username+"?"))action("leave",{targetId:m.id});}}>{t("Remove","Премахни")}</button>}
+       </select> <button disabled={busy} onClick={()=>{if(window.confirm(t("Transfer leadership to ","Предай лидерството на ")+m.username+"?"))action("transfer",{targetId:m.id});}}>{t("Transfer Leader","Предай лидерството")}</button> </>}
+       {String(m.id)===String(getUserId())&&<button disabled={busy} onClick={()=>{const isLastLeader=m.role==="Leader"&&(state.members||[]).length===1;const prompt=m.role==="Leader"?(isLastLeader?"Leave and disband this alliance? It will be removed from the rankings.":"Leave this alliance? Leadership will pass automatically to another member."):"Leave this alliance?";if(window.confirm(localLabel(prompt)))action("leave",{targetId:m.id});}}>{t("Leave","Напусни")}</button>}
+       {String(m.id)!==String(getUserId())&&m.role!=="Leader"&&["Leader","Co-Leader"].includes(state.alliance.role)&&<button disabled={busy} onClick={()=>{if(window.confirm(t("Remove "+m.username+"?","Да бъде ли отстранен "+m.username+"?")))action("leave",{targetId:m.id});}}>{t("Remove","Премахни")}</button>}
       </td>
      </tr>)}</tbody>
     </table></div>
@@ -89,7 +89,7 @@ export default function AlliancePanel({supportTarget,playerAction,tab,setTab,mar
         ? <p>{t("There are no pending applications.","Няма чакащи кандидатури.")}</p>
         : <div style={{display:"grid",gap:10}}>
           {(state.applications||[]).map(app=><div key={app.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:12,flexWrap:"wrap",padding:12,border:"1px solid #416177",borderRadius:8,background:"#142637"}}>
-            <div><strong>{playerName({...app,ally:false})}</strong><div style={{fontSize:12,opacity:.8}}>{app.applied_at?new Date(app.applied_at).toLocaleString():""}</div></div>
+            <div><strong>{playerName({...app,ally:false})}</strong><div style={{fontSize:12,opacity:.8}}>{app.applied_at?new Date(app.applied_at).toLocaleString(locale):""}</div></div>
             <div style={{display:"flex",gap:8}}>
               <button disabled={busy} onClick={()=>action("application",{targetId:app.id,accept:true})}>{t("Accept","Приеми")}</button>
               <button disabled={busy} onClick={()=>action("application",{targetId:app.id,accept:false})}>{t("Decline","Откажи")}</button>
@@ -105,7 +105,7 @@ export default function AlliancePanel({supportTarget,playerAction,tab,setTab,mar
       <p>{localLabel(state.allianceMine.active.resource)} · {state.allianceMine.active.x}:{state.allianceMine.active.y}</p>
       {state.allianceMine.active.status==="construction"
         ? <AllianceMineProgress mine={state.allianceMine.active} goal={state.allianceMine.constructionGoal} march={state.allianceMine.march}/>
-        : <p>{t("Shared resources remaining","Оставащи общи ресурси")} {state.allianceMine.active.amount.toLocaleString()} · {t("2,000 per hour per player","2 000 на час за играч")}</p>}
+        : <p>{t("Shared resources remaining","Оставащи общи ресурси")} {state.allianceMine.active.amount.toLocaleString(locale)} · {t("2,000 per hour per player","2 000 на час за играч")}</p>}
     </> : <p>{state.allianceMine.canPlace
       ? t("Select an empty map tile to place an alliance mine.","Избери свободно поле на картата, за да поставиш алиансна мина.")
       : t("Your alliance has no active mine.","Алиансът ти няма активна мина.")}</p>}
@@ -116,20 +116,20 @@ export default function AlliancePanel({supportTarget,playerAction,tab,setTab,mar
     }}>{t("Open map","Отвори картата")}</button>}
     <h4>{t("Total construction contributions","Общ принос към строежите")}</h4>
     {state.allianceMine.contributions.length ? <ul>{state.allianceMine.contributions.map(member=><li key={member.id}>
-      {member.username} · {member.points.toLocaleString(undefined,{maximumFractionDigits:2})} {t("points","точки")}
+      {member.username} · {member.points.toLocaleString(locale,{maximumFractionDigits:2})} {t("points","точки")}
     </li>)}</ul> : <p>{t("No contributions yet.","Все още няма принос.")}</p>}
    </section>}
    {tab==="market"&&<div>
     <h3>{t("Alliance Donation & Market","Дарения и пазар")}</h3>
     <h4>{t("Alliance Space Base Crystals","Кристали за космическата база")}</h4>
-    <p>💚 {t("Alliance bank","В хазната на алианса")}: {Number(state.crystalBank?.green||0).toLocaleString()} · 🔴 {Number(state.crystalBank?.red||0).toLocaleString()}</p>
-    <p>💚 {t("Your balance","Твоят баланс")}: {Number(state.crystals?.green||0).toLocaleString()} · 🔴 {Number(state.crystals?.red||0).toLocaleString()}</p>
+    <p>💚 {t("Alliance bank","В хазната на алианса")}: {Number(state.crystalBank?.green||0).toLocaleString(locale)} · 🔴 {Number(state.crystalBank?.red||0).toLocaleString(locale)}</p>
+    <p>💚 {t("Your balance","Твоят баланс")}: {Number(state.crystals?.green||0).toLocaleString(locale)} · 🔴 {Number(state.crystals?.red||0).toLocaleString(locale)}</p>
     <div style={{display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
       <select value={crystalKind} onChange={e=>setCrystalKind(e.target.value)}><option value="green">💚 {t("Green crystals","Зелени кристали")}</option><option value="red">🔴 {t("Red crystals","Червени кристали")}</option></select>
       <input aria-label={localLabel("Crystal donation amount")} type="number" min="1" step="1" value={crystalAmount} onChange={e=>setCrystalAmount(e.target.value)} placeholder={localLabel("Amount")}/>
       <button type="button" disabled={busy||!Number.isSafeInteger(Number(crystalAmount))||Number(crystalAmount)<1} onClick={donateCrystals}>{t("Donate to Alliance","Дари на алианса")}</button>
     </div>
-    <p>{t("Alliance Points:","Алианс точки:")} <strong>{Number(state.economy?.points||0).toLocaleString(undefined,{maximumFractionDigits:2})}</strong> {t("· Donations left today (resets at 00:00 UTC):","· Оставащи дарения днес (нулиране в 00:00 UTC):")} {state.economy?.donationsRemaining??20}/20</p>
+    <p>{t("Alliance Points:","Алианс точки:")} <strong>{Number(state.economy?.points||0).toLocaleString(locale,{maximumFractionDigits:2})}</strong> {t("· Donations left today (resets at 00:00 UTC):","· Оставащи дарения днес (нулиране в 00:00 UTC):")} {state.economy?.donationsRemaining??20}/20</p>
     <h4>{t("Donate 100 resources (+10 Alliance Points)","Дари 100 ресурса (+10 Алианс точки)")}</h4>
     {["Gold","Iron","Water","Solar"].map(resource=><button key={resource} disabled={busy||!state.economy?.donationsRemaining} style={{margin:4}} onClick={()=>action("donate",{resource})}>{t("Donate 100","Дари 100")} {localLabel(resource)}</button>)}
     <h4>{t("Alliance Treasury","Хазна на алианса")}</h4>
@@ -147,11 +147,11 @@ export default function AlliancePanel({supportTarget,playerAction,tab,setTab,mar
     <h4>{t("Alliance Market","Пазар на алианса")}</h4>
     {Object.entries(marketProducts).map(([item,{label,bg,cost}])=><div key={item} style={{marginBottom:8}}>
       <img src={baseIcon} alt="" width="28" height="28" style={{verticalAlign:"middle",marginRight:8}} />
-      {t(label,bg)} — {cost.toLocaleString()} {t("AP","АТ")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
+      {t(label,bg)} — {cost.toLocaleString(locale)} {t("AP","АТ")} <button disabled={busy||(state.economy?.points||0)<cost} onClick={()=>action("market/buy",{item})}>{localLabel("Buy")}</button>
     </div>)}
     <p style={{fontSize:12}}>{t("Purchased items must be activated from Inventory. For production and external gathering, only the strongest active bonus applies.","Купените предмети се активират от инвентара. За производството и добива от външни мини действа само най-силният активен бонус.")}</p>
     {(state.economy?.buffs||[]).filter(buff=>Object.hasOwn(marketProducts,buff.kind)).map(buff=><p key={buff.kind}>
-      {t(marketProducts[buff.kind].label,marketProducts[buff.kind].bg)} {t("active until","активен до")} {new Date(buff.expires_at).toLocaleString()}
+      {t(marketProducts[buff.kind].label,marketProducts[buff.kind].bg)} {t("active until","активен до")} {new Date(buff.expires_at).toLocaleString(locale)}
     </p>)}
    </div>}
    {tab==="reinforcements"&&<div>
@@ -169,7 +169,7 @@ export default function AlliancePanel({supportTarget,playerAction,tab,setTab,mar
     <p style={{fontSize:12}}>{t("Travel is approximately one minute each way, modified by Hyperdrive. Defensive battle participation is not yet enabled.","Пътуването е около минута в посока и зависи от хипердвигателя. Участието в отбранителни битки предстои.")}</p>
     {(state.reinforcements||[]).map(m=><div key={m.id} style={{padding:10,border:"1px solid #47758e",margin:"8px 0",borderRadius:6}}>
       <strong>{playerName({id:m.sender_id,username:m.sender,ally:true})} → {playerName({id:m.recipient_id,username:m.recipient,ally:true})}</strong> · {Object.entries(m.units).map(([u,n])=>n+" "+u).join(", ")}
-      <p>{m.recall_at?localLabel("Returning"):Date.now()<m.arrives_at?localLabel("Travelling"):localLabel("Stationed")} {t("· Arrival","· Пристигане")} {new Date(m.arrives_at).toLocaleString()}</p>
+      <p>{m.recall_at?localLabel("Returning"):Date.now()<m.arrives_at?localLabel("Travelling"):localLabel("Stationed")} {t("· Arrival","· Пристигане")} {new Date(m.arrives_at).toLocaleString(locale)}</p>
       {String(m.sender_id)===String(getUserId())&&!m.recall_at&&<button disabled={busy} onClick={()=>action("recall",{missionId:m.id})}>{t("Recall Troops","Отзови войските")}</button>}
     </div>)}
     {!(state.reinforcements||[]).length&&<p>{t("No active reinforcements.","Няма активни подкрепления.")}</p>}

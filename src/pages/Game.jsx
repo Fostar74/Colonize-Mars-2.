@@ -1,3 +1,4 @@
+import {battleEventText} from "../shared/localizedMessages";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../language";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -61,7 +62,7 @@ const saveHospitalAlertIds = (userId,ids) => {
 };
 
 function MarketPanel() {
-  const {t,label}=useLanguage();
+  const {locale,t,label}=useLanguage();
   const resources=["Gold","Iron","Water","Solar"];
   const empty=()=>({Gold:0,Iron:0,Water:0,Solar:0});
   const [offers,setOffers]=useState([]);
@@ -94,13 +95,13 @@ function MarketPanel() {
     }catch(error){setNotice(error.message);}finally{setBusy(false);}
   };
   const total=obj=>Object.values(obj).reduce((sum,value)=>sum+Number(value||0),0);
-  const format=obj=>resources.filter(key=>Number(obj?.[key]||0)>0).map(key=>Number(obj[key]).toLocaleString()+" "+label(key)).join(" · ")||"—";
+  const format=obj=>resources.filter(key=>Number(obj?.[key]||0)>0).map(key=>Number(obj[key]).toLocaleString(locale)+" "+label(key)).join(" · ")||"—";
   const inputGrid=(values,setValues,title)=><section style={{padding:10,border:"1px solid #6a8193",borderRadius:8,margin:"10px 0"}}>
     <strong>{title}</strong><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginTop:8}}>
       {resources.map(key=><label key={key} style={{display:"flex",flexDirection:"column",gap:4,fontSize:13}}>{label(key)}
         <input type="number" min="0" max="15000" value={values[key]} onChange={e=>setValues(old=>({...old,[key]:Math.max(0,Math.min(15000,Math.floor(Number(e.target.value)||0)))}))}/>
       </label>)}
-    </div><small>{t("Total","Общо")}: {total(values).toLocaleString()} / 15,000</small>
+    </div><small>{t("Total","Общо")}: {total(values).toLocaleString(locale)} / 15,000</small>
   </section>;
   return <div style={{color:"#f5f0e6"}}>
     <p>{t("Create a barter offer. Offered resources are reserved until it is accepted or you cancel it. Each side is limited to 15,000 resources; both players need a level 3 Cargo Depot.","Създай бартерна оферта. Предложените ресурси се запазват, докато бъде приета или отменена. Всяка страна на сделката е ограничена до 15 000 ресурса; и двамата играчи трябва да имат Товарно депо ниво 3.")}</p>
@@ -108,7 +109,7 @@ function MarketPanel() {
     {inputGrid(requested,setRequested,t("You request in exchange","Искаш в замяна"))}
     <button type="button" disabled={busy||total(offered)<=0||total(requested)<=0||total(offered)>15000||total(requested)>15000}
       onClick={()=>send("/market/offers",{offered,requested})}>{t("Publish offer","Публикувай оферта")}</button>
-    {notice&&<p role="status">{notice}</p>}
+    {notice&&<p role="status">{label(notice)}</p>}
     <h3>{t("Marketplace offers","Оферти на пазара")}</h3>
     {!offers.length&&<p>{t("No offers yet.","Все още няма оферти.")}</p>}
     <div style={{display:"grid",gap:10}}>
@@ -127,7 +128,7 @@ function MarketPanel() {
 }
 
 function HospitalPanel() {
-  const {t,label}=useLanguage();
+  const {locale,t,label}=useLanguage();
   const [entries,setEntries]=useState([]);
   const [ready,setReady]=useState({});
   const [amounts,setAmounts]=useState({});
@@ -175,7 +176,7 @@ function HospitalPanel() {
   const waiting=entries.filter(entry=>entry.status==="waiting"&&["player-defense","player-attack","alien-base"].includes(entry.source));
   const active=entries.find(entry=>entry.status==="healing");
   const total=entries.reduce((sum,entry)=>sum+Object.values(entry.wounded||{}).reduce((subtotal,count)=>subtotal+Number(count||0),0),0);
-  const fmt=army=>Object.entries(army||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>Number(count).toLocaleString()+" "+label(unit)).join(" · ")||"0";
+  const fmt=army=>Object.entries(army||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>Number(count).toLocaleString(locale)+" "+label(unit)).join(" · ")||"0";
   const remainingTime=healsAt=>{
     const total=Math.max(0,Math.ceil((Number(healsAt)-tick)/1000));
     const hours=Math.floor(total/3600);
@@ -183,16 +184,16 @@ function HospitalPanel() {
     const seconds=total%60;
     return hours+" "+t("h","ч.")+" "+minutes+" "+t("min","мин.")+" "+seconds+" "+t("sec","сек.");
   };
-  const sourceName=source=>source==="player-defense"?t("Base Defense","Защита на базата"):source==="player-attack"?t("Player Attack","Атака срещу играч"):source==="alien-base"?t("Alien Base Mission","Мисия срещу извънземна база"):source==="mothership"?t("Attack the Alien Command Ship","Атакувай Командния кораб на извънземните"):t("Alien Invasion","Alien Invasion");
+  const sourceName=source=>source==="orange-empire-defense"?t("Orange Empire defense","Защита срещу Оранжевата империя"):source==="player-defense"?t("Base Defense","Защита на базата"):source==="player-attack"?t("Player Attack","Атака срещу играч"):source==="alien-base"?t("Alien Base Mission","Мисия срещу извънземна база"):source==="mothership"?t("Attack the Alien Command Ship","Атакувай Командния кораб на извънземните"):label("Alien Invasion");
   const frame={color:"#38251c",padding:14,borderRadius:12,border:"3px solid #ab7149",background:"linear-gradient(145deg,#f3e4c8 0%,#e7c79d 48%,#d99463 100%)",boxShadow:"inset 0 0 0 2px rgba(255,255,255,.4)"};
   const card={margin:"10px 0",padding:12,background:"rgba(255,248,230,.84)",border:"1px solid #bb8b61",borderRadius:8};
   return <div style={frame}>
     <header style={{padding:"12px 14px",marginBottom:12,borderRadius:8,color:"#fff4df",background:"linear-gradient(90deg,#65331f,#a4492e,#65331f)",textAlign:"center"}}>
       <div style={{fontSize:12,letterSpacing:2}}>{t("EARTH BASE · MEDICAL DECK","БАЗА НА ЗЕМЯТА · МЕДИЦИНСКИ ОТСЕК")}</div>
       <h2 style={{margin:"5px 0"}}>✚ {t("Field Hospital","Полева болница")}</h2>
-      <div>{t("Hospital capacity: Unlimited","Капацитет на болницата: Неограничен")} · {t("Wounded units:","Ранени войници:")} <strong>{total.toLocaleString()}</strong></div>
+      <div>{t("Hospital capacity: Unlimited","Капацитет на болницата: Неограничен")} · {t("Wounded units:","Ранени войници:")} <strong>{total.toLocaleString(locale)}</strong></div>
     </header>
-    {notice&&<p role="status" style={{padding:10,borderRadius:6,background:"rgba(255,255,255,.65)"}}>{notice}</p>}
+    {notice&&<p role="status" style={{padding:10,borderRadius:6,background:"rgba(255,255,255,.65)"}}>{label(notice)}</p>}
     {active&&<section style={{...card,border:"2px solid #b05d35"}}>
       <strong>{t("Treatment in progress","Лечението продължава")}</strong>
       <div>{t("Time remaining:","Оставащо време:")} {remainingTime(active.heals_at)}</div>
@@ -219,7 +220,7 @@ function HospitalPanel() {
         <div>{t("Treatment time follows the unit training time.","Времето за лечение съответства на времето за обучение на войниците.")}</div>
       </div>}
       {entry.status==="healing"&&<div>{t("Time remaining:","Оставащо време:")} {remainingTime(entry.heals_at)}</div>}
-      {entry.status==="event"&&entry.recoveryAt&&<div>{t("Returns to the garrison after:","Войниците се връщат в гарнизона след:")} {new Date(entry.recoveryAt).toLocaleString()}</div>}
+      {entry.status==="event"&&entry.recoveryAt&&<div>{t("Returns to the garrison after:","Войниците се връщат в гарнизона след:")} {new Date(entry.recoveryAt).toLocaleString(locale)}</div>}
     </article>)}
     {!entries.length&&<div style={card}>{t("No wounded troops. Your garrison is ready.","Няма ранени войници. Гарнизонът е в готовност.")}</div>}
     {!!waiting.length&&<button type="button" disabled={busy} onClick={treat} style={{padding:"11px 18px",border:0,borderRadius:7,color:"white",fontWeight:"bold",background:"#26853a",cursor:busy?"wait":"pointer",opacity:busy?.7:1}}>
@@ -252,13 +253,13 @@ function LabyrinthMap({labyrinth,busy,onMove,onBacktrack,t}){
         <text x="16" y="23" fill="#d6c3ff" fontSize="15" fontWeight="bold">↑ N</text>
       </svg>
     </div>
-    <p style={{fontSize:12,color:"#d6c9e8",marginTop:8}}>🟨 {t("Cyber Knight","Киберрицар")} · 🟦 {t("Visited","Посетена")} · 🟪 {t("Unknown passage","Неизследван проход")} · 🩷 {t("Medicine, once discovered","Лекарство, след откриване")}</p>
+    <p style={{fontSize:12,color:"#d6c9e8",marginTop:8}}>🟨 {t("Cyber Knight","Cyber Knight")} · 🟦 {t("Visited","Посетена")} · 🟪 {t("Unknown passage","Неизследван проход")} · 🩷 {t("Medicine, once discovered","Лекарство, след откриване")}</p>
     <p style={{fontSize:12,color:"#d6c9e8"}}>{t("Current coordinates","Текущи координати")}: <b>{byId[labyrinth.currentRoom]?.x??5}, {byId[labyrinth.currentRoom]?.y??5}</b> · {t("Depth","Дълбочина")} {labyrinth.currentDepth}/10</p>
   </div>;
 }
 
 function EventsPanel({onOpenInventory}) {
-  const {language,t}=useLanguage();
+  const {locale,language,t,label}=useLanguage();
   const navigate=useNavigate();
   const [data,setData]=useState(null);
   const [motherShip,setMotherShip]=useState(null);
@@ -369,12 +370,12 @@ function EventsPanel({onOpenInventory}) {
     catch(error){setLabyrinthNotice(error.message);}
     finally{setLabyrinthBusy(false);}
   };
-  if(!data)return <div><p>{notice||t("Loading events…","Зареждане на събитията…")}</p></div>;
+  if(!data)return <div><p>{label(notice)||t("Loading events…","Зареждане на събитията…")}</p></div>;
   return <div style={{color:"#eef6ff",padding:12,minWidth:320}}>
-    <h2>{t("Alien Invasion","Alien Invasion")}</h2>
+    <h2>{label("Alien Invasion")}</h2>
     <p>{data.active?t("Event is active","Събитието е активно"):data.settled?t("Event results are final","Класирането е окончателно"):t("Scheduled for","Насрочено за")} {date(data.startsAt)} – {date(data.endsAt)}</p>
     <p>{t("Alliance prizes are awarded at the Sunday 00:00 UTC reset after all alliances finish: 1st place 50,000, 2nd 30,000, 3rd 15,000 of EACH resource for every participating member. Prizes are saved in Inventory and can be withdrawn later.","Наградите се раздават при ресета в неделя в 00:00 UTC, след като приключат всички алианси: 1-во място 50 000, 2-ро 30 000, 3-то 15 000 от ВСЕКИ ресурс за всеки участвал член. Наградите се пазят в Инвентара и могат да се изтеглят по-късно.")}</p>
-    {data.reward&&<p role="status" style={{fontWeight:700}}>🎁 {t("Reward deposited in Inventory","Наградата е добавена в Инвентара")}: #{data.reward.rank} · {Number(data.reward.amountEach).toLocaleString()} {t("of each resource","от всеки ресурс")}. <button type="button" onClick={onOpenInventory}>{t("Open Inventory","Отвори Инвентара")}</button></p>}
+    {data.reward&&<p role="status" style={{fontWeight:700}}>🎁 {t("Reward deposited in Inventory","Наградата е добавена в Инвентара")}: #{data.reward.rank} · {Number(data.reward.amountEach).toLocaleString(locale)} {t("of each resource","от всеки ресурс")}. <button type="button" onClick={onOpenInventory}>{t("Open Inventory","Отвори Инвентара")}</button></p>}
     <p>{t("The first alien wave launches immediately from an alien base and reaches each participating alliance member after one minute. A stronger wave launches every minute. Alliance reinforcements sent to an active participant arrive in 30 seconds. The event ends when all participants are eliminated or wave 20 is completed.","Първата извънземна вълна потегля веднага от извънземна база и достига всеки участващ член на алианса след една минута. По-силна вълна потегля всяка минута. Подкрепленията към участник пристигат за 30 секунди. Събитието приключва, когато всички участници бъдат елиминирани или бъде завършена вълна 20.")}</p>
     {data.alliance&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
       <strong>{data.alliance.name}</strong>
@@ -382,9 +383,9 @@ function EventsPanel({onOpenInventory}) {
       {data.alliance.canStart&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Starting…","Стартиране…"):t("Start for my alliance","Стартирай за алианса")}</button></div>}
       {data.alliance.run&&["Leader","Co-Leader"].includes(data.alliance.role)&&<div style={{marginTop:8}}><button type="button" disabled={busy} onClick={start}>{busy?t("Restarting…","Рестартиране…"):t("Restart from wave 1","Рестартирай от вълна 1")}</button></div>}
       {data.myResult&&<div style={{marginTop:8,padding:10,borderRadius:8,background:"rgba(30,50,70,.7)"}}>
-        <p style={{margin:"0 0 6px"}}>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString()} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>
+        <p style={{margin:"0 0 6px"}}>{t("Your rank","Твоето място")}: #{data.myResult.rank} · {t("points","точки")}: {Number(data.myResult.score||0).toLocaleString(locale)} · {data.myResult.eliminated?t("Eliminated","Елиминиран"):t("Still defending","Продължаваш защитата")}</p>
         <p style={{margin:"0 0 6px"}}>{t("Waves survived","Издържани вълни")}: {Number(data.myResult.waves||0)} / 20</p>
-        {data.myResult.lastBattle&&<p style={{margin:"0 0 6px"}}>{t("Last attack","Последна атака")} · {t("Alien base level","Ниво на извънземната база")} {data.myResult.lastBattle.level}: {Number(data.myResult.lastBattle.alienCasualties||0).toLocaleString()} {t("aliens eliminated","извънземни елиминирани")} · {Number(data.myResult.lastBattle.remaining||0).toLocaleString()} {t("troops remaining","войници остават")}</p>}
+        {data.myResult.lastBattle&&<p style={{margin:"0 0 6px"}}>{t("Last attack","Последна атака")} · {t("Alien base level","Ниво на извънземната база")} {data.myResult.lastBattle.level}: {Number(data.myResult.lastBattle.alienCasualties||0).toLocaleString(locale)} {t("aliens eliminated","извънземни елиминирани")} · {Number(data.myResult.lastBattle.remaining||0).toLocaleString(locale)} {t("troops remaining","войници остават")}</p>}
         {data.alliance.run?.status==="active"&&!data.myResult.eliminated&&<p style={{margin:0}}>{t("Next wave in","Следваща вълна след")}: {Math.max(0,Math.ceil((Number(data.myResult.nextAttackAt||labyrinthTick)-labyrinthTick)/1000))} {t("seconds","секунди")}</p>}
       </div>}
       {data.myAttacks?.length>0&&<section style={{marginTop:10,padding:10,borderRadius:8,background:"rgba(16,28,40,.76)"}}>
@@ -395,9 +396,9 @@ function EventsPanel({onOpenInventory}) {
           return <details key={attack.id} style={{marginBottom:8,borderBottom:"1px solid #536c80",paddingBottom:8}}>
             <summary>{result?.eliminated?t("Attack cancelled: no army","Атаката е отменена: няма армия"):result?t("Battle report","Бойни доклади"):t("Alien attack in transit","Извънземна атака на път")} #{attack.id} · {t("Alien base level","Ниво на извънземната база")} {attack.level}{!result&&` · ${remaining} ${t("seconds remaining","секунди остават")}`}</summary>
             {result&&<>
-              <p>{Number(result.alienCasualties||0).toLocaleString()} {t("aliens eliminated","извънземни елиминирани")} · {Number(result.troopsLost||0).toLocaleString()} {t("troops wounded","войници ранени")} · {Number(result.remaining||0).toLocaleString()} {t("troops remaining","войници остават")}</p>
+              <p>{Number(result.alienCasualties||0).toLocaleString(locale)} {t("aliens eliminated","извънземни елиминирани")} · {Number(result.troopsLost||0).toLocaleString(locale)} {t("troops wounded","войници ранени")} · {Number(result.remaining||0).toLocaleString(locale)} {t("troops remaining","войници остават")}</p>
               {(result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
-                {round.events.map((event,index)=><p key={index} style={{fontSize:12,margin:"4px 0"}}>{event.restored>0?`${t("Nano Regeneration","Нанорегенерация")}: ${event.restored} ${t(event.unit,event.unit)} ${t("restored","възстановени")}`:`${t(event.attacker,event.attacker)}: ${event.units} ${t(event.unit,event.unit)} → ${t(event.target,event.target)} · ${event.damage} ${t("damage","щети")}${Number.isInteger(event.kills)?` · ${event.kills} ${t("defeated","убити")}`:""}`}</p>)}
+                {round.events.map((event,index)=><p key={index} style={{fontSize:12,margin:"4px 0"}}>{battleEventText(event,label,t)}</p>)}
               </details>)}
             </>}
           </details>;
@@ -408,17 +409,17 @@ function EventsPanel({onOpenInventory}) {
     </div>}
     <section style={{margin:"18px 0",padding:16,border:"1px solid #536c80",borderRadius:12,background:"rgba(14,27,44,.75)"}} aria-label={t("Saturday invasion standings","Класиране на съботната инвазия")}>
     <h3>{t("Alliance standings","Класиране на алиансите")}</h3>
-    {data.alliances.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.alliances.map(row=><tr key={row.id}><td>{row.rank}</td><td>{row.name}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.status==="active"?t("Active","Активен"):t("Complete","Приключил")}</td></tr>)}</tbody></table></div>:<p>{t("No alliances have started yet.","Все още няма стартирали алианси.")}</p>}
+    {data.alliances.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.alliances.map(row=><tr key={row.id}><td>{row.rank}</td><td>{row.name}</td><td>{Number(row.score||0).toLocaleString(locale)}</td><td>{row.status==="active"?t("Active","Активен"):t("Complete","Приключил")}</td></tr>)}</tbody></table></div>:<p>{t("No alliances have started yet.","Все още няма стартирали алианси.")}</p>}
     <h3>{t("Individual standings","Индивидуално класиране")}</h3>
-    {data.players.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.players.slice(0,20).map(row=><tr key={row.userId}><td>{row.rank}</td><td>{row.username}</td><td>{row.alliance}</td><td>{Number(row.score||0).toLocaleString()}</td><td>{row.eliminated?t("Eliminated","Елиминиран"):row.runStatus==="active"?t("Active","Активен"):t("Survived","Оцеля")}</td></tr>)}</tbody></table></div>:<p>{t("No scores yet.","Все още няма точки.")}</p>}
+    {data.players.length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Alliance","Алианс")}</th><th>{t("Points","Точки")}</th><th>{t("Status","Статус")}</th></tr></thead><tbody>{data.players.slice(0,20).map(row=><tr key={row.userId}><td>{row.rank}</td><td>{row.username}</td><td>{row.alliance}</td><td>{Number(row.score||0).toLocaleString(locale)}</td><td>{row.eliminated?t("Eliminated","Елиминиран"):row.runStatus==="active"?t("Active","Активен"):t("Survived","Оцеля")}</td></tr>)}</tbody></table></div>:<p>{t("No scores yet.","Все още няма точки.")}</p>}
     <p>{t("Top three alliances receive resources for each participating member:","Първите три алианса получават ресурси за всеки участвал член:")} 1) 50,000 · 2) 30,000 · 3) 15,000 {t("of each resource.","от всеки ресурс.")}</p>
     </section>
     {motherShip&&<div style={{border:"1px solid #789",borderRadius:8,padding:10,marginBottom:12}}>
       <h2>{t("Attack the Alien Command Ship","Атакувай Командния кораб на извънземните")}</h2>
       <p>{motherShip.active?t("Event is active","Събитието е активно"):motherShip.settled?t("Results are final","Класирането е окончателно"):t("Scheduled weekly event","Седмично събитие")}: {date(motherShip.startsAt)} – {date(motherShip.endsAt)}</p>
-      <p>{t("The flight takes 30 seconds. After the battle, your full army and Cyber Knight return immediately, ready to attack again. Each attack has a damage total in Reports.","Полетът трае 30 секунди. След битката цялата армия и Киберрицарят се връщат веднага и са готови за нова атака. Нанесените щети от всяка атака се виждат в „Доклади“.")}</p>
-      <p>{t("Attacks remaining","Оставащи атаки")}: {motherShip.attacksRemaining} · {t("Alien Command Ship health","Живот на командния кораб на извънземните")}: {Number(motherShip.hp||0).toLocaleString()}</p>
-      {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString()}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
+      <p>{t("The flight takes 30 seconds. After the battle, your full army and Cyber Knight return immediately, ready to attack again. Each attack has a damage total in Reports.","Полетът трае 30 секунди. След битката цялата армия и Cyber Knight се връщат веднага и са готови за нова атака. Нанесените щети от всяка атака се виждат в „Доклади“.")}</p>
+      <p>{t("Attacks remaining","Оставащи атаки")}: {motherShip.attacksRemaining} · {t("Alien Command Ship health","Живот на командния кораб на извънземните")}: {Number(motherShip.hp||0).toLocaleString(locale)}</p>
+      {motherShip.rankings?.length>0&&<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Damage","Щети")}</th><th>{t("Attacks","Атаки")}</th></tr></thead><tbody>{motherShip.rankings.slice(0,10).map((row,index)=><tr key={row.user_id}><td>{index+1}</td><td>{row.username}</td><td>{Number(row.damage||0).toLocaleString(locale)}</td><td>{row.attacks}</td></tr>)}</tbody></table></div>}
       <button type="button" onClick={()=>navigate("/map?campaign=1")}>{t("Open campaigns","Отвори кампаниите")}</button>
     </div>}
     <div style={{marginTop:18,padding:20,border:"1px solid #6576b3",borderRadius:14,background:"linear-gradient(120deg,#111729,#39243c)",textAlign:"center"}}>
@@ -446,7 +447,7 @@ function EventsPanel({onOpenInventory}) {
           <div>
             <div style={{fontSize:75,textShadow:"0 0 25px #f59e45",animation:"labyrinthPortalPulse 2s ease-in-out infinite alternate"}}>🚪</div>
             <h2 style={{fontSize:"clamp(24px,4vw,42px)",color:"#ffe5b5"}}>{t("The entrance to the underground chamber","Вход към подземната зала")} {labyrinth.stage}-{labyrinth.chamber}</h2>
-            <p>{t("Behind the gate awaits","Зад портата те очаква")} <strong>{labyrinth.monster?.name}</strong>. {t("Enter to face it.","Влез, за да се изправиш срещу него.")}</p>
+            <p>{t("Behind the gate awaits","Зад портата те очаква")} <strong>{label(labyrinth.monster?.name)}</strong>. {t("Enter to face it.","Влез, за да се изправиш срещу него.")}</p>
             <button type="button" onClick={()=>setLabyrinthInside(true)} style={{background:"linear-gradient(90deg,#a94a18,#e29c39)",color:"white",padding:"17px 36px",borderRadius:10,fontWeight:900,fontSize:20}}>{t("OPEN GATE AND ENTER","ОТВОРИ ПОРТАТА И ВЛЕЗ")}</button>
           </div>
           <style>{`@keyframes labyrinthPortalPulse{from{transform:scale(.94);filter:brightness(.7)}to{transform:scale(1.06);filter:brightness(1.4)}}`}</style>
@@ -461,14 +462,14 @@ function EventsPanel({onOpenInventory}) {
             <div style={{textAlign:"center"}}>
               <strong>Cyber Knight</strong>
               <div style={{background:"#162136",border:"1px solid #3bb3e6",borderRadius:8,overflow:"hidden",margin:"8px auto",maxWidth:320,height:20}}><div style={{width:Math.max(0,100*(labyrinthBattle?.knightHp??labyrinth.knight?.maxHp??1)/(labyrinthBattle?.knight?.maxHp||labyrinth.knight?.maxHp||1))+"%",height:"100%",background:"linear-gradient(90deg,#15934b,#53ef91)",transition:"width .5s"}}/></div>
-              <div>{Number(labyrinthBattle?.knightHp??labyrinth.knight?.maxHp??0).toLocaleString()} / {Number(labyrinthBattle?.knight?.maxHp||labyrinth.knight?.maxHp||0).toLocaleString()} HP</div>
-              <img src={labyrinthKnightArt} alt="Cyber Knight in plasma armor with blaster" style={{width:"min(100%,320px)",height:300,objectFit:"contain",objectPosition:"center",borderRadius:12,maskImage:"linear-gradient(to bottom,#000 70%,transparent 100%)",filter:"drop-shadow(0 0 18px #13b5fc)",animation:labyrinthImpact?"labyrinthHeroStrike .65s ease-out":"none"}} key={"knight"+labyrinthImpact}/>
+              <div>{Number(labyrinthBattle?.knightHp??labyrinth.knight?.maxHp??0).toLocaleString(locale)} / {Number(labyrinthBattle?.knight?.maxHp||labyrinth.knight?.maxHp||0).toLocaleString(locale)} HP</div>
+              <img src={labyrinthKnightArt} alt={t("Cyber Knight in plasma armor with blaster","Cyber Knight с плазмена броня и бластер")} style={{width:"min(100%,320px)",height:300,objectFit:"contain",objectPosition:"center",borderRadius:12,maskImage:"linear-gradient(to bottom,#000 70%,transparent 100%)",filter:"drop-shadow(0 0 18px #13b5fc)",animation:labyrinthImpact?"labyrinthHeroStrike .65s ease-out":"none"}} key={"knight"+labyrinthImpact}/>
             </div>
             <div style={{textAlign:"center"}}>
-              <strong>{labyrinthBattle?.monster?.name||labyrinth.monster?.name}</strong>
+              <strong>{label(labyrinthBattle?.monster?.name||labyrinth.monster?.name)}</strong>
               <div style={{background:"#261322",border:"1px solid #e45c78",borderRadius:8,overflow:"hidden",margin:"8px auto",maxWidth:320,height:20}}><div style={{width:Math.max(0,100*(labyrinthBattle?.monsterHp??labyrinth.monster?.hp??1)/(labyrinthBattle?.monsterMaxHp||labyrinth.monster?.hp||1))+"%",height:"100%",background:"linear-gradient(90deg,#b3203e,#ff6c61)",transition:"width .5s"}}/></div>
-              <div>{Number(labyrinthBattle?.monsterHp??labyrinth.monster?.hp??0).toLocaleString()} / {Number(labyrinthBattle?.monsterMaxHp||labyrinth.monster?.hp||0).toLocaleString()} HP</div>
-              <img src={labyrinthPortrait} onError={event=>{const img=event.currentTarget;if(!img.dataset.labyrinthFallback){img.dataset.labyrinthFallback="1";img.src="/labyrinth-monsters/floor-01.webp";}else{img.onerror=null;img.src=labyrinthMonsterArt;}}} alt={labyrinth.monster?.name||"Alien monster"} style={{width:"min(100%,290px)",height:280,objectFit:"contain",filter:"drop-shadow(0 0 25px #fa4769)",animation:labyrinthImpact?"labyrinthMonsterHit .65s ease-out":"none"}} key={"monster"+labyrinth.stage+"-"+labyrinth.chamber+"-"+labyrinthImpact}/>
+              <div>{Number(labyrinthBattle?.monsterHp??labyrinth.monster?.hp??0).toLocaleString(locale)} / {Number(labyrinthBattle?.monsterMaxHp||labyrinth.monster?.hp||0).toLocaleString(locale)} HP</div>
+              <img src={labyrinthPortrait} onError={event=>{const img=event.currentTarget;if(!img.dataset.labyrinthFallback){img.dataset.labyrinthFallback="1";img.src="/labyrinth-monsters/floor-01.webp";}else{img.onerror=null;img.src=labyrinthMonsterArt;}}} alt={label(labyrinth.monster?.name)||t("Alien monster","Извънземно чудовище")} style={{width:"min(100%,290px)",height:280,objectFit:"contain",filter:"drop-shadow(0 0 25px #fa4769)",animation:labyrinthImpact?"labyrinthMonsterHit .65s ease-out":"none"}} key={"monster"+labyrinth.stage+"-"+labyrinth.chamber+"-"+labyrinthImpact}/>
             </div>
           </div>
           <style>{`@keyframes labyrinthBolt{0%{left:0;opacity:0;transform:scale(.5)}15%{opacity:1}85%{opacity:1}100%{left:95%;opacity:0;transform:scale(1.6)}}@keyframes labyrinthCounter{0%{right:0;opacity:0;transform:scale(.5)}15%{opacity:1}85%{opacity:1}100%{right:95%;opacity:0;transform:scale(1.6)}}@keyframes labyrinthHeroStrike{0%{transform:translateX(0)}35%{transform:translateX(25px) scale(1.05)}100%{transform:translateX(0)}}@keyframes labyrinthMonsterHit{0%{transform:translateX(0);filter:brightness(1)}40%{transform:translateX(12px);filter:brightness(2.5)}70%{transform:translateX(-12px)}100%{transform:translateX(0);filter:brightness(1)}}`}</style>
@@ -493,24 +494,24 @@ function EventsPanel({onOpenInventory}) {
           </div>}
         </>}
         <p>💚 {labyrinth.dailyRewardClaimed?t("Today's green crystal collected.","Днешният зелен кристал е получен."):t("Your first battle today awards a green crystal.","Първата битка за деня носи зелен кристал.")}</p>
-        {labyrinthNotice&&<p role="status" style={{fontWeight:700,color:"#f2d58f"}}>{labyrinthNotice}</p>}
-        {(labyrinth.combatLog||[]).length>0&&<details><summary>{t("Last battle · turn-by-turn report","Последна битка · доклад по рундове")}</summary><div style={{maxHeight:260,overflowY:"auto"}}>{labyrinth.combatLog.map((entry,i)=><p key={i} style={{margin:"4px 0",fontSize:12}}>{entry.turn}. {entry.actor==="knight"?"Cyber Knight":"Monster"}: −{entry.damage} · 🛡️ {entry.knightHp} HP · 👾 {entry.monsterHp} HP</p>)}</div></details>}
+        {labyrinthNotice&&<p role="status" style={{fontWeight:700,color:"#f2d58f"}}>{label(labyrinthNotice)}</p>}
+        {(labyrinth.combatLog||[]).length>0&&<details><summary>{t("Last battle · turn-by-turn report","Последна битка · доклад по рундове")}</summary><div style={{maxHeight:260,overflowY:"auto"}}>{labyrinth.combatLog.map((entry,i)=><p key={i} style={{margin:"4px 0",fontSize:12}}>{entry.turn}. {entry.actor==="knight"?"Cyber Knight":t("Monster","Чудовище")}: −{entry.damage} · 🛡️ {entry.knightHp} HP · 👾 {entry.monsterHp} HP</p>)}</div></details>}
       </>}
         </>}
 
       <h3>{t("Individual Labyrinth standings","Индивидуално класиране в Лабиринта")}</h3>
       <p style={{color:"#cfbde9",marginTop:0}}>{t("Solo event: every Cyber Knight competes independently. Rankings are based on the highest room reached, then permanent HP. Alliance points are not counted.","Индивидуално събитие: всеки Cyber Knight се състезава самостоятелно. Класирането е по най-висока достигната стая, след това по постоянен HP. Алианс точки не се събират.")}</p>
-      {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Room","Стая")}</th><th>{t("Permanent HP","Постоянен HP")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{Math.min(30,Math.ceil(row.combat_room/10))}-{(row.combat_room-1)%10+1}</td><td>+{row.combat_hp_bonus}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights yet.","Все още няма Киберрицари.")}</p>}
+      {(labyrinth?.rankings||[]).length?<div style={{overflowX:"auto"}}><table><thead><tr><th>#</th><th>{t("Player","Играч")}</th><th>{t("Room","Стая")}</th><th>{t("Permanent HP","Постоянен HP")}</th></tr></thead><tbody>{labyrinth.rankings.slice(0,20).map(row=><tr key={row.user_id}><td>{row.rank}</td><td>{row.username}</td><td>{Math.min(30,Math.ceil(row.combat_room/10))}-{(row.combat_room-1)%10+1}</td><td>+{row.combat_hp_bonus}</td></tr>)}</tbody></table></div>:<p>{t("No Cyber Knights yet.","Все още няма Cyber Knight.")}</p>}
     </section>
 
       </div>
     </div>,document.body)}
-    {notice&&<p role="status">{notice}</p>}
+    {notice&&<p role="status">{label(notice)}</p>}
   </div>;
 }
 
 function Game() {
-  const {language, choose, t, label: localLabel} = useLanguage();
+  const {locale,language, choose, t, label: localLabel} = useLanguage();
   const navigate=useNavigate();
   const [showUpgradeCenter, setShowUpgradeCenter] = useState(false);
   const [showBattleSimulator,setShowBattleSimulator]=useState(false);
@@ -923,7 +924,7 @@ function Game() {
         onHeadquarters={()=>{setQuestTarget(null);setShowPopup(true);}} />
 
       <div className="bottom-bar">
-        <button onClick={() => setShowCyberKnight(true)}>{t("Cyber Knight","Киберрицар")}</button>
+        <button onClick={() => setShowCyberKnight(true)}>{t("Cyber Knight","Cyber Knight")}</button>
         <button onClick={()=>setShowTalents(true)}>{t("Commander Protocols","Протоколи на командира")}</button>
         <button className={sideQuestUnread?"messages-nav-button messages-unread":""} onClick={()=>{
           if(sideQuestUnread)acknowledgeSideRewards([sideReward]);
@@ -987,7 +988,7 @@ function Game() {
                 <span>{t(avatar.role,avatar.roleBg)}</span>
               </button>)}
             </div>
-            {avatarNotice&&<p role="status">{avatarNotice}</p>}
+            {avatarNotice&&<p role="status">{localLabel(avatarNotice)}</p>}
           </section>}
         </div>
       )}
@@ -1055,7 +1056,7 @@ function Game() {
           <div style={{display:"flex",gap:18,flexWrap:"wrap"}}>
             <span>{t("Alliance","Алианс")}: {playerMenu.alliance||"—"}</span>
             {Number.isFinite(Number(playerMenu.rank))&&<span>{t("Rank","Място")}: {Number(playerMenu.rank)}</span>}
-            {Number.isFinite(Number(playerMenu.points))&&<span>{t("XP","Опит")}: {Number(playerMenu.points).toLocaleString()}</span>}
+            {Number.isFinite(Number(playerMenu.points))&&<span>{t("XP","Опит")}: {Number(playerMenu.points).toLocaleString(locale)}</span>}
           </div>
           <div style={{display:"flex",flexWrap:"wrap",gap:8}}>
           <button onClick={showPlayerBase}>{t("View Base","Виж базата")}</button>
@@ -1070,7 +1071,7 @@ function Game() {
             <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(120px,1fr))",gap:8}}>
               {["Gold","Iron","Water","Solar"].map(key=><label key={key}>{t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])}<input type="number" min="0" max="50000" step="1" value={giftAmounts[key]} onChange={e=>setGiftAmounts(old=>({...old,[key]:e.target.value}))} style={{display:"block",width:"100%",boxSizing:"border-box"}}/></label>)}
             </div>
-            <p>{t("Total","Общо")}: {Object.values(giftAmounts).reduce((sum,v)=>sum+(Number(v)||0),0).toLocaleString()} / 50 000</p>
+            <p>{t("Total","Общо")}: {Object.values(giftAmounts).reduce((sum,v)=>sum+(Number(v)||0),0).toLocaleString(locale)} / 50 000</p>
             <button type="button" disabled={giftBusy} onClick={async()=>{
               const amounts=Object.fromEntries(Object.entries(giftAmounts).map(([key,value])=>[key,value===""?0:Number(value)]));
               const total=Object.values(amounts).reduce((sum,value)=>sum+value,0);
@@ -1079,7 +1080,7 @@ function Game() {
               try{
                 const response=await fetch(api+"/players/send-resources",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:Number(sessionStorage.getItem("userId")),recipientId:Number(playerMenu.id),resources:amounts})});
                 const result=await response.json();if(!response.ok)throw Error(result.message||"Transfer failed.");
-                setPlayerNotice(t("Resources sent! Daily remaining: ","Ресурсите са изпратени! Оставащ дневен лимит: ")+Number(result.dailyRemaining).toLocaleString());
+                setPlayerNotice(t("Resources sent! Daily remaining: ","Ресурсите са изпратени! Оставащ дневен лимит: ")+Number(result.dailyRemaining).toLocaleString(locale));
                 setGiftOpen(false);setGiftAmounts({Gold:"",Iron:"",Water:"",Solar:""});
                 window.dispatchEvent(new Event("game-progress-updated"));
               }catch(error){setPlayerNotice(error.message);}finally{setGiftBusy(false);}
@@ -1099,7 +1100,7 @@ function Game() {
       </div>}
       {!showIncomingAlert&&!eventNotification&&toastNotifications.length>0&&<div className="message-notification-alert">
         <span aria-hidden="true">✉️</span>
-        <span role="status">{toastNotifications[0].kind==="espionage_report"?t("Your espionage report is ready.","Докладът ти от шпионаж е готов."):toastNotifications[0].kind==="side_quest_unlocked"?t("A new side quest is available.","Отключена е нова странична мисия."):toastNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):toastNotifications[0].kind==="alliance_mine_started"?t("Your alliance placed a mine. Send an army to help construct it.","Алиансът ти постави мина. Изпрати армия, за да помогнеш със строежа."):toastNotifications[0].kind==="alliance_mine_completed"?t("Alliance mine construction is complete. Gathering is open.","Алиансната мина е построена. Можеш да започнеш добив."):toastNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):toastNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(toastNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{toastNotifications[0].kind==="gathering_return"&&toastNotifications[0].allianceName&&" · "+toastNotifications[0].allianceName}</span>
+        <span role="status">{toastNotifications[0].kind==="espionage_report"?t("Your espionage report is ready.","Докладът ти от шпионаж е готов."):toastNotifications[0].kind==="side_quest_unlocked"?t("A new side quest is available.","Отключена е нова странична мисия."):toastNotifications[0].kind==="gathering_return"?t("Your army and resources returned from gathering.","Армията и ресурсите ти се върнаха от добива."):toastNotifications[0].kind==="alliance_mine_started"?t("Your alliance placed a mine. Send an army to help construct it.","Алиансът ти постави мина. Изпрати армия, за да помогнеш със строежа."):toastNotifications[0].kind==="alliance_mine_completed"?t("Alliance mine construction is complete. Gathering is open.","Алиансната мина е построена. Можеш да започнеш добив."):toastNotifications[0].kind==="trade_message"?t("Market trade completed. Check Trade messages.","Сделката на пазара е завършена. Провери съобщенията в Търговия."):toastNotifications[0].kind==="game_message"?t("New system message is available.","Имаш ново системно съобщение."):(toastNotifications[0].allianceName?t("New message from your alliance leadership.","Ново съобщение от ръководството на алианса."):t("You have a new player message.","Имаш ново лично съобщение."))}{toastNotifications[0].kind==="gathering_return"&&toastNotifications[0].allianceName&&" · "+toastNotifications[0].allianceName.replace(/^(Gold|Iron|Water|Solar)(?= · )/,localLabel)}</span>
         <button type="button" onClick={()=>openBlueNotification(toastNotifications[0])}>{toastNotifications[0].kind==="espionage_report"?t("View report","Виж доклада"):toastNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):toastNotifications[0].kind==="side_quest_unlocked"?t("View quests","Виж мисиите"):toastNotifications[0].kind.startsWith("alliance_mine_")?t("View alliance","Виж алианса"):t("View messages","Виж съобщенията")}</button>
         <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>dismissNotification(activeNoticeId)}>×</button>
       </div>}

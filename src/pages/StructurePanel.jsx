@@ -27,7 +27,7 @@ const unitCategories = {
 };
 
 function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator, onProgressChange, questTarget }) {
-  const { t , label: localLabel} = useLanguage();
+  const {locale, t , label: localLabel} = useLanguage();
   const questDestination = useRef(null);
   const focusedQuest = useRef(null);
   const pendingMobilizations = useRef(new Map());
@@ -191,7 +191,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
       {!questTarget && <p style={{textAlign:"center",opacity:.8}}>{t("Build your resource facilities first. Upgrade all four to level 3.","Първо построй ресурсните съоръжения. Надстрой и четирите до ниво 3.")}</p>}
       <p style={{textAlign:"center"}}>
         {t("Production per hour:","Производство на час:")} {["Gold", "Iron", "Water", "Solar"].map(resource =>
-          `${localLabel(resource)} ${(game.productionPerHour?.[resource] ?? 0).toLocaleString("en-US", {maximumFractionDigits: 1})}`
+          `${localLabel(resource)} ${(game.productionPerHour?.[resource] ?? 0).toLocaleString(locale, {maximumFractionDigits: 1})}`
         ).join(" · ")}
       </p>
       <p>{t("Construction:","Строеж:")} {game.buildingJob ? localLabel(game.buildingJob.name) + t(" (level "," (ниво ") + game.buildingJob.level + ", " + formatTime(remaining(game.buildingJob)) + ")" : t("Idle","Няма")} {t("· Queue:","· Опашка:")} {(game.buildingQueue|| (game.queuedBuildingJob?[game.queuedBuildingJob]:[])).length}/2</p>{(game.buildingQueue|| (game.queuedBuildingJob?[game.queuedBuildingJob]:[])).map((job,index)=><p key={"building-queue-"+index} style={{margin:"4px 0 4px 18px"}}>{index+2}. {localLabel(job.name)}{t(" (level "," (ниво ")}{job.level})</p>)}
@@ -276,7 +276,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                 {game.queuedBuildingJob?.name === name && <div>{t("Queued: Level","На опашката: ниво")} {game.queuedBuildingJob.level}</div>}
                 {cost && <p style={{fontSize:13,opacity:.85,margin:"8px 0"}}>{t("Next:","Следващо:")} {cost.Gold} {t("Gold ·","злато ·")} {cost.Iron} {t("Iron ·","желязо ·")} {cost.Water} {t("Water ·","вода ·")} {cost.Solar} {t("Solar","слънчева енергия")}</p>}
                 <button className="upgrade-btn" disabled={!!busy || queueFull || !affordable || !meetsRequirements} onClick={() => upgrade(name)}>
-                  {busy === name ? "Starting..." : queueFull ? localLabel("Queue full") : next > maxLevel ? localLabel("Max level") : !cost ? t("Level unavailable","Нивото още не е достъпно") : !meetsRequirements ? t("Building requirements are not met","Изискванията за строеж не са изпълнени") : game.buildingJob ? queuedBuildings.length ? t("Queue as third","Добави трети строеж") : localLabel("Queue as second") : !affordable ? localLabel("Not enough resources") : level === 0 ? localLabel("Build") : localLabel("Upgrade")}
+                  {busy === name ? t("Starting...","Започва…") : queueFull ? localLabel("Queue full") : next > maxLevel ? localLabel("Max level") : !cost ? t("Level unavailable","Нивото още не е достъпно") : !meetsRequirements ? t("Building requirements are not met","Изискванията за строеж не са изпълнени") : game.buildingJob ? queuedBuildings.length ? t("Queue as third","Добави трети строеж") : localLabel("Queue as second") : !affordable ? localLabel("Not enough resources") : level === 0 ? localLabel("Build") : localLabel("Upgrade")}
                 </button>
               </div>;
             })}
@@ -308,7 +308,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
       <section style={{padding:10,border:"1px solid #587c91",borderRadius:8,marginBottom:12}}>
         <strong>{unitTab} {t("training groups:","групи за обучение:")} {(game.trainingQueues?.[unitTab]||[]).length}/5</strong>
         {(game.trainingQueues?.[unitTab]||[]).map((job,index)=><div key={index}>
-          {index+1}. {job.quantity} × {localLabel(job.unit)} — {index===0?localLabel("Training"):localLabel("Queued")} · {index===0?formatTime(remaining(job)):"Starts "+new Date(job.startsAt).toLocaleTimeString()}
+          {index+1}. {job.quantity} × {localLabel(job.unit)} — {index===0?localLabel("Training"):localLabel("Queued")} · {index===0?formatTime(remaining(job)):t("Starts ","Започва в ")+new Date(job.startsAt).toLocaleTimeString(locale)}
           <button type="button" disabled={!!busy} style={{marginLeft:8}} onClick={()=>{
             if(window.confirm(t("Cancel this training group? 90% will be refunded. The remaining 10% goes to your alliance if you have one, otherwise it is lost.","Отказ от обучението? 90% се връщат. Останалите 10% отиват в алианса, ако имате такъв, иначе се губят.")))
               act("/cancel-training-group",{category:unitTab,index},`cancel-training-${unitTab}-${index}`);
@@ -332,7 +332,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
               <div aria-hidden="true" style={{fontSize:36,filter:unlocked?"none":"grayscale(1)",marginBottom:4}}>{unitTab==="Ground"?"🪖":unitTab==="Ranged"?"🎯":unitTab==="Mobile"?"🚙":unitTab==="Heavy Systems"?"🤖":"⚔️"}</div>
               <h4>{localLabel(unit)}{unit==="Rover Scout"&&<span style={{display:"inline-block",marginLeft:8,padding:"3px 8px",borderRadius:6,background:"#205c78",color:"#fff",fontSize:12}}>🔎 {t("Espionage unit","Разузнавач · за шпионаж")}</span>}</h4>
               <p style={{margin:"6px 0",fontWeight:700,color:"#aee8ff"}}>👥 {t("Population per unit:","Популация за 1 войник:")} {Number(profileFor(unit)?.population??1)}</p>
-              {qty>0&&<p style={{margin:"4px 0",color:"#c8d8e5"}}>{t("Population for selected quantity:","Популация за избраното количество:")} {(qty*Number(profileFor(unit)?.population??1)).toLocaleString()}</p>}
+              {qty>0&&<p style={{margin:"4px 0",color:"#c8d8e5"}}>{t("Population for selected quantity:","Популация за избраното количество:")} {(qty*Number(profileFor(unit)?.population??1)).toLocaleString(locale)}</p>}
               {eliteStats && <>
                 <p>{t("Attack against all targets","Атака срещу всички цели")}: {eliteStats.attack.infantry} · {t("Health","Живот")}: {eliteStats.health}</p>
                 <p>{t("Recommended formation position: row 4, out of wall range. You can choose any row.","Препоръчителна позиция във формацията: 4-ти ред, извън обсега на стената. Можеш да избереш всеки ред.")}</p>
@@ -351,13 +351,13 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
               {(game.trainingQueues?.[unitTab]||[]).filter(job=>job.unit===unit).length>0 && <p>{t("Groups queued:","Групи на опашката:")} {(game.trainingQueues?.[unitTab]||[]).filter(job=>job.unit===unit).length}</p>}
               <p>{t("Owned:","Налични:")} {Number(game.army?.[unit] || 0)}</p>
               <div className="resource-row">
-                <div className="resource-cost"><img src={goldIcon} alt="Gold" /><span>{price.Gold}</span></div>
-                <div className="resource-cost"><img src={ironIcon} alt="Iron" /><span>{price.Iron}</span></div>
-                <div className="resource-cost"><img src={waterIcon} alt="Water" /><span>{price.Water}</span></div>
-                <div className="resource-cost"><img src={solarIcon} alt="Solar" /><span>{price.Solar}</span></div>
+                <div className="resource-cost"><img src={goldIcon} alt={localLabel("Gold")} /><span>{price.Gold}</span></div>
+                <div className="resource-cost"><img src={ironIcon} alt={localLabel("Iron")} /><span>{price.Iron}</span></div>
+                <div className="resource-cost"><img src={waterIcon} alt={localLabel("Water")} /><span>{price.Water}</span></div>
+                <div className="resource-cost"><img src={solarIcon} alt={localLabel("Solar")} /><span>{price.Solar}</span></div>
               </div>
               <button style={{ marginTop: 10 }} disabled={!unlocked || !qty || qty > calculateMaxTrainable(unit) || !!busy || (game.trainingQueues?.[unitTab]||[]).length>=5} onClick={() => act("/train-units", {unit, quantity:qty}, unit)}>
-                {!unlocked ? localLabel("Locked") : (game.trainingQueues?.[unitTab]||[]).length>=5 ? "Category queue full" : "Train"}
+                {!unlocked ? localLabel("Locked") : (game.trainingQueues?.[unitTab]||[]).length>=5 ? t("Category queue full","Опашката е пълна") : t("Train","Обучи")}
               </button>
             </div>
           );
@@ -447,7 +447,7 @@ function StructurePanel({ upgradesOnly = false, onOpenUpgrades, onOpenSimulator,
                   <p>{stat==="attack"?localLabel("Attack"):localLabel("Health / Defense")} {t("Level:","Ниво:")} {displayedUpgradeLevel(unit, level)}
                     {eliteStats && <> · {stat === "attack" ? eliteStats.attack.infantry : eliteStats.health}</>}
                   </p>
-                  {level<maxLevel&&<p>{t("Next level","Следващо ниво")} {displayedUpgradeLevel(unit, level+1)}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>}
+                  {level<maxLevel&&<p>{t("Next level","Следващо ниво")} {displayedUpgradeLevel(unit, level+1)}: {Object.entries(cost).map(([resource,amount])=>`${amount.toLocaleString(locale)} ${localLabel(resource)}`).join(" + ")} · {formatTime(Math.ceil(duration/1000))}</p>}
                   {level<maxLevel&&bonus&&<p>{t("Bonus over base stats", "Бонус спрямо базовите показатели")}: {bonus}</p>}
                   <button disabled={!!busy || level>=maxLevel || !affordable || !!game.upgradeJobs?.[upgradeSlot] || (game.upgradeJobs||[]).some(j=>j?.unit===unit&&j?.stat===stat)}
                     onClick={()=>act("/upgrade-unit",{unit,stat,slot:upgradeSlot},unit+" "+stat)}>

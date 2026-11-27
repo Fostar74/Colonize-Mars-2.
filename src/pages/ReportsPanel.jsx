@@ -11,8 +11,8 @@ const diff=(initial,remaining)=>Object.fromEntries(Object.entries(initial||{}).m
 
 
 export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
-  const {t,label:localLabel}=useLanguage();
-  const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>localLabel(unit)+": "+Number(count).toLocaleString()).join(", ")||"0";
+  const {locale,t,label:localLabel}=useLanguage();
+  const list=units=>Object.entries(units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>localLabel(unit)+": "+Number(count).toLocaleString(locale)).join(", ")||"0";
   const navigate=useNavigate();
   const coordinateLink=(x,y)=>Number.isInteger(Number(x))&&Number.isInteger(Number(y))&&Number(x)>=1&&Number(x)<=100&&Number(y)>=1&&Number(y)<=100?<button type="button" title={t("Show on map","Покажи на картата")} onClick={()=>{sessionStorage.setItem("mapReportTarget",JSON.stringify({x:Number(x),y:Number(y)}));onClose?.();navigate("/map");}} style={{border:0,background:"transparent",color:"#78d7ff",textDecoration:"underline",cursor:"pointer",font:"inherit",padding:0}}>{x}:{y}</button>:<span>{x??"?"}:{y??"?"}</span>;
   const userId=sessionStorage.getItem("userId");
@@ -54,7 +54,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
           setShareNotice(t("Report shared successfully.","Докладът е споделен успешно."));
         }catch(error){setShareNotice(error.message);}finally{setShareBusy(false);}
       }}>{shareBusy?t("Sharing...","Изпращане..."):t("Share","Сподели")}</button>
-      {shareNotice&&<p role="status">{shareNotice}</p>}
+      {shareNotice&&<p role="status">{localLabel(shareNotice)}</p>}
     </div>}
   </div>;
 
@@ -93,9 +93,9 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
   const previousGathering=gathering.filter(report=>!newGathering.includes(report));
   const army=(title,units)=> <div><strong>{title}:</strong> {units===null?t("Not recorded","Не е записано"):list(units)}</div>;
   const lootSummary=result=>["Gold","Iron","Water","Solar"].map(key=>
-    t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(result.loot[key]||0).toLocaleString()
-  ).join(" · ")+" · "+t("Total","Общо")+": "+Number(result.totalLoot||0).toLocaleString()
-    +" · "+t("Cargo capacity","Товароносимост")+": "+Number(result.cargoCapacity||0).toLocaleString();
+    t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(result.loot[key]||0).toLocaleString(locale)
+  ).join(" · ")+" · "+t("Total","Общо")+": "+Number(result.totalLoot||0).toLocaleString(locale)
+    +" · "+t("Cargo capacity","Товароносимост")+": "+Number(result.cargoCapacity||0).toLocaleString(locale);
   const orangeEmpireReports=data?.orangeEmpireReports||[];
   const playerReport=m=>{
     const ownInitial=m.incoming?(m.result.defenderInitial||{}):(m.units||{});
@@ -112,7 +112,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     return <article key={"player-"+m.id} style={card}>
       <h3>{title} · {coordinateLink(m.target?.x,m.target?.y)}</h3>
       <p>{outcome}{!m.result.recalled&&" · "+t("Rounds","Рундове")+": "+(m.result.rounds??"—")}</p>
-      {!m.incoming&&m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
+      {!m.incoming&&m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Cyber Knight ниво")} {m.cyberKnightLevel}</p>}
       {m.result.loot&&!m.result.recalled&&<p><strong>{m.incoming?t("Resources plundered","Отнети ресурси"):t("Loot","Плячка")}:</strong> {lootSummary(m.result)}</p>}
       {army(t("Your starting army","Твоята начална армия"),ownInitialRecorded?ownInitial:null)}
       {army(t("Your losses","Твоите загуби"),diff(ownInitial,ownRemaining))}
@@ -120,7 +120,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       {m.incoming&&Object.keys(enemyInitial||{}).length>0&&<details><summary>{t("Attacking force","Нападателна армия")}</summary>{army(t("Starting army","Начална армия"),enemyInitial)}{army(t("Losses","Загуби"),diff(enemyInitial,enemyRemaining))}{army(t("Survivors","Оцелели"),enemyRemaining)}</details>}
       {m.result.recalled&&<p>{t("No battle took place; the attacking army returned unchanged.","Битка не е имало; нападателната армия се е върнала непокътната.")}</p>}
       {!m.incoming&&!m.result.recalled&&m.result.defenderSurvivors&&army(t("Enemy surviving defenders","Оцелели защитници на противника"),m.result.defenderSurvivors)}
-      {m.result.error&&<p>{m.result.error}</p>}
+      {m.result.error&&<p>{localLabel(m.result.error)}</p>}
       {shareControls("player",m.id)}}
     </article>;
   };
@@ -134,13 +134,13 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       if(effect.kind==="enemyUnitHealth")return t("Enemy health of","Живот на противниковия")+" "+target+": −"+value+"%";
       if(effect.kind==="protocolBoost")return t("Combat protocol","Боен протокол")+" "+target+": +"+value+"%";
       if(effect.kind==="enemyProtocol")return t("Opponent combat protocol","Противников боен протокол")+" "+target+": −"+value+"%";
-      return effect.target+": "+value+"%";
+      return localLabel(effect.target)+": "+value+"%";
     };
     const reward=m.result.reward;
     const secondary=reward&&typeof reward==="object"&&!reward.item
       ?reward.type==="crafting"?t("Forge points","Точки за изковаване")+": "+reward.amount
-      :reward.type==="resources"?t("Resources deposited in Inventory","Ресурси, добавени в Инвентара")+": "+["Gold","Iron","Water","Solar"].map(key=>t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(reward.resources?.[key]??reward.amount??0).toLocaleString()).join(" · ")+" · "+t("Total","Общо")+": "+["Gold","Iron","Water","Solar"].reduce((sum,key)=>sum+Number(reward.resources?.[key]??reward.amount??0),0).toLocaleString()
-      :reward.type==="army"?t("Troops","Войници")+": "+Number(reward.amount||0).toLocaleString()+" "+localLabel(reward.unit)
+      :reward.type==="resources"?t("Resources deposited in Inventory","Ресурси, добавени в Инвентара")+": "+["Gold","Iron","Water","Solar"].map(key=>t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(reward.resources?.[key]??reward.amount??0).toLocaleString(locale)).join(" · ")+" · "+t("Total","Общо")+": "+["Gold","Iron","Water","Solar"].reduce((sum,key)=>sum+Number(reward.resources?.[key]??reward.amount??0),0).toLocaleString(locale)
+      :reward.type==="army"?t("Troops","Войници")+": "+Number(reward.amount||0).toLocaleString(locale)+" "+localLabel(reward.unit)
       :""
       :"";
     const gearNames={
@@ -151,25 +151,25 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     return <article key={"alien-"+m.id} style={card}>
     <h3>{t("Attacks against aliens","Атаки срещу извънземни")}</h3>
     <p>{t("Mission #","Мисия №")}{m.id} · {t("Alien Base level","Извънземна база ниво")} {m.level} · {m.result.victory?t("Victory","ПОБЕДА"):t("Defeat","ПОРАЖЕНИЕ")}{returnStatus&&" · "+returnStatus}</p>
-    {m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
+    {m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Cyber Knight ниво")} {m.cyberKnightLevel}</p>}
     <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"} · {t("Remaining alien defenders","Оставащи извънземни защитници")}: {m.result.defendersRemaining??0}</p>
-    {equipment&&<><p>🎁 {t("Cyber Knight gear reward","Получена екипировка за Киберрицаря")}: <strong>{gearNames[String(equipment.slot||equipment.type||"").toUpperCase()]||equipment.name}</strong> · {localLabel(equipment.rarity)} · {"★".repeat(Number(equipment.stars)||1)}</p>{(equipment.effects||[]).length>0&&<ul>{equipment.effects.map((effect,index)=><li key={index}>{effectLabel(effect)}</li>)}</ul>}</>}
+    {equipment&&<><p>🎁 {t("Cyber Knight gear reward","Получена екипировка за Cyber Knight")}: <strong>{gearNames[String(equipment.slot||equipment.type||"").toUpperCase()]||localLabel(equipment.name)}</strong> · {localLabel(equipment.rarity)} · {"★".repeat(Number(equipment.stars)||1)}</p>{(equipment.effects||[]).length>0&&<ul>{equipment.effects.map((effect,index)=><li key={index}>{effectLabel(effect)}</li>)}</ul>}</>}
     {secondary&&<p>🎁 {t("Additional reward","Допълнителна награда")}: {secondary}</p>}
-    <p>⭐ <strong>{t("Experience earned (XP)","Получен опит (XP)")}:</strong> {m.result.xpEarned==null?t("Not recorded","Няма запис"):Number(m.result.xpEarned).toLocaleString()}</p>
-    {Number(m.result.greenCrystals)>0&&<p>🎁 💚 {t("Green crystals","Зелени кристали")}: {Number(m.result.greenCrystals).toLocaleString()}</p>}
-    {Number(m.result.redCrystals)>0&&<p>🎁 🔴 {t("Red crystals","Червени кристали")}: {Number(m.result.redCrystals).toLocaleString()}</p>}
+    <p>⭐ <strong>{t("Experience earned (XP)","Получен опит (XP)")}:</strong> {m.result.xpEarned==null?t("Not recorded","Няма запис"):Number(m.result.xpEarned).toLocaleString(locale)}</p>
+    {Number(m.result.greenCrystals)>0&&<p>🎁 💚 {t("Green crystals","Зелени кристали")}: {Number(m.result.greenCrystals).toLocaleString(locale)}</p>}
+    {Number(m.result.redCrystals)>0&&<p>🎁 🔴 {t("Red crystals","Червени кристали")}: {Number(m.result.redCrystals).toLocaleString(locale)}</p>}
     {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {list(m.result.wounded)}</p>}
     {army(t("Starting army","Начална армия"),m.units)}{army(t("Losses","Загуби"),diff(m.units,m.result.survivors||{}))}{army(t("Survivors","Оцелели"),m.result.survivors||{})}
   </article>;
   };
   const mothershipReport=report=><article key={"mothership-"+report.id} style={card}>
     <h3>{t("Attack on the Alien Command Ship","Атака срещу командния кораб на извънземните")} · #{report.id}</h3>
-    <p><strong>{t("Damage dealt","Нанесени щети")}:</strong> {Number(report.damage).toLocaleString()} · {Number(report.xp).toLocaleString()} XP</p>
-    <p>{new Date(report.resolved_at).toLocaleString()} · {t("Cyber Knight level","Ниво на Киберрицаря")} {report.knight_level}</p>
+    <p><strong>{t("Damage dealt","Нанесени щети")}:</strong> {Number(report.damage).toLocaleString(locale)} · {Number(report.xp).toLocaleString(locale)} XP</p>
+    <p>{new Date(report.resolved_at).toLocaleString(locale)} · {t("Cyber Knight level","Ниво на Cyber Knight")} {report.knight_level}</p>
     {army(t("Deployed army","Изпратена армия"),report.army)}
     <details><summary>{t("Formation","Формация")}</summary>
       {[...new Set(report.formation.map(group=>group.row))].sort((a,b)=>a-b).map(row=><div key={row}>
-        {t("Row","Ред")} {row} · {report.formation.filter(group=>group.row===row).map(group=>localLabel(group.unit)+" × "+Number(group.count).toLocaleString()).join(", ")}
+        {t("Row","Ред")} {row} · {report.formation.filter(group=>group.row===row).map(group=>localLabel(group.unit)+" × "+Number(group.count).toLocaleString(locale)).join(", ")}
       </div>)}
     </details>
   </article>;
@@ -178,19 +178,19 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     const title=report.reason==="depleted"?t("Mine depleted · army returned","Мината се изчерпа · армията се прибра"):report.reason==="cargo_full"?t("Cargo full · army returned","Товарът е пълен · армията се прибра"):t("Army recalled from mine","Армията се прибра от мината");
     return <article key={"gathering-"+report.id} style={card}>
       <h3>{title} · {report.source==="alliance"?localLabel("Alliance Mine"):t("Mine","Мина")} #{report.mineId} ({coordinateLink(report.x,report.y)})</h3>
-      <p>{t("Resources collected","Източен ресурс")}: {Number(report.amount||0).toLocaleString()} {resource}</p>
+      <p>{t("Resources collected","Източен ресурс")}: {Number(report.amount||0).toLocaleString(locale)} {resource}</p>
       {army(t("Army returned","Върната армия"),report.units)}
-      <p>{new Date(report.returnedAt).toLocaleString()}</p>
+      <p>{new Date(report.returnedAt).toLocaleString(locale)}</p>
     </article>;
   };
   const espionageReport=m=><article key={"scout-"+m.id} style={card}>
     <h3>🔎 {t("Espionage against","Шпионаж срещу")} {m.target.username} · {coordinateLink(m.target.x,m.target.y)}</h3>
-    <p>{new Date(m.report.scoutedAt||m.arrives_at).toLocaleString()}</p>
-    <p><strong>{t("Player last active","Последна активност на играча")}:</strong> {m.report.lastSeenAt?new Date(m.report.lastSeenAt).toLocaleString():t("Unknown","Неизвестна")}</p>
+    <p>{new Date(m.report.scoutedAt||m.arrives_at).toLocaleString(locale)}</p>
+    <p><strong>{t("Player last active","Последна активност на играча")}:</strong> {m.report.lastSeenAt?new Date(m.report.lastSeenAt).toLocaleString(locale):t("Unknown","Неизвестна")}</p>
     {m.report.abandoned&&<p style={{color:"#c5c5c5",fontWeight:700}}>{t("Abandoned base — inactive for at least 7 days","Необитаема база — неактивна поне 7 дни")}</p>}
-    <p>{t("Sent scouts","Изпратени разузнавачи")}: {m.quantity.toLocaleString()} · {t("Your losses","Твои загуби")}: {Number(m.report.attackerLost||0).toLocaleString()} · {t("Enemy scout losses","Загуби на противниковите разузнавачи")}: {Number(m.report.defenderLost||0).toLocaleString()} · {t("Survivors","Оцелели")}: {Number(m.report.survivors??m.quantity).toLocaleString()}</p>
+    <p>{t("Sent scouts","Изпратени разузнавачи")}: {m.quantity.toLocaleString(locale)} · {t("Your losses","Твои загуби")}: {Number(m.report.attackerLost||0).toLocaleString(locale)} · {t("Enemy scout losses","Загуби на противниковите разузнавачи")}: {Number(m.report.defenderLost||0).toLocaleString(locale)} · {t("Survivors","Оцелели")}: {Number(m.report.survivors??m.quantity).toLocaleString(locale)}</p>
     {m.report.success===false?<p><strong>{t("All your scouts died during espionage. No survivor returned to report.","При шпионажа всичките ви шпиони загинаха и не се завърна оцелял, за да докладва.")}</strong></p>:<>
-      {m.report.resources&&<p><strong>{t("Unprotected resources","Незащитени ресурси")}:</strong> {Object.entries(m.report.resources).map(([name,n])=>localLabel(name)+": "+Number(n).toLocaleString()).join(" · ")}</p>}
+      {m.report.resources&&<p><strong>{t("Unprotected resources","Незащитени ресурси")}:</strong> {Object.entries(m.report.resources).map(([name,n])=>localLabel(name)+": "+Number(n).toLocaleString(locale)).join(" · ")}</p>}
       {m.report.resources&&<p>{t("The first 10,000 units of each resource are protected and excluded from this report.","Първите 10 000 единици от всеки ресурс са защитени и не се показват в доклада.")}</p>}
       {m.report.army&&<p><strong>{t("Defending army","Защитна армия")}:</strong> {list(m.report.army)}</p>}
       {m.report.structures&&<div><strong>{t("Buildings and levels","Сгради и нива")}:</strong><ul>{Object.entries(m.report.structures).map(([name,level])=><li key={name}>{localLabel(name)}: {t("Level","Ниво")} {level}</li>)}</ul></div>}
@@ -200,12 +200,12 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
   const incomingMarch=m=><article key={"march-"+m.id} style={card}>
     <h3>{t("Attack in progress from","Идваща атака от")} {m.attacker_name} · {coordinateLink(m.target?.x,m.target?.y)}</h3>
     <p>{t("The attack is on the way. No battle report exists yet.","Походът е в движение. Все още няма боен доклад.")}</p>
-    <p>{t("Expected arrival","Очаквано пристигане")}: {new Date(m.arrives_at).toLocaleTimeString()}</p>
+    <p>{t("Expected arrival","Очаквано пристигане")}: {new Date(m.arrives_at).toLocaleTimeString(locale)}</p>
   </article>;
   return <div style={overlay} onClick={onClose}><section style={panel} onClick={e=>e.stopPropagation()}>
     <header style={header}><span>{t("REPORTS","ДОКЛАДИ")}</span><button onClick={onClose} style={close}>×</button></header>
     <div style={{padding:20,overflowY:"auto",maxHeight:"calc(90vh - 70px)"}}>
-      {error&&<p role="alert">{error}</p>}{!data&&!error&&<p>{t("Loading reports…","Зареждане на докладите…")}</p>}
+      {error&&<p role="alert">{localLabel(error)}</p>}{!data&&!error&&<p>{t("Loading reports…","Зареждане на докладите…")}</p>}
       {data&&<div style={{display:"flex",gap:8,marginBottom:16}}>
         <button type="button" onClick={()=>setActiveTab("military")} style={{...tabButton,background:activeTab==="military"?"#24629b":"#293443"}}>{t("Military","Военни")}</button>
         <button type="button" onClick={()=>setActiveTab("espionage")} style={{...tabButton,background:activeTab==="espionage"?"#24629b":"#293443"}}>🔎 {t("Espionage","Шпионажи")}</button>
@@ -221,7 +221,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
           <summary>{t("Orange Empire reports","Доклади за Оранжевата империя")}</summary>
           {orangeEmpireReports.map(report=><article key={report.id} style={card}>
             <h3>{t("The Orange Empire","Оранжевата империя")} · {report.commander_id===10?t("Emperor","Император"):t("Commander","Командир")+" "+report.commander_id} · {coordinateLink(report.x,report.y)}</h3>
-            <p>{new Date(report.arrives_at).toLocaleString()} · {report.result.cancelled?t("Attack cancelled","Нападението е отменено"):report.result.victory?t("Orange Empire victory","Победа за Оранжевата империя"):t("Defense held","Защитата устоя")}</p>
+            <p>{new Date(report.arrives_at).toLocaleString(locale)} · {report.result.cancelled?t("Attack cancelled","Нападението е отменено"):report.result.victory?t("Orange Empire victory","Победа за Оранжевата империя"):t("Defense held","Защитата устоя")}</p>
             {report.result.loot&&<p><strong>{t("Resources plundered","Отнети ресурси")}:</strong> {lootSummary(report.result)}</p>}
           </article>)}
         </details>}
