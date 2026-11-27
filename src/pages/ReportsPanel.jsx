@@ -91,6 +91,11 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
   const newGathering=gathering.filter(report=>unreadIds.has("gathering:"+report.id));
   const previousGathering=gathering.filter(report=>!newGathering.includes(report));
   const army=(title,units)=> <div><strong>{title}:</strong> {units===null?t("Not recorded","Не е записано"):list(units)}</div>;
+  const lootSummary=result=>["Gold","Iron","Water","Solar"].map(key=>
+    t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(result.loot[key]||0).toLocaleString()
+  ).join(" · ")+" · "+t("Total","Общо")+": "+Number(result.totalLoot||0).toLocaleString()
+    +" · "+t("Cargo capacity","Товароносимост")+": "+Number(result.cargoCapacity||0).toLocaleString();
+  const orangeEmpireReports=data?.orangeEmpireReports||[];
   const playerReport=m=>{
     const ownInitial=m.incoming?(m.result.defenderInitial||{}):(m.units||{});
     const ownRemaining=m.incoming?(m.result.defenderSurvivors||{}):(m.result.survivors||{});
@@ -107,7 +112,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       <h3>{title} · {coordinateLink(m.target?.x,m.target?.y)}</h3>
       <p>{outcome}{!m.result.recalled&&" · "+t("Rounds","Рундове")+": "+(m.result.rounds??"—")}</p>
       {!m.incoming&&m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
-      {m.result.loot&&!m.result.recalled&&<p><strong>{m.incoming?t("Resources plundered","Отнети ресурси"):t("Loot","Плячка")}:</strong> {["Gold","Iron","Water","Solar"].map(key=>t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(m.result.loot[key]||0).toLocaleString()).join(" · ")} · {t("Total","Общо")}: {Number(m.result.totalLoot||0).toLocaleString()} · {t("Cargo capacity","Товароносимост")}: {Number(m.result.cargoCapacity||0).toLocaleString()}</p>}
+      {m.result.loot&&!m.result.recalled&&<p><strong>{m.incoming?t("Resources plundered","Отнети ресурси"):t("Loot","Плячка")}:</strong> {lootSummary(m.result)}</p>}
       {army(t("Your starting army","Твоята начална армия"),ownInitialRecorded?ownInitial:null)}
       {army(t("Your losses","Твоите загуби"),diff(ownInitial,ownRemaining))}
       {army(t("Your survivors","Твоите оцелели"),ownRemaining)}
@@ -211,6 +216,14 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
         {alienReports.length>0&&<><h2>{t("Alien battle reports","Доклади от битки с извънземните")}{newAlienCount?" · "+t("New","Нови")+": "+newAlienCount:""}</h2>
           {alienReports.map(({type,report})=>type==="alien"?alienReport(report):mothershipReport(report))}
         </>}
+        {orangeEmpireReports.length>0&&<details style={{marginTop:20}}>
+          <summary>{t("Orange Empire reports","Доклади за Оранжевата империя")}</summary>
+          {orangeEmpireReports.map(report=><article key={report.id} style={card}>
+            <h3>{t("The Orange Empire","Оранжевата империя")} · {report.commander_id===10?t("Emperor","Император"):t("Commander","Командир")+" "+report.commander_id} · {coordinateLink(report.x,report.y)}</h3>
+            <p>{new Date(report.arrives_at).toLocaleString()} · {report.result.cancelled?t("Attack cancelled","Нападението е отменено"):report.result.victory?t("Orange Empire victory","Победа за Оранжевата империя"):t("Defense held","Защитата устоя")}</p>
+            {report.result.loot&&<p><strong>{t("Resources plundered","Отнети ресурси")}:</strong> {lootSummary(report.result)}</p>}
+          </article>)}
+        </details>}
         {previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
       </>}
       {data&&activeTab==="espionage"&&<>{scoutReports.length?scoutReports.map(espionageReport):<p>{t("No espionage reports yet.","Все още няма доклади от шпионаж.")}</p>}</>}

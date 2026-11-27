@@ -1,5 +1,6 @@
 const {combatEnabled, eligibleHumanTarget, validAttackArmy} = require("./orangeEmpire");
 const tactics = require("./orangeEmpireTactics");
+const {calculateCargoCapacity,calculateLoot} = require("./pvpLoot");
 const {xpForKills,awardHuman} = require("./combatXp");
 const {maxPlayerLevel} = require("../src/shared/playerTargeting");
 const {defaultFormation} = require("../src/shared/formations");
@@ -181,7 +182,21 @@ function settleAttack(db, game, attack, now) {
     db.prepare("UPDATE orange_empire_commanders SET state=? WHERE id=?").run(JSON.stringify(state),attack.commander_id);
     tactics.recordBattle(db,snapshot.plan||"balanced",result,attackerArmy);
     wounds(attack.player_id,deployed,result.defenderSurvivors);
-    if (!attack.station_id) writeArmy(db,attack.player_id,{...homeArmy,...result.defenderSurvivors});
+    if (!attack.station_id) {
+      writeArmy(db,attack.player_id,{...homeArmy,...result.defenderSurvivors});
+      if (result.victory) {
+        result.cargoCapacity = calculateCargoCapacity(result.survivors);
+        result.loot = calculateLoot(current.resources,result.cargoCapacity);
+        result.totalLoot = Object.values(result.loot).reduce((sum,amount)=>sum+amount,0);
+        if (result.totalLoot) {
+          for (const [resource,amount] of Object.entries(result.loot)) {
+            current.resources[resource]=(Number(current.resources[resource])||0)-amount;
+          }
+          db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?")
+            .run(JSON.stringify(current.resources),attack.player_id);
+        }
+      }
+    }
     const setStationArmy = db.prepare("UPDATE alliance_station_defenders SET army=? WHERE station_id=? AND user_id=?");
     if (owner) setStationArmy.run(JSON.stringify(result.defenderSurvivors),attack.station_id,owner.user_id);
     for (const row of eligibleSupport) {
@@ -206,6 +221,11 @@ function settle(db, game, now) {
     const result = JSON.parse(attack.result);
     for (const [unit,count] of Object.entries(result.cancelled ? JSON.parse(attack.army) : result.survivors)) {
       state.army[unit] = (state.army[unit] || 0) + count;
+    }
+    if (result.victory && !attack.station_id) {
+      for (const [resource,amount] of Object.entries(result.loot||{})) {
+        if (amount>0) state.resources[resource]=(state.resources[resource]||0)+amount;
+      }
     }
     db.prepare("UPDATE orange_empire_commanders SET state=? WHERE id=?").run(JSON.stringify(state),attack.commander_id);
     db.prepare("UPDATE orange_empire_attacks SET returned_at=returns_at WHERE id=?").run(attack.id);
@@ -232,12 +252,17 @@ function mapAttacks(db, userId) {
     ORDER BY a.arrives_at,a.id`).all(userId,userId,userId);
 }
 
-function reports(db,userId) {
+function reports(db,userId,limit=20) {
   return db.prepare(`SELECT a.id,a.commander_id,a.player_id,a.station_id,a.arrives_at,
-      json_extract(a.result,'$.cancelled') AS cancelled, json_extract(a.result,'$.victory') AS victory
+      a.x,a.y,json_extract(a.result,'$.cancelled') AS cancelled, json_extract(a.result,'$.victory') AS victory,
+      json_extract(a.result,'$.loot') AS loot,json_extract(a.result,'$.totalLoot') AS totalLoot,
+      json_extract(a.result,'$.cargoCapacity') AS cargoCapacity
     FROM orange_empire_attacks a WHERE a.result IS NOT NULL AND (a.player_id=? OR EXISTS
       (SELECT 1 FROM orange_empire_support s WHERE s.attack_id=a.id AND s.sender_id=?))
-    ORDER BY a.arrives_at DESC,a.id DESC LIMIT 20`).all(userId,userId).map(({cancelled,victory,...row})=>({...row,result:{cancelled:!!cancelled,victory:!!victory}}));
+    ORDER BY a.arrives_at DESC,a.id DESC LIMIT ?`).all(userId,userId,limit)
+    .map(({cancelled,victory,loot,totalLoot,cargoCapacity,...row})=>({...row,result:{
+      cancelled:!!cancelled,victory:!!victory,...(loot?{loot:JSON.parse(loot),totalLoot,cargoCapacity}:{})
+    }}));
 }
 
 module.exports = {schedule, sendSupport, settle, mapAttacks, reports};
