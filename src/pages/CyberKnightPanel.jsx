@@ -122,7 +122,10 @@ function CyberKnightPanel({ onClose }) {
   const slotPoints = Number(craftingPoints[selectedSlot]) || 0;
   const universalPoints = Number(craftingPoints.Universal) || 0;
 
+  const forgeBlocked = item => !!item && Object.values(equippedItems).some(equipped=>equipped?.id===item.id) && Number(item.level??item.levelRequirement??0)>=knightLevel;
+
   const handleCraft = async () => {
+    if(forgeBlocked(selectedItem))return;
     setCrafting(true);
     setCraftMessage("");
     try {
@@ -246,6 +249,8 @@ function CyberKnightPanel({ onClose }) {
                       {t("DISMANTLE","РАЗГЛОБИ")}
                     </button>
                     <button
+                      disabled={forgeBlocked(item)}
+                      title={forgeBlocked(item)?t("Unequip this item before upgrading.","Свали предмета преди изковаване.") : undefined}
                       onClick={() => {
                         setSelectedItem(item);
                         setCraftMessage("");
@@ -315,7 +320,7 @@ function CyberKnightPanel({ onClose }) {
           <p>{t("Cost:","Цена:")} {craftCost ?? "Unavailable"} {t("Crafting Points","точки за изковаване")}</p>
           <p>{localLabel(selectedSlot)}: {slotPoints} {t("· Universal Forge:","· Универсални точки:")} {universalPoints}</p>
           </div><div style={{flexShrink:0,background:"#101c27",paddingTop:6,display:"flex",flexWrap:"wrap"}}>
-          <button disabled={crafting || itemLevel >= 50 || !craftCost || slotPoints + universalPoints < craftCost} onClick={handleCraft}>
+          <button disabled={crafting || forgeBlocked(selectedItem) || itemLevel >= 50 || !craftCost || slotPoints + universalPoints < craftCost} onClick={handleCraft}>
             {itemLevel >= 50 ? localLabel("Max level") : crafting ? localLabel("Crafting…") : localLabel("Craft")}
           </button>
           <button onClick={() => setActiveModal(null)}>{t("Cancel","Отказ")}</button>
