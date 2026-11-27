@@ -25,7 +25,7 @@ const eventSettlementTimer=setInterval(()=>{
 if(typeof eventSettlementTimer.unref==="function")eventSettlementTimer.unref();
 if (process.env.ORANGE_EMPIRE_ENABLED === "true") {
   const advanceOrangeEmpire = () => {
-    try { db.advanceOrangeEmpire(); }
+    try { db.advanceOrangeEmpire(); db.scheduleOrangeEmpireAttacks(); }
     catch (error) { console.error("Orange Empire development:", error); }
   };
   advanceOrangeEmpire();
@@ -141,6 +141,7 @@ router.get("/map/bases", requireSessionForMap, (req, res) => {
     res.json({
       bases: db.getPublicBases(),
       ...db.getMapResources(req.mapUserId),
+      ...db.getOrangeEmpireCombat(req.mapUserId),
       ...(orangeEmpireBases.length ? {orangeEmpireBases} : {})
     });
   } catch (error) {
@@ -353,7 +354,11 @@ for(const [route,method] of [["application","allianceApplication"],["role","alli
   });
 }
 router.post("/alliance/reinforce",requireSession,(req,res)=>{
-  try{const result=db.sendAllianceReinforcement(Number(req.body.userId),Number(req.body.recipientId),req.body.units);
+  try{
+    const userId=Number(req.body.userId);
+    const result=req.body.orangeEmpireAttackId == null
+      ? db.sendAllianceReinforcement(userId,Number(req.body.recipientId),req.body.units)
+      : db.sendOrangeEmpireSupport(userId,Number(req.body.orangeEmpireAttackId),req.body.units);
     if(result.error)return res.status(400).json({message:result.error});res.json(result);
   }catch(e){console.error(e);res.status(500).json({message:"Reinforcement dispatch failed."});}
 });

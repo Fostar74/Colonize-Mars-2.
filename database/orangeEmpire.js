@@ -34,6 +34,33 @@ function migrate(db) {
       state TEXT NOT NULL,
       UNIQUE (x,y)
     );
+    CREATE TABLE IF NOT EXISTS orange_empire_attacks (
+      id INTEGER PRIMARY KEY,
+      commander_id INTEGER NOT NULL REFERENCES orange_empire_commanders(id),
+      player_id INTEGER NOT NULL REFERENCES users(id),
+      week_start INTEGER NOT NULL,
+      slot INTEGER NOT NULL CHECK(slot IN (1,2)),
+      station_id INTEGER,
+      station_alliance_id INTEGER,
+      origin_x INTEGER NOT NULL, origin_y INTEGER NOT NULL,
+      x INTEGER NOT NULL, y INTEGER NOT NULL,
+      launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL,
+      army TEXT NOT NULL, combat TEXT NOT NULL,
+      result TEXT, returns_at INTEGER, returned_at INTEGER,
+      UNIQUE(player_id,week_start,slot)
+    );
+    CREATE INDEX IF NOT EXISTS orange_empire_attack_arrivals ON orange_empire_attacks(arrives_at) WHERE result IS NULL;
+    CREATE INDEX IF NOT EXISTS orange_empire_attack_returns ON orange_empire_attacks(returns_at) WHERE returned_at IS NULL;
+    CREATE TABLE IF NOT EXISTS orange_empire_support (
+      id INTEGER PRIMARY KEY,
+      attack_id INTEGER NOT NULL REFERENCES orange_empire_attacks(id),
+      sender_id INTEGER NOT NULL REFERENCES users(id),
+      army TEXT NOT NULL,
+      arrives_at INTEGER NOT NULL, travel_ms INTEGER NOT NULL,
+      returns_at INTEGER, returned_at INTEGER,
+      UNIQUE(attack_id,sender_id)
+    );
+    CREATE INDEX IF NOT EXISTS orange_empire_support_returns ON orange_empire_support(returns_at) WHERE returned_at IS NULL;
   `);
 }
 
@@ -209,14 +236,16 @@ function enabled() {
 
 function mapBases(db) {
   if (!enabled()) return [];
-  return db.prepare(`SELECT id,x,y,json_extract(state,'$.xp') AS xp,
+  return db.prepare(`SELECT id,x,y,
     json_extract(state,'$.knight.level') AS knightLevel FROM orange_empire_commanders ORDER BY id`)
-    .all().map(({id, x, y, xp, knightLevel}) => ({
-      id, x, y, knightLevel, emperor: id === commanderCount, level: playerLevelFromXp(xp, maxCommanderLevel)
+    .all().map(({id, x, y, knightLevel}) => ({
+      id, x, y, knightLevel, emperor: id === commanderCount, level: maxCommanderLevel
     }));
 }
 
-// These rules are pure. Phase 1 has no caller that can launch combat.
+function combatEnabled() {
+  return enabled() && process.env.ORANGE_EMPIRE_ATTACKS_ENABLED === "true";
+}
 function eligibleHumanTarget({isHuman, xp, protectedUntil = 0}, now) {
   return isHuman === true && playerLevelFromXp(xp) === maxPlayerLevel && protectedUntil <= now;
 }
@@ -230,4 +259,4 @@ function validAttackArmy(army) {
   return population > 0 && population <= marchLimit;
 }
 
-module.exports = {advance, eligibleHumanTarget, mapBases, migrate, validAttackArmy};
+module.exports = {advance, combatEnabled, eligibleHumanTarget, mapBases, migrate, validAttackArmy};

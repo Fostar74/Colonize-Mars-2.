@@ -6,6 +6,7 @@ const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCo
 const {replenishMissingMines} = require("./externalMines");
 const {placedMapObjects}=require("./mapObjects");
 const orangeEmpire = require("./orangeEmpire");
+const orangeEmpireCombat = require("./orangeEmpireCombat");
 const {tileKey,touchesTile,blockedMapTiles}=require("../src/shared/mapSpacing");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
@@ -2103,6 +2104,9 @@ class DatabaseManager {
         let settledResourceMines = 0;
         const nextEvent = db.prepare(`SELECT MIN(at) AS at FROM (
           SELECT MIN(arrives_at) AS at FROM player_missions WHERE resolved_at IS NULL
+          UNION ALL SELECT MIN(arrives_at) FROM orange_empire_attacks WHERE result IS NULL
+          UNION ALL SELECT MIN(returns_at) FROM orange_empire_attacks WHERE returned_at IS NULL
+          UNION ALL SELECT MIN(returns_at) FROM orange_empire_support WHERE returned_at IS NULL
           UNION ALL SELECT MIN(returns_at) FROM player_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL
           UNION ALL SELECT MIN(arrives_at) FROM alien_missions WHERE resolved_at IS NULL
           UNION ALL SELECT MIN(returns_at) FROM alien_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL
@@ -2139,6 +2143,7 @@ class DatabaseManager {
             if (!this.syncGame(user_id,at)) throw new Error("Scout march has no player progress");
           }
           this.settlePlayerMissionsAt(at);
+          orangeEmpireCombat.settle(db,this,at);
           if (db.prepare(`SELECT 1 FROM saturday_invasion_attacks attack
             JOIN saturday_invasion_runs run ON run.id=attack.run_id AND run.status='active'
             JOIN saturday_invasion_seasons season ON season.week_start=run.week_start AND season.settled=0
@@ -4256,6 +4261,23 @@ Rewards are distributed per participating player, not once per alliance. / На�
         };
       }
     }, now);
+  }
+
+  scheduleOrangeEmpireAttacks(now=Date.now()) {
+    if (!orangeEmpire.combatEnabled()) return;
+    this.advanceCampaignTimeline(now);
+    orangeEmpireCombat.schedule(db,this,now);
+  }
+
+  sendOrangeEmpireSupport(userId, attackId, units, now=Date.now()) {
+    if (!Number.isSafeInteger(attackId) || attackId < 1) return {error:"Invalid Orange Empire attack."};
+    return orangeEmpireCombat.sendSupport(db,this,userId,attackId,units,now);
+  }
+
+  getOrangeEmpireCombat(userId) {
+    if (!orangeEmpire.combatEnabled()) return {};
+    return {orangeEmpireAttacks:orangeEmpireCombat.mapAttacks(db,userId),
+      orangeEmpireReports:orangeEmpireCombat.reports(db,userId)};
   }
 
   getOrangeEmpireBases() {

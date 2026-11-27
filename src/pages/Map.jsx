@@ -230,6 +230,8 @@ function Map() {
   },[marchHistoryOpen,hasRoutes]);
   const [castles, setCastles] = useState([]);
   const [orangeEmpireBases, setOrangeEmpireBases] = useState([]);
+  const [orangeEmpireAttacks, setOrangeEmpireAttacks] = useState([]);
+  const [orangeEmpireReports, setOrangeEmpireReports] = useState([]);
   const [mapError, setMapError] = useState("");
   const [selectedAlien, setSelectedAlien] = useState(null);
   const [viewCenter, setViewCenter] = useState({x:50,y:50});
@@ -258,6 +260,8 @@ function Map() {
           setCastles(own && !bases.some(b => b.username === own.username) ? [...bases, own] : bases);
           const empireBases = data.orangeEmpireBases || [];
           setOrangeEmpireBases(empireBases);
+          setOrangeEmpireAttacks(data.orangeEmpireAttacks || []);
+          setOrangeEmpireReports(data.orangeEmpireReports || []);
           setSelectedTarget(target=>{
             if (target?.type === "orangeEmpire") {
               const current = empireBases.find(base => base.id === target.id);
@@ -837,7 +841,7 @@ function Map() {
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
       const payload=isEspionage ? {userId:sessionStorage.getItem("userId"),quantity:Number(marchUnits["Rover Scout"]),target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}}
         : isSupport
-        ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected}
+        ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected,orangeEmpireAttackId:marchDraft.target.orangeEmpireAttackId}
         : isGathering
         ? {userId:sessionStorage.getItem("userId"),mineId:marchDraft.target.id,units:selected}
         : isAlienAttack
@@ -1173,6 +1177,28 @@ function Map() {
             {base.emperor ? t("Emperor", "Император") : t("Commander", "Командир") + " " + base.id}
             {" · "}{base.x}:{base.y}
           </button>)}
+          {orangeEmpireAttacks.length > 0 && <h3>{t("Incoming attacks","Входящи нападения")}</h3>}
+          {orangeEmpireAttacks.map(attack => {
+            const ally = castles.find(base => base.user_id === attack.player_id);
+            const canReinforce = ally && ally.username !== ownUsername && !attack.station_id &&
+              !attack.joined && attack.support_count < 3;
+            return <div key={attack.id}>
+              <button type="button" onClick={() => centerMapOn(attack.x, attack.y)}>
+                {attack.username} · {attack.x}:{attack.y} · {new Date(attack.arrives_at).toLocaleString()}
+              </button>
+              {canReinforce && <button type="button" onClick={() => {
+                if (!ownBase) return;
+                const target = {...ally,type:"castle",orangeEmpireAttackId:attack.id};
+                setSelectedTarget(target);
+                openMarch("Support",target,ownBase);
+              }}>{t("Reinforce","Изпрати подкрепление")}</button>}
+            </div>;
+          })}
+          {orangeEmpireReports.length > 0 && <h3>{t("Battle results","Резултати от битки")}</h3>}
+          {orangeEmpireReports.map(({id,result,arrives_at}) => <div key={id}>
+            {new Date(arrives_at).toLocaleString()} · {result.cancelled ? t("Attack cancelled","Нападението е отменено")
+              : result.victory ? t("Orange Empire victory","Победа за Оранжевата империя") : t("Attack repelled","Нападението е отблъснато")}
+          </div>)}
         </details>}
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
