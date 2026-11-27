@@ -1,5 +1,6 @@
 // Profiled units use their own combat values.
 // Every volley targets one randomly selected eligible group, independent of group size.
+const {trackVolleys,creditedKills}=require("./combatCasualties");
 const {categories,specialUnitCombatBonuses}=require("../src/shared/unitEconomy");
 const {profileFor,unitCombatStats}=require("../src/shared/unitProfiles");
 const playerTypes=Object.fromEntries(Object.entries(categories).flatMap(([category,names])=>names.map((name,index)=>[name,{category:category==="Ground"||category==="Elite"?"infantry":category==="Ranged"?"ranged":category==="Mobile"?"mobile":"artillery",hp:category==="Ground"?90+index*30:category==="Ranged"?65+index*10:category==="Mobile"?180+index*80:category==="Elite"?350+index*100:120+index*50,attack:category==="Ground"?20+index*7:category==="Ranged"?35+index*12:category==="Mobile"?50+index*18:category==="Elite"?90+index*25:55+index*20,range:category==="Ground"?1:category==="Elite"?2:category==="Mobile"?1:category==="Ranged"?4:5}])));
@@ -82,7 +83,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
   }
   const report=[];let rounds=0;
   const alive=side=>side.some(g=>g.count>0);
-  while(alive(sides[0])&&alive(sides[1])&&rounds<80){
+  while(alive(sides[0])&&alive(sides[1])&&rounds<(options.maxRounds??80)){
     rounds++;
     for(const group of sides[0])group.roundStartCount=group.count;
     for(const group of sides[1])if(group.contingent)group.roundStartCount=group.count;
@@ -118,6 +119,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         target.count-=killed;
         casualties.set(target,killed);
       }
+      if(options.trackCasualties)trackVolleys(shots,hits,casualties);
       // Distribute actual casualties among contributing volleys. The sum of
       // per-shot kills equals the casualties applied to each target group.
       const assigned=new Map();
@@ -167,6 +169,6 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
   const contingentSurvivors=Object.fromEntries((options.defenderContingents||[]).map(({id,army})=>[
     id,Object.fromEntries(Object.keys(army).map(unit=>[unit,sides[1].filter(g=>g.contingent?.id===id&&g.unit===unit).reduce((sum,g)=>sum+g.count,0)]))
   ]));
-  return {victory:alive(sides[0])&&!alive(sides[1]),rounds,report,survivors:Object.fromEntries(Object.keys(attackerArmy).map(unit=>[unit,sides[0].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defenderSurvivors:Object.fromEntries(Object.keys(defenderArmy).map(unit=>[unit,sides[1].filter(g=>!g.contingent&&g.unit===unit).reduce((a,g)=>a+g.count,0)])),defendersRemaining:sides[1].reduce((a,g)=>a+g.count,0),provisional:true,...(options.defenderContingents?{contingentSurvivors}:{})};
+  return {victory:alive(sides[0])&&!alive(sides[1]),rounds,report,survivors:Object.fromEntries(Object.keys(attackerArmy).map(unit=>[unit,sides[0].filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)])),defenderSurvivors:Object.fromEntries(Object.keys(defenderArmy).map(unit=>[unit,sides[1].filter(g=>!g.contingent&&g.unit===unit).reduce((a,g)=>a+g.count,0)])),defendersRemaining:sides[1].reduce((a,g)=>a+g.count,0),provisional:true,...(options.trackCasualties?{creditedKills:creditedKills(sides,options.hospitalSides||[])}:{}),...(options.defenderContingents?{contingentSurvivors}:{})};
 }
 module.exports={fight,playerTypes,alienTypes};

@@ -269,6 +269,10 @@ function Map() {
               const current = empireBases.find(base => base.id === target.id);
               return current ? {...current, type: "orangeEmpire"} : null;
             }
+            if (target?.type === "mine") {
+              const current = data.mines?.find(mine=>mine.id===target.id);
+              return current ? {...current,type:"mine"} : null;
+            }
             if(target?.type!=="castle")return target;
             const current=bases.find(base=>(target.user_id&&base.user_id===target.user_id)||
               (base.username===target.username&&base.x===target.x&&base.y===target.y));
@@ -1314,6 +1318,7 @@ function Map() {
                   {station?.plasmaWallStatus==="building"&&<p>{t("Building wall level","Строи се ниво на стената")} {Number(station?.plasmaWallLevel||0)+1} / 20 · {t("Time remaining","Оставащо време")}: {formatDuration(wallRemaining)}</p>}
                   {Number(station?.plasmaWallLevel||0)<20&&station?.plasmaWallStatus!=="building"&&status.allianceRole==="Leader"&&<button type="button" disabled={stationBusy} onClick={()=>stationRequest("/alien-stations/build",{kind:"plasma-wall"},t("Plasma Wall level construction started. It will take 24 hours.","Строежът на следващото ниво на плазмената стена започна. Ще отнеме 24 часа."))}>{t("Build next Plasma Wall level","Построй следващо ниво на плазмената стена")} · {Number(station?.plasmaWallLevel||0)+1}/20 · 💚 100</button>}
                   <p>🚀 {t("Spaceport","Космодрум")}: {station?.spaceportUnlocked?t("Unlocked","Отключен"):t("Locked until Plasma Wall level 20","Заключен до ниво 20 на плазмената стена")} · 💚 3,000 + 🔴 100 · 7 {t("days","дни")}</p>
+                  {status.earthWinner && <p>{t("Earth chapter winner","Победител в глава Земя")} · {status.earthWinner.allianceName}</p>}
                   {station?.spaceportStatus==="building"&&<><p>{t("Spaceport construction","Строеж на космодрума")} · {t("Time remaining","Оставащо време")}: {formatDuration(spaceportRemaining)}</p><p style={{color:"#ffcf72"}}>{t("The station is exposed during construction. Keep alliance defenders stationed here against alien attacks and rival alliances.","По време на строежа станцията е уязвима. Дръжте гарнизон за защита от извънземни атаки и съперничещи алианси.")}</p></>}
                   {station?.spaceportUnlocked&&station?.spaceportStatus==="not_started"&&status.allianceRole==="Leader"&&<button type="button" disabled={stationBusy} onClick={()=>stationRequest("/alien-stations/build",{kind:"spaceport"},t("Spaceport construction started. It costs 3,000 green and 100 red crystals and will take seven days.","Строежът на космодрума започна. Струва 3 000 зелени и 100 червени кристала и ще отнеме седем дни."))}>{t("Start Spaceport construction","Започни строежа на космодрума")}</button>}
                   <h4>{t("Station defenders","Защитници на станцията")}</h4>
@@ -1338,7 +1343,7 @@ function Map() {
             <h3>{t("The Orange Empire", "Оранжевата империя")}</h3>
             <p>{selectedTarget.emperor ? t("Emperor", "Император") : t("Commander", "Командир") + " " + selectedTarget.id}
               {" · "}{t("Level", "Ниво")} {selectedTarget.level}{" · "}{selectedTarget.x}:{selectedTarget.y}</p>
-            <p>{t("Cyber Knight", "Кибер рицар")} · {t("Level", "Ниво")} {selectedTarget.knightLevel}</p>
+            <p>{selectedTarget.emperor ? t("Inferno Overlord","Инферно владетел") : t("Inferno Knight","Инферно рицар")} · {t("Level", "Ниво")} {selectedTarget.knightLevel}</p>
           </section>}
           {selectedTarget?.type !== "orangeEmpire" && <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Attack the Alien Command Ship · Global Event","Атакувай Командния кораб на извънземните · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):selectedTarget?.type==="allianceMine"?localLabel("Alliance Mine"):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>}
           {selectedTarget?.type==="field"&&allianceMine?.canPlace&&!marchDraft&&<section>
@@ -1352,7 +1357,7 @@ function Map() {
           </section>}
           {selectedTarget?.type==="allianceMine"&&<section>
             {!selectedAllianceMine ? <p>{t("This mine is depleted.","Мината е изчерпана.")}</p>
-              : !selectedAllianceMine.ally ? <p>{t("This mine belongs to another alliance.","Мината принадлежи на друг алианс.")}</p>
+              : !selectedAllianceMine.ally ? <p>{selectedAllianceMine.npc ? t("The Orange Empire alliance mine","Алиансна мина на Оранжевата империя") : t("This mine belongs to another alliance.","Мината принадлежи на друг алианс.")}</p>
               : <>
                 <p>{localLabel(allianceMine?.active?.resource||"")}</p>
                 {selectedAllianceMine.status==="construction"
@@ -1367,8 +1372,8 @@ function Map() {
           {allianceMineNotice&&<p role="status">{localLabel(allianceMineNotice)}</p>}
           {selectedTarget?.type==="mine"&&<section style={{padding:12,margin:"10px 0",background:"#243449",border:"1px solid #6b8ca5",borderRadius:8}}>
             <strong>{t("Available resource","Наличен ресурс")}: {Number(selectedTarget.amount||0).toLocaleString()} · {t("Gathering slots used","Заети места за добив")}: {myMineCount}/{mineCapacity}</strong>
-            {selectedTarget.claimed_by
-              ? <p>{t("This mine is already being gathered by","Тази мина вече се добива от")} {selectedTarget.owner||t("another player","друг играч")}.</p>
+            {(selectedTarget.claimed_by||selectedTarget.npc_claimed)
+              ? <p>{t("This mine is already being gathered by","Тази мина вече се добива от")} {selectedTarget.npc_claimed?t("The Orange Empire","Оранжевата империя"):selectedTarget.owner||t("another player","друг играч")}.</p>
               : <p>{t("Fixed mine stock: 5,000. Base gathering rate: 1,000 per hour. A replacement mine appears at a random free location when this one is depleted.","Фиксиран запас: 5 000. Начална скорост: 1 000 на час. След изчерпване мината се появява на случайно свободно място.")}</p>}
             {Number(selectedTarget.claimed_by)===Number(sessionStorage.getItem("userId"))&&<button type="button" disabled={mineRecallId===Number(selectedTarget.id)} onClick={()=>recallMineArmy(selectedTarget)}>{mineRecallId===Number(selectedTarget.id)?t("Recalling…","Отзоваване…"):t("Recall army from mine","Отзови армията от мината")}</button>}
             {mineNotice&&<p role="status">{localLabel(mineNotice)}</p>}
@@ -1392,7 +1397,7 @@ function Map() {
                 const allowed=!blocked&&(type==="Attack"?(alien||mothership||(selectedTarget?.type==="castle"&&!own&&!sameAllianceTarget)): type==="Support"?!field&&!alien&&!own&&canSupport:
                   type==="Espionage"?!field&&!own:
                   type==="Patrol"?field:
-                  type==="Gather"?selectedTarget?.type==="mine"&&!selectedTarget?.claimed_by:
+                  type==="Gather"?selectedTarget?.type==="mine"&&!selectedTarget?.claimed_by&&!selectedTarget?.npc_claimed:
                   type==="Trade"?!field&&!alien&&!own&&(campaign.tradeModuleLevel||0)>=3:
                   type==="Relocation"?field:false);
                 return <button key={type} disabled={!allowed} onClick={()=>chooseAction(type)}

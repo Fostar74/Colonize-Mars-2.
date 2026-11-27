@@ -5,8 +5,11 @@ const {boostedDuration} = require("./marketBoosts");
 const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCombat");
 const {replenishMissingMines} = require("./externalMines");
 const {placedMapObjects}=require("./mapObjects");
+const {xpForKills,awardHuman} = require("./combatXp");
+const earthChapter = require("./earthChapter");
 const orangeEmpire = require("./orangeEmpire");
 const orangeEmpireCombat = require("./orangeEmpireCombat");
+const orangeEmpireMines = require("./orangeEmpireMines");
 const {tileKey,touchesTile,blockedMapTiles}=require("../src/shared/mapSpacing");
 const {unitUpgradeMaxLevel,armyPopulation,unitCombatStats} = require("../src/shared/unitProfiles");
 const research = require("../src/shared/allianceResearch");
@@ -446,6 +449,8 @@ class DatabaseManager {
     this.initializeQueries();
     migrateSideQuests(db);
     orangeEmpire.migrate(db);
+    earthChapter.migrate(db);
+    orangeEmpireMines.migrate(db);
     this.sideQuests = new SideQuests(db,this);
   }
 
@@ -560,7 +565,8 @@ class DatabaseManager {
           .get(preferred.x,preferred.y,preferred.x,preferred.y) ||
         db.prepare("SELECT 1 FROM alliance_mines WHERE x=? AND y=? AND status<>'closed' AND alliance_id IS NOT NULL")
           .get(preferred.x,preferred.y) ||
-        db.prepare("SELECT 1 FROM orange_empire_commanders WHERE x=? AND y=?").get(preferred.x,preferred.y)
+        db.prepare("SELECT 1 FROM orange_empire_commanders WHERE x=? AND y=? UNION ALL SELECT 1 FROM orange_empire_alliance_mine WHERE x=? AND y=?")
+          .get(preferred.x,preferred.y,preferred.x,preferred.y)
       );
       const selected = preferred && !exactConflict && preferred.x>=1 && preferred.x<=100 && preferred.y>=1 && preferred.y<=100
         ? {x:preferred.x,y:preferred.y} : this.chooseSpawn();
@@ -1402,11 +1408,13 @@ class DatabaseManager {
   }
 
   rankings(userId){
+    const earthWinner = earthChapter.winner(db);
     const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.xp,0) AS points,COALESCE(p.avatar_id,'pilot-m') AS avatarId FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN player_talents r ON r.user_id=u.id LEFT JOIN player_profiles p ON p.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
     const alliances=db.prepare("SELECT a.id,a.name,a.description,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.xp),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
     const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
     const cyberKnights=db.prepare("SELECT u.id,u.username,COALESCE(ar.knight_level,1) AS knightLevel,COALESCE(ar.prestige,0) AS prestige FROM users u LEFT JOIN alien_rewards ar ON ar.user_id=u.id ORDER BY knightLevel DESC,prestige DESC,u.username COLLATE NOCASE").all();
+    for(const row of [...players,...cyberKnights]) if(row.id===earthWinner?.userId) row.earthDefender=true;
     if(process.env.ORANGE_EMPIRE_ENABLED==="true"){
       const npcs=db.prepare("SELECT id,state FROM orange_empire_commanders ORDER BY id").all().map(row=>{
         const state=JSON.parse(row.state);
@@ -1419,7 +1427,7 @@ class DatabaseManager {
       cyberKnights.sort((a,b)=>b.knightLevel-a.knightLevel||b.prestige-a.prestige||a.username.localeCompare(b.username));
       alliances.sort((a,b)=>b.points-a.points||b.memberCount-a.memberCount||a.name.localeCompare(b.name));
     }
-    return {players,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member})),cyberKnights};
+    return {players,earthWinner,canInvite:["Leader","Co-Leader"].includes(member?.role),alliances:alliances.map(a=>({...a,pending:pending.has(a.id),joined:!!member})),cyberKnights};
   }
   inviteToAlliance(userId, targetId){
     if(!Number.isSafeInteger(targetId)||targetId<1||targetId===userId)return {error:"Invalid player."};
@@ -2115,6 +2123,8 @@ class DatabaseManager {
       try {
         let settledResourceMines = 0;
         const nextEvent = db.prepare(`SELECT MIN(at) AS at FROM (
+          SELECT MIN(spaceport_started_at)+${earthChapter.spaceshipDuration} AS at FROM alliance_space_stations WHERE spaceport_status='building'
+          UNION ALL
           SELECT MIN(arrives_at) AS at FROM player_missions WHERE resolved_at IS NULL
           UNION ALL SELECT MIN(arrives_at) FROM orange_empire_attacks WHERE result IS NULL
           UNION ALL SELECT MIN(returns_at) FROM orange_empire_attacks WHERE returned_at IS NULL
@@ -2135,6 +2145,7 @@ class DatabaseManager {
             WHERE run.status='active' AND season.settled=0 AND attack.resolved_at IS NULL
         )`);
         for (let at=nextEvent.get().at; at!==null && at<=now; at=nextEvent.get().at) {
+          earthChapter.completeSpaceships(db,at);
           this.settleAllianceMines(at);
           settledResourceMines += this.settleResourceMines(at);
           const defenders=db.prepare(`SELECT recipient_id AS user_id FROM alliance_reinforcements
@@ -2217,12 +2228,15 @@ class DatabaseManager {
       const attackerCombat={...attackerProtocols,unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{},unitResearch:attackerAlliance.units||{},allAttack:Number(attackerAlliance.attack)||0,allHealth:Number(attackerAlliance.health)||0,unitEffects:attackerGear.unitEffects,enemyDebuffs:attackerGear.enemyDebuffs};
       const defenderCombat={...defenderProtocols,unitResearch:defenderAlliance.units||{},allAttack:Number(defenderAlliance.attack)||0,allHealth:Number(defenderAlliance.health)||0,unitEffects:defenderGear.unitEffects,enemyDebuffs:defenderGear.enemyDebuffs};
       const result=fight(data.units||{},validDefenders,data.formation,attackerCombat,{
-        playerDefense:true,
+        playerDefense:true,trackCasualties:true,hospitalSides:[0,1],
         random:missionRandom(mission),
         defenderUnitUpgrades:defender.unitUpgrades||{},
         defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit]),
         defenderBonuses:defenderCombat
       });
+      result.combatXp = {attacker:xpForKills(result.creditedKills.attacker),defender:xpForKills(result.creditedKills.defender)};
+      awardHuman(db,mission.attacker_id,result.combatXp.attacker);
+      awardHuman(db,mission.defender_id,result.combatXp.defender);
       result.cyberKnightLevel=data.includeCyberKnight?data.cyberKnightLevel:null;
       const defenderWounded={};
       for(const [unit,count] of Object.entries(validDefenders)){
@@ -3287,7 +3301,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
     const defenders=db.prepare("SELECT d.station_id,d.user_id,u.username,d.army,d.status,d.sent_at,d.arrives_at FROM alliance_station_defenders d JOIN users u ON u.id=d.user_id ORDER BY d.station_id,d.status,d.user_id").all().map(row=>({...row,army:JSON.parse(row.army||"{}")}));
     const myDefense=ownStation?defenders.find(row=>row.station_id===ownStation.station_id&&row.user_id===userId)||null:null;
     return {
-      required:10000,personalGreen,personalRed,allianceGreen:Number(bank.green_balance||0),allianceRed:Number(bank.red_balance||0),
+      earthWinner:earthChapter.winner(db),required:10000,personalGreen,personalRed,allianceGreen:Number(bank.green_balance||0),allianceRed:Number(bank.red_balance||0),
       allianceId:member?.alliance_id||null,allianceName:member?.name||null,allianceRole:member?.role||null,
       eligibleAlliance,rank:eligible.find(row=>row.id===member?.alliance_id)?.rank||null,ownStation:ownStation?.station_id||null,
       canUnlock:!!member&&member.role==="Leader"&&eligibleAlliance&&!ownStation&&Number(bank.green_balance||0)>=10000,
@@ -3303,7 +3317,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
           plasmaWallCompletesAt:owner?.plasma_wall_status==="building"?Number(owner.plasma_wall_started_at||0)+86400000:null,
           spaceportUnlocked:Number(owner?.plasma_wall_level||0)>=20,
           spaceportStatus:owner?.spaceport_status||"not_started",spaceportStartedAt:owner?.spaceport_started_at||null,
-          spaceportCompletesAt:owner?.spaceport_status==="building"?Number(owner.spaceport_started_at||0)+604800000:null,
+          spaceportCompletesAt:owner?.spaceport_status==="building"?Number(owner.spaceport_started_at||0)+earthChapter.spaceshipDuration:null,
           defenders:defenders.filter(defender=>defender.station_id===station.id)};
       })
     };
@@ -3327,17 +3341,18 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   resolveStationProjects(now=Date.now()){
-    const rows=db.prepare("SELECT station_id,plasma_wall_status,plasma_wall_level,plasma_wall_started_at,spaceport_status,spaceport_started_at FROM alliance_space_stations").all();
-    for(const row of rows){
-      if(row.plasma_wall_status==="building"&&Number(row.plasma_wall_started_at||0)+86400000<=now){
-        const nextLevel=Math.min(20,Number(row.plasma_wall_level||0)+1);
-        db.prepare("UPDATE alliance_space_stations SET plasma_wall_level=?,plasma_wall_status=?,plasma_wall_started_at=NULL WHERE station_id=? AND plasma_wall_status='building' AND plasma_wall_started_at=?")
-          .run(nextLevel,nextLevel>=20?"built":"not_started",row.station_id,row.plasma_wall_started_at);
+    return db.transaction(() => {
+      const rows=db.prepare("SELECT station_id,plasma_wall_status,plasma_wall_level,plasma_wall_started_at FROM alliance_space_stations").all();
+      for(const row of rows){
+        if(row.plasma_wall_status==="building"&&Number(row.plasma_wall_started_at||0)+86400000<=now){
+          const nextLevel=Math.min(20,Number(row.plasma_wall_level||0)+1);
+          db.prepare("UPDATE alliance_space_stations SET plasma_wall_level=?,plasma_wall_status=?,plasma_wall_started_at=NULL WHERE station_id=? AND plasma_wall_status='building' AND plasma_wall_started_at=?")
+            .run(nextLevel,nextLevel>=20?"built":"not_started",row.station_id,row.plasma_wall_started_at);
+        }
       }
-      if(row.spaceport_status==="building"&&Number(row.spaceport_started_at||0)+604800000<=now)
-        db.prepare("UPDATE alliance_space_stations SET spaceport_status='built',spaceport_started_at=NULL WHERE station_id=? AND spaceport_status='building' AND spaceport_started_at=?").run(row.station_id,row.spaceport_started_at);
-    }
-    return rows.length;
+      earthChapter.completeSpaceships(db,now);
+      return rows.length;
+    }).immediate();
   }
 
   buildAlienStation(userId,kind){
@@ -3361,7 +3376,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
       const bank=db.prepare("SELECT green_balance,red_balance FROM alliance_crystal_bank WHERE alliance_id=?").get(member.alliance_id)||{green_balance:0,red_balance:0};
       if(Number(bank.green_balance||0)<greenCost)return {error:"The alliance needs "+greenCost+" donated green crystals."};
       if(Number(bank.red_balance||0)<redCost)return {error:"The alliance needs "+redCost+" donated red crystals."};
-      const now=Date.now(),duration=isWall?86400000:604800000;
+      const now=Date.now(),duration=isWall?86400000:earthChapter.spaceshipDuration;
       db.prepare("UPDATE alliance_crystal_bank SET green_balance=green_balance-?,red_balance=red_balance-? WHERE alliance_id=?").run(greenCost,redCost,member.alliance_id);
       db.prepare("UPDATE alliance_space_stations SET "+statusColumn+"='building',"+startColumn+"=? WHERE station_id=?").run(now,station.station_id);
       return {success:true,kind,startedAt:now,completesAt:now+duration,cost:{green:greenCost,red:redCost},durationMs:duration,plasmaWallLevel:Number(station.plasma_wall_level||0)};
@@ -4161,6 +4176,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
         db.prepare("DELETE FROM resource_mines WHERE id=? AND claimed_by IS NULL").run(mine.id);
         settled++;
       }
+      orangeEmpireMines.settle(db,now,retired);
       replenishMissingMines(db,retired);
       return settled;
     }).immediate();
@@ -4179,14 +4195,18 @@ Rewards are distributed per participating player, not once per alliance. / На�
     this.settleResourceMines();
     const now=Date.now();
     const mines=db.prepare(`SELECT m.id,m.resource,m.x,m.y,m.amount,m.claimed_by,m.launched_at,m.arrives_at,
-      m.origin_x,m.origin_y,m.gathering_started_at,m.gathering_rate,m.gathering_units,u.username AS owner
-      FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by ORDER BY m.id`).all().map(mine=>{
+      m.origin_x,m.origin_y,m.gathering_started_at,m.gathering_rate,m.gathering_units,
+      nm.id IS NOT NULL AS npc_claimed,u.username AS owner
+      FROM resource_mines m LEFT JOIN users u ON u.id=m.claimed_by
+      LEFT JOIN orange_empire_mine_marches nm ON nm.external_id=m.id ORDER BY m.id`).all().map(mine=>{
         const cargo=Math.floor(calculateCargoCapacity(JSON.parse(mine.gathering_units||"{}")));
         const gathered=mine.claimed_by&&mine.gathering_rate?this.externalGatheringProgress(mine,now,cargo).amount:0;
         return {...mine,amount:Math.max(0,mine.amount-Math.floor(gathered))};
       });
     const activeMineCount=mines.filter(mine=>Number(mine.claimed_by)===Number(userId)).length;
-    return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId),...this.getAllianceMine(userId,true)};
+    const alliance = this.getAllianceMine(userId,true);
+    return {mines,activeMineCount,gatheringCapacity:this.mineCapacity(userId),...alliance,
+      allianceMines:[...alliance.allianceMines,...orangeEmpireMines.mapMine(db)]};
   }
 
   startGathering(userId,mineId,selectedArmy) {
@@ -4194,7 +4214,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
       this.settleResourceMines();
       const mine=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(Number(mineId));
       if(!mine) return {error:"Resource mine not found."};
-      if(mine.claimed_by) return {error:"This mine is already being gathered."};
+      if(mine.claimed_by || db.prepare("SELECT 1 FROM orange_empire_mine_marches WHERE external_id=?").get(mine.id))
+        return {error:"This mine is already being gathered."};
       const activeCount=db.prepare("SELECT COUNT(*) AS count FROM resource_mines WHERE claimed_by=?").get(userId).count;
       const capacity=this.mineCapacity(userId);
       if(activeCount>=capacity)return {error:"All your mine gathering slots are occupied ("+capacity+")."};
@@ -4218,12 +4239,12 @@ Rewards are distributed per participating player, not once per alliance. / На�
       const rate=1000*(1+this.protocolBonus(userId,"Mining Operations")/100);
       for(const [unit,count] of Object.entries(selected))current.army[unit]-=count;
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),userId);
-      const result=db.prepare("UPDATE resource_mines SET claimed_by=?,launched_at=?,arrives_at=?,origin_x=?,origin_y=?,gathering_started_at=?,gathering_rate=?,gathering_units=? WHERE id=? AND claimed_by IS NULL")
+      const result=db.prepare("UPDATE resource_mines SET claimed_by=?,launched_at=?,arrives_at=?,origin_x=?,origin_y=?,gathering_started_at=?,gathering_rate=?,gathering_units=? WHERE id=? AND claimed_by IS NULL AND NOT EXISTS (SELECT 1 FROM orange_empire_mine_marches WHERE external_id=resource_mines.id)")
         .run(userId,now,arrivesAt,base.x,base.y,arrivesAt,rate,JSON.stringify(selected),mine.id);
       if(!result.changes)throw new Error("This mine is already being gathered.");
       const launchedMine=db.prepare("SELECT * FROM resource_mines WHERE id=?").get(mine.id);
       return {success:true,mine:launchedMine,launchedAt:now,arrivesAt,rate,units:selected,activeMineCount:activeCount+1,gatheringCapacity:capacity};
-    })();
+    }).immediate();
   }
 
   recallGathering(userId,mineId) {
@@ -4273,6 +4294,14 @@ Rewards are distributed per participating player, not once per alliance. / На�
         };
       }
     }, now);
+  }
+
+  scheduleOrangeEmpireGathering(now=Date.now()) {
+    if (process.env.ORANGE_EMPIRE_ENABLED !== "true") return;
+    db.transaction(() => {
+      this.advanceCampaignTimeline(now);
+      orangeEmpireMines.schedule(db,this.talentCatalog(),now);
+    }).immediate();
   }
 
   scheduleOrangeEmpireAttacks(now=Date.now()) {
@@ -4375,7 +4404,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
 
   getPlayerProfile(userId) {
     db.prepare("INSERT OR IGNORE INTO player_profiles (user_id, avatar_id) VALUES (?, 'pilot-m')").run(Number(userId));
-    return db.prepare("SELECT avatar_id AS avatarId FROM player_profiles WHERE user_id=?").get(Number(userId));
+    const profile = db.prepare("SELECT avatar_id AS avatarId FROM player_profiles WHERE user_id=?").get(Number(userId));
+    return earthChapter.winner(db)?.userId===Number(userId) ? {...profile,earthDefender:true} : profile;
   }
 
   setPlayerAvatar(userId, avatarId) {
