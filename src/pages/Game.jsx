@@ -953,7 +953,8 @@ function Game() {
       </div>
 
       {optionsVisible && (
-        <div id="optionsMenu">
+        <div id="optionsMenu" style={{position:"fixed",top:"max(8px, env(safe-area-inset-top))",bottom:"auto",right:8,maxWidth:"calc(100vw - 16px)",maxHeight:"calc(100dvh - 24px - env(safe-area-inset-top) - env(safe-area-inset-bottom))",overflowY:"auto",overscrollBehavior:"contain",boxSizing:"border-box",zIndex:2000}}>
+          <div style={{position:"sticky",top:0,zIndex:2,display:"flex",justifyContent:"flex-end",background:"#111820",padding:6}}><button type="button" aria-label={t("Close","Затвори")} onClick={()=>{setOptionsVisible(false);setShowAvatarPicker(false);}} style={{background:"#b71926",color:"white",fontWeight:700,minWidth:44,minHeight:36}}>X</button></div>
           <label>{t("Language","Език")}{" "}
             <select value={language} onChange={event=>choose(event.target.value)}>
               <option value="bg" lang="bg">Български</option>
