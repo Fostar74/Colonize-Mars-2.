@@ -522,6 +522,7 @@ function Game() {
 
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [showInformation,setShowInformation]=useState(false);
+  const [earthDefender,setEarthDefender]=useState(false);
   const [avatarId,setAvatarId]=useState(()=>sessionStorage.getItem("avatarId")||"pilot-m");
   const [showAvatarPicker,setShowAvatarPicker]=useState(false);
   const [avatarSaving,setAvatarSaving]=useState(false);
@@ -779,7 +780,7 @@ function Game() {
       try { setResources(JSON.parse(savedResources)); } catch (_) {}
     }
     fetch(api+"/profile/"+encodeURIComponent(sessionStorage.getItem("userId")),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"})
-      .then(response=>response.ok?response.json():null).then(profile=>{if(profile?.avatarId){setAvatarId(profile.avatarId);sessionStorage.setItem("avatarId",profile.avatarId);}}).catch(()=>{});
+      .then(response=>response.ok?response.json():null).then(profile=>{setEarthDefender(profile?.earthDefender===true);if(profile?.avatarId){setAvatarId(profile.avatarId);sessionStorage.setItem("avatarId",profile.avatarId);}}).catch(()=>{});
     const saved = sessionStorage.getItem("castle");
     if (saved) {
       const castle = JSON.parse(saved);
@@ -924,6 +925,7 @@ function Game() {
               <option value="en" lang="en">English</option>
             </select>
           </label>{" "}
+          {earthDefender&&<p>{t("Defender of the Earth","Защитник на Земята")}</p>}
           <button type="button" onClick={()=>{setShowAvatarPicker(value=>!value);setAvatarNotice("");}}>{t("Player avatar","Аватар на играча")} · {AVATARS.find(avatar=>avatar.id===avatarId)?.icon||"👨‍🚀"}</button>{" "}
           <button type="button" onClick={()=>setShowInformation(true)}>{t("Information","Информация")}</button>{" "}
           <button onClick={logout}>{t("Log Out","Изход")}</button>
@@ -998,7 +1000,7 @@ function Game() {
         <div className="popup-content" style={{display:"flex",flexDirection:"column",gap:12,alignContent:"flex-start",padding:16,boxSizing:"border-box"}}>
           <section style={{display:"flex",alignItems:"center",gap:14,background:"#172c3d",border:"1px solid #547188",borderRadius:12,padding:16}}>
             <span aria-hidden="true" style={{width:78,height:78,flex:"0 0 78px",borderRadius:"50%",display:"grid",placeItems:"center",fontSize:44,background:"radial-gradient(circle at 35% 30%,#718a9c,#263443 72%)"}}>{AVATARS.find(avatar=>avatar.id===playerMenu.avatarId)?.icon||"👨‍🚀"}</span>
-            <div><h2 style={{margin:"0 0 6px"}}>{t("Player profile","Профил на играча")}</h2><strong style={{fontSize:20}}>{playerMenu.username}</strong><div>{(()=>{const avatar=AVATARS.find(item=>item.id===playerMenu.avatarId)||AVATARS.find(item=>item.id==="pilot-m");return t(avatar.role,avatar.roleBg);})()}</div></div>
+            <div><h2 style={{margin:"0 0 6px"}}>{t("Player profile","Профил на играча")}</h2><strong style={{fontSize:20}}>{playerMenu.username}</strong>{playerMenu.earthDefender&&<div>{t("Defender of the Earth","Защитник на Земята")}</div>}<div>{(()=>{const avatar=AVATARS.find(item=>item.id===playerMenu.avatarId)||AVATARS.find(item=>item.id==="pilot-m");return t(avatar.role,avatar.roleBg);})()}</div></div>
           </section>
           <div style={{display:"flex",gap:18,flexWrap:"wrap"}}>
             <span>{t("Alliance","Алианс")}: {playerMenu.alliance||"—"}</span>

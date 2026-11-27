@@ -1,3 +1,4 @@
+const tactics = require("./orangeEmpireTactics");
 const {placedMapObjects} = require("./mapObjects");
 const {playerLevelFromXp, maxPlayerLevel} = require("../src/shared/playerTargeting");
 const {marchLimit} = require("../src/shared/formations");
@@ -66,6 +67,7 @@ function migrate(db) {
     );
     CREATE INDEX IF NOT EXISTS orange_empire_support_returns ON orange_empire_support(returns_at) WHERE returned_at IS NULL;
   `);
+  tactics.migrate(db);
 }
 
 function initialState(army) {
@@ -152,7 +154,7 @@ function settle(state, previous, now, catalog) {
     } else {
       state.army[job.unit] = (state.army[job.unit] || 0) + 1;
     }
-    state.xp = Math.min((maxCommanderLevel - 1) * 1000, state.xp + job.xp);
+    state.xp = Math.max(state.xp,Math.min((maxCommanderLevel - 1) * 1000, state.xp + job.xp));
     allocateProtocols(state);
     delete state.jobs[key];
   }
@@ -160,7 +162,7 @@ function settle(state, previous, now, catalog) {
   produce(state, ticks, catalog);
 }
 
-function startJobs(state, now, catalog) {
+function startJobs(state, now, catalog, lessons = {}) {
   const {structures, resources, jobs} = state;
   const production = Object.values(resourcesByBuilding);
   let reserve = {};
@@ -189,7 +191,8 @@ function startJobs(state, now, catalog) {
   // job per military queue so recovery never needs to replay queue decisions.
   const training = catalog.find(item => item.name === "Accelerated Training");
   const trainingBonus = (training.values[(state.protocols[training.name] || 0) - 1] || 0) / 100;
-  for (const [category, units] of Object.entries(categories)) {
+  const priorities = Object.entries(categories).sort(([a],[b])=>(lessons["train:"+b]||0)-(lessons["train:"+a]||0));
+  for (const [category, units] of priorities) {
     if (jobs[category]) continue;
     const unit = [...units].sort((a,b) => (state.army[a] || 0) - (state.army[b] || 0)).find(name => {
       const {building, level} = unitRequirement(name);
@@ -253,6 +256,7 @@ function advance(db, {chooseSpawn, garrison, catalog}, now = Date.now()) {
       }
     }
     const save = db.prepare("UPDATE orange_empire_commanders SET last_processed_at=?,state=? WHERE id=?");
+    const lessons = tactics.lessons(db);
     for (const row of rows) {
       const ticks = Math.floor((now - row.last_processed_at) / tickMs);
       if (ticks < 1 && row.bootstrapped) continue;
@@ -263,7 +267,10 @@ function advance(db, {chooseSpawn, garrison, catalog}, now = Date.now()) {
         bootstrap(state, row.id, garrison(row.id));
         markBootstrap.run(row.id, now);
       }
-      if (ticks > 0) startJobs(state, through, catalog);
+      if (ticks > 0) {
+        tactics.practice(db,row.id,state.army,through,lessons);
+        startJobs(state, through, catalog, lessons);
+      }
       save.run(through, JSON.stringify(state), row.id);
     }
   }).immediate();

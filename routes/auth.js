@@ -29,7 +29,11 @@ if (process.env.ORANGE_EMPIRE_ENABLED === "true") {
     catch (error) { console.error("Orange Empire development:", error); }
   };
   advanceOrangeEmpire();
-  setInterval(advanceOrangeEmpire, 10000).unref();
+  setInterval(() => {
+    advanceOrangeEmpire();
+    try { db.scheduleOrangeEmpireGathering(); }
+    catch (error) { console.error("Orange Empire gathering:", error); }
+  }, 10000).unref();
 }
 
 function requireAuthenticatedPlayer(req, res, next) {

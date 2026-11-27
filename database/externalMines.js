@@ -6,6 +6,7 @@ const {tileKey, blockedMapTiles, reserveTileAndNeighbors} = require("../src/shar
 
 const types = ["gold", "iron", "water", "solar"];
 const stock = 5000;
+const minesPerResource = 20;
 
 function blockedMineTiles(db) {
   const blocked = blockedMapTiles(placedMapObjects(db));
@@ -33,13 +34,13 @@ function replenishMissingMines(db, retired=[]) {
     const counts=new Map(db.prepare(`SELECT resource,COUNT(*) AS count FROM resource_mines
       WHERE amount>0 AND (x-50)*(x-50)+(y-50)*(y-50)>225 GROUP BY resource`)
       .all().map(({resource,count})=>[resource,count]));
-    if(types.every(resource=>(counts.get(resource)||0)>=10))return;
+    if(types.every(resource=>(counts.get(resource)||0)>=minesPerResource))return;
     const blocked=blockedMineTiles(db);
     for(const {x,y} of retired)reserveTileAndNeighbors(blocked,x,y);
     for (const resource of types) {
-      for (let i=(counts.get(resource)||0);i<10;i++) createMine(db,resource,blocked);
+      for (let i=(counts.get(resource)||0);i<minesPerResource;i++) createMine(db,resource,blocked);
     }
   }).immediate();
 }
 
-module.exports={replenishMissingMines};
+module.exports={replenishMissingMines,blockedMineTiles};

@@ -14,3 +14,5 @@ services:
         value: production
       - key: NODE_VERSION
         value: 22.16.0
+      - key: ORANGE_EMPIRE_ATTACKS_ENABLED
+        value: "false"

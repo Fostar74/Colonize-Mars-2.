@@ -75,6 +75,10 @@ test("weekly dispatch, protected players, per-owner defense, and station gates",
     assert.equal(resolved.victory,false);
     assert.ok(resolved.defenderSurvivors["Explorer Trooper"]>50000);
     assert.equal(Object.keys(resolved.contingentSurvivors).length,3);
+    assert.ok(resolved.combatXp.defender>0);
+    const xp = id=>sql.prepare("SELECT xp FROM player_talents WHERE user_id=?").get(id).xp;
+    assert.equal(xp(leader),39000+resolved.combatXp.defender);
+    assert.ok(sql.prepare("SELECT 1 FROM orange_empire_lessons WHERE lesson='plan:balanced'").get());
     for (const row of sql.prepare("SELECT * FROM orange_empire_support WHERE attack_id=?").all(first.id)) {
       const returned = JSON.parse(row.army)["Explorer Trooper"];
       assert.equal(troops(row.sender_id)["Explorer Trooper"],900+returned);
@@ -83,8 +87,10 @@ test("weekly dispatch, protected players, per-owner defense, and station gates",
     assert.deepEqual(JSON.parse(attacks(solo)[0].result),{cancelled:true});
     assert.equal(attacks(solo)[0].id,soloAttack.id);
     const after = troops(allies[0]);
+    const credited = xp(leader);
     game.advanceCampaignTimeline(monday+day);
     assert.deepEqual(troops(allies[0]),after);
+    assert.equal(xp(leader),credited);
 
     sql.prepare(`INSERT INTO alliance_space_stations(station_id,alliance_id,unlocked_at,spaceport_status)
       VALUES (1,?,?,'building')`).run(allianceId,monday);

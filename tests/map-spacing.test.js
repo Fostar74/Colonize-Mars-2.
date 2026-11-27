@@ -14,7 +14,7 @@ test("new bases and mines reserve neighboring tiles without moving existing obje
   const game=new Game(), sql=new SQLite(process.env.DATABASE_PATH);
   try{
     const mines=sql.prepare("SELECT id,x,y,resource FROM resource_mines ORDER BY id").all();
-    assert.equal(mines.length,40);
+    assert.equal(mines.length,80);
     for(const [i,mine] of mines.entries()){
       assert.ok(!mines.slice(i+1).some(other=>touchesTile(other,mine.x,mine.y)));
     }

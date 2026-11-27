@@ -1,7 +1,9 @@
 const {combatEnabled, eligibleHumanTarget, validAttackArmy} = require("./orangeEmpire");
+const tactics = require("./orangeEmpireTactics");
+const {xpForKills,awardHuman} = require("./combatXp");
 const {maxPlayerLevel} = require("../src/shared/playerTargeting");
-const {marchLimit, defaultFormation} = require("../src/shared/formations");
-const {armyPopulation,profileFor} = require("../src/shared/unitProfiles");
+const {defaultFormation} = require("../src/shared/formations");
+const {armyPopulation} = require("../src/shared/unitProfiles");
 const {armyTravelDuration} = require("../src/shared/unitEconomy");
 const {equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const stations = require("../src/shared/spaceStations");
@@ -20,20 +22,6 @@ function protectionUntil(db, game, userId, now) {
 function stationForLeader(db, userId) {
   return db.prepare(`SELECT s.* FROM alliance_space_stations s JOIN alliances a ON a.id=s.alliance_id
     JOIN alliance_members m ON m.alliance_id=a.id AND m.user_id=a.leader_id WHERE a.leader_id=?`).get(userId);
-}
-
-function deployableArmy(army, budget) {
-  const selected = {};
-  let remaining = Math.min(marchLimit,budget);
-  for (const [unit, count] of Object.entries(army)) {
-    if (!Object.hasOwn(playerTypes, unit) || !Number.isSafeInteger(count) || count <= 0) continue;
-    const population = profileFor(unit)?.population || 1;
-    const amount = Math.min(count, Math.floor(remaining / population));
-    if (!amount) continue;
-    selected[unit] = amount;
-    remaining -= amount * population;
-  }
-  return selected;
 }
 
 function schedule(db, game, now) {
@@ -70,10 +58,11 @@ function schedule(db, game, now) {
       const state = JSON.parse(commander.state);
       const outstanding = quotas.get(commander.id);
       quotas.set(commander.id,outstanding-1);
-      const army = deployableArmy(state.army,Math.max(1,Math.floor(armyPopulation(state.army)/outstanding)));
+      const army = tactics.balancedArmy(state.army,Math.max(1,Math.floor(armyPopulation(state.army)/outstanding)));
       if (!validAttackArmy(army)) continue;
       const distance = Math.max(1, Math.abs(commander.x - target.x), Math.abs(commander.y - target.y));
-      const combat = {upgrades:state.upgrades, knight:state.knight, protocols:state.protocols};
+      const plan = db.prepare("SELECT plan FROM orange_empire_practice WHERE commander_id=?").get(commander.id)?.plan || "balanced";
+      const combat = {upgrades:state.upgrades, knight:state.knight, protocols:state.protocols, plan, formation:tactics.formation(army,plan)};
       db.prepare(`INSERT INTO orange_empire_attacks
         (commander_id,player_id,week_start,slot,station_id,station_alliance_id,origin_x,origin_y,x,y,launched_at,arrives_at,army,combat)
         VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`).run(commander.id,player.id,weekStart,slot,
@@ -171,18 +160,26 @@ function settleAttack(db, game, attack, now) {
       +(Number(npcGear.protocolBoosts?.[name]?.value)||0)-(Number(defender.gear.enemyProtocolDebuffs?.[name]?.value)||0));
     const seed = createHash("sha256").update("orange-empire:"+attack.id).digest().readUInt32LE(0);
     let rng = seed;
-    result = fight(attackerArmy,deployed,formation(attackerArmy,defaultFormation()),{
+    result = fight(attackerArmy,deployed,snapshot.formation||formation(attackerArmy,defaultFormation()),{
       unitUpgrades:snapshot.upgrades, unitEffects:npcGear.unitEffects, enemyDebuffs:npcGear.enemyDebuffs,
       leadership:value("Battle Command"), allHealth:value("Reinforced Armor"), rangedAttack:value("Precision Fire"),
       infantryAttack:value("Infantry Command"), infantryHealth:value("Infantry Command"), mobileAttack:value("Mobile Warfare"),
       artilleryAttack:value("Heavy Artillery"), dodge:value("Evasion Protocol"), revive:value("Combat Recovery")
     },{
-      playerDefense:true, defenderFormation:defender.formation, defenderBonuses:defender.bonuses,
+      playerDefense:true, trackCasualties:true, hospitalSides:[1], defenderFormation:defender.formation, defenderBonuses:defender.bonuses,
       defenderContingents:contingents, random:()=>{rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296;}
     });
     const wounds = (id, initial, survivors) => game.recordHospitalWounds(id,"orange-empire-defense",attack.id,
       Object.fromEntries(Object.entries(initial).map(([unit,count])=>[unit,Math.floor((count-(survivors[unit]||0))*0.3)])),
       "waiting",null,now);
+    result.combatXp = Object.fromEntries(Object.entries(result.creditedKills)
+      .map(([owner,kills])=>[owner,xpForKills(kills)]));
+    awardHuman(db,attack.player_id,result.combatXp.defender);
+    const commander = db.prepare("SELECT state FROM orange_empire_commanders WHERE id=?").get(attack.commander_id);
+    const state = JSON.parse(commander.state);
+    state.xp = Math.min(Number.MAX_SAFE_INTEGER,state.xp+(result.combatXp.attacker||0));
+    db.prepare("UPDATE orange_empire_commanders SET state=? WHERE id=?").run(JSON.stringify(state),attack.commander_id);
+    tactics.recordBattle(db,snapshot.plan||"balanced",result,attackerArmy);
     wounds(attack.player_id,deployed,result.defenderSurvivors);
     if (!attack.station_id) writeArmy(db,attack.player_id,{...homeArmy,...result.defenderSurvivors});
     const setStationArmy = db.prepare("UPDATE alliance_station_defenders SET army=? WHERE station_id=? AND user_id=?");
@@ -190,6 +187,7 @@ function settleAttack(db, game, attack, now) {
     for (const row of eligibleSupport) {
       const id = row.sender_id ?? row.user_id;
       const survivors = result.contingentSurvivors[row.id ?? row.user_id];
+      awardHuman(db,id,result.combatXp["support:"+(row.id ?? row.user_id)]);
       wounds(id,JSON.parse(row.army),survivors);
       if (attack.station_id) setStationArmy.run(JSON.stringify(survivors),attack.station_id,id);
       else db.prepare("UPDATE orange_empire_support SET army=? WHERE id=?").run(JSON.stringify(survivors),row.id);

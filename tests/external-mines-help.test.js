@@ -29,7 +29,7 @@ test("external mines replenish independently and alliance help includes all acti
     assert.match(game.requestAllianceHelp(player).error,/already/);
     const baseline=db.prepare("SELECT resource,COUNT(*) AS n FROM resource_mines GROUP BY resource ORDER BY resource").all();
     assert.equal(baseline.length,4);
-    assert.ok(baseline.every(row=>row.n===10));
+    assert.ok(baseline.every(row=>row.n===20));
     game.runtime(player2);
     const grant=db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?");
     for(const user of [player,player2])grant.run(JSON.stringify({"Explorer Trooper":100}),user);
@@ -105,8 +105,8 @@ test("external mines replenish independently and alliance help includes all acti
     const onlyDepleted=db.prepare("SELECT id FROM resource_mines WHERE resource='water' LIMIT 1").get();
     db.prepare("UPDATE resource_mines SET amount=0 WHERE id=?").run(onlyDepleted.id);
     const visible=game.getMapResources(player).mines.filter(m=>Math.hypot(m.x-50,m.y-50)>15);
-    assert.equal(visible.filter(m=>m.resource==="iron").length,10);
-    assert.equal(visible.filter(m=>m.resource==="water").length,10);
+    assert.equal(visible.filter(m=>m.resource==="iron").length,20);
+    assert.equal(visible.filter(m=>m.resource==="water").length,20);
     assert.equal(db.prepare("SELECT x FROM resource_mines WHERE id=?").get(hidden.id).x,49);
     assert.equal(db.prepare("SELECT id FROM resource_mines WHERE id=?").get(onlyDepleted.id),undefined);
 
