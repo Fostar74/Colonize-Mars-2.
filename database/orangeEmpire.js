@@ -106,20 +106,28 @@ function settle(state, previous, now, catalog) {
 function startJobs(state, now, catalog) {
   const {structures, resources, jobs} = state;
   const production = Object.values(resourcesByBuilding);
+  let reserve = {};
   if (!jobs.building) {
     const buildings = [...production, ...militaryBuildings].sort((a,b) => (structures[a] || 0) - (structures[b] || 0));
-    const plan = buildings.map(name => {
+    const plans = buildings.map(name => {
       const level = (structures[name] || 0) + 1;
       return {name, level, cost: buildingPrice(name, level)};
-    }).find(({name, level, cost}) => canSpend(resources, cost) &&
+    }).filter(({name, level, cost}) => cost &&
       Object.entries(buildingRequirements(name, level)).every(([building, minimum]) => (structures[building] || 0) >= minimum));
+    const plan = plans.find(({cost}) => canSpend(resources, cost));
     if (plan) {
       const {name, level, cost} = plan;
       spend(resources, cost);
       jobs.building = {name, level, endsAt: now + buildingDuration(name, level), xp: totalCost(cost)};
+    } else if (plans.length) {
+      reserve = plans[0].cost;
     }
   }
 
+  // Let production accumulate for the next building while military jobs spend
+  // only the surplus. Otherwise frequent training can starve construction.
+  const canSpendSurplus = cost => Object.entries(cost).every(([resource, amount]) =>
+    resources[resource] - (reserve[resource] || 0) >= amount);
   // Keep one active
   // job per military queue so recovery never needs to replay queue decisions.
   const training = catalog.find(item => item.name === "Accelerated Training");
@@ -128,7 +136,7 @@ function startJobs(state, now, catalog) {
     if (jobs[category]) continue;
     const unit = [...units].sort((a,b) => (state.army[a] || 0) - (state.army[b] || 0)).find(name => {
       const {building, level} = unitRequirement(name);
-      return (structures[building] || 0) >= level && canSpend(resources, unitPrice(name));
+      return (structures[building] || 0) >= level && canSpendSurplus(unitPrice(name));
     });
     if (!unit) continue;
     const cost = unitPrice(unit);
@@ -147,7 +155,7 @@ function startJobs(state, now, catalog) {
       if (level >= unitUpgradeMaxLevel(unit, stat)) continue;
       const details = unitUpgradeDetails(unit, stat, level);
       const cost = details?.cost || upgradePrice(level);
-      if (!canSpend(resources, cost)) continue;
+      if (!canSpendSurplus(cost)) continue;
       const duration = Math.max(1000, Math.ceil((details?.durationMs || upgradeDuration(level)) *
         (1 - structures["Upgrade Lab"] * 0.015)));
       spend(resources, cost);

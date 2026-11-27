@@ -8,6 +8,7 @@ const {once} = require("node:events");
 const SQLite = require("better-sqlite3");
 const {touchesTile} = require("../src/shared/mapSpacing");
 const {maxPlayerLevel} = require("../src/shared/playerTargeting");
+const {buildingMaxLevel} = require("../src/shared/unitEconomy");
 const {profileFor} = require("../src/shared/unitProfiles");
 const {eligibleHumanTarget, validAttackArmy} = require("../database/orangeEmpire");
 const alienBases = require("../src/shared/alienBases");
@@ -121,9 +122,24 @@ test("opt-in map, idempotent placement, bounded development and persisted NPC-on
     assert.deepEqual(states(), caughtUp);
     assert.deepEqual(playerSnapshot(), originalPlayer);
 
+    // An unaffordable Order must be able to accumulate resources even when
+    // cheaper military jobs are eligible on every tick.
+    const buildingNames = ["Gold Synthesizer", "Iron Driller", "Water Extractor", "Solar Array",
+      "Training Center", "Drone Factory", "Vehicle Bay", "Upgrade Lab", "Defense Grid"];
+    after.structures = Object.fromEntries(buildingNames.map(name => [name, buildingMaxLevel(name)]));
+    after.jobs = {};
+    after.resources = {Gold:29999, Iron:29000, Water:29999, Solar:29999};
+    sql.prepare("UPDATE orange_empire_commanders SET state=? WHERE id=1").run(JSON.stringify(after));
+    const through = caughtUp[0].last_processed_at;
+    game.advanceOrangeEmpire(through + 10000);
+    assert.equal(JSON.parse(states()[0].state).jobs.Ground, undefined);
+    game.advanceOrangeEmpire(through + 1000000);
+    assert.equal(JSON.parse(states()[0].state).jobs.building?.name, "Order");
+
+    const paused = states();
     delete process.env.ORANGE_EMPIRE_ENABLED;
-    game.advanceOrangeEmpire(caughtUp[0].last_processed_at + day);
-    assert.deepEqual(states(), caughtUp);
+    game.advanceOrangeEmpire(through + day);
+    assert.deepEqual(states(), paused);
     assert.equal((await getMap("false", token)).orangeEmpireBases, undefined);
 
     // Future spawns and mine replacements still honor the reserved tiles.
