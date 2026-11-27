@@ -154,7 +154,7 @@ function settle(state, previous, now, catalog) {
     } else {
       state.army[job.unit] = (state.army[job.unit] || 0) + 1;
     }
-    state.xp = Math.max(state.xp,Math.min((maxCommanderLevel - 1) * 1000, state.xp + job.xp));
+    state.xp = Math.min(Number.MAX_SAFE_INTEGER, state.xp + job.xp);
     allocateProtocols(state);
     delete state.jobs[key];
   }
