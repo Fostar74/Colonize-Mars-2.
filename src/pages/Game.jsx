@@ -23,6 +23,7 @@ import labyrinthKnightArt from "../images/cyber-knight-expanded.jpg";
 import labyrinthMonsterArt from "../images/labyrinth-monster.svg";
 import labyrinthCavernArt from "../images/labyrinth-cavern.svg";
 import AVATARS from "../shared/avatarCatalog";
+import PlayerAvatar from "../shared/PlayerAvatar";
 // Restore the original Mars aircraft artwork on both desktop and mobile.
 
 
@@ -523,6 +524,7 @@ function Game() {
   const [optionsVisible, setOptionsVisible] = useState(false);
   const [showInformation,setShowInformation]=useState(false);
   const [earthDefender,setEarthDefender]=useState(false);
+  const [avatarVersion,setAvatarVersion]=useState(null);
   const [avatarId,setAvatarId]=useState(()=>sessionStorage.getItem("avatarId")||"pilot-m");
   const [showAvatarPicker,setShowAvatarPicker]=useState(false);
   const [avatarSaving,setAvatarSaving]=useState(false);
@@ -708,9 +710,42 @@ function Game() {
       const data=await response.json();
       if(!response.ok)throw new Error(data.message||"Unable to save avatar.");
       setAvatarId(data.avatarId);sessionStorage.setItem("avatarId",data.avatarId);
+      setAvatarVersion(data.avatarVersion);
       setAvatarNotice(t("Avatar saved.","Аватарът е запазен."));
     }catch(error){setAvatarNotice(error.message||t("Unable to save avatar.","Аватарът не можа да бъде запазен."));}
     finally{setAvatarSaving(false);}
+  };
+
+  const saveAvatarImage=async file=>{
+    if (file && file.size>5*1024*1024) {
+      setAvatarNotice(t("Choose an image up to 5 MB.","Изберете изображение до 5 MB."));
+      return;
+    }
+    setAvatarSaving(true);
+    setAvatarNotice("");
+    try {
+      const response=await fetch(api+"/profile/"+encodeURIComponent(sessionStorage.getItem("userId"))+"/avatar-image",{
+        method:file?"PUT":"DELETE",
+        headers:{"Content-Type":"application/octet-stream",Authorization:"Bearer "+sessionStorage.getItem("authToken")},
+        body:file || undefined
+      });
+      const data=await response.json();
+      if (!response.ok) {
+        const message={
+          "avatar-size":t("Choose an image up to 5 MB.","Изберете изображение до 5 MB."),
+          "avatar-format":t("Choose a JPG, PNG, or WebP image.","Изберете изображение във формат JPG, PNG или WebP."),
+          "avatar-invalid":t("Choose a valid, still JPG, PNG, or WebP image up to 16 megapixels.","Изберете валидно статично JPG, PNG или WebP изображение до 16 мегапиксела."),
+          "avatar-busy":t("Avatar uploads are busy. Try again shortly.","Качват се други аватари. Опитайте отново след малко."),
+          "avatar-storage":t("Avatar uploads are unavailable on this server.","Качването на аватари не е достъпно на този сървър.")
+        }[data.code];
+        throw new Error(message || t("Unable to save avatar.","Аватарът не можа да бъде запазен."));
+      }
+      setAvatarVersion(data.avatarVersion);
+      setAvatarId(data.avatarId);
+      sessionStorage.setItem("avatarId",data.avatarId);
+      setAvatarNotice(file?t("Avatar saved.","Аватарът е запазен."):t("Custom avatar removed.","Каченият аватар е премахнат."));
+    } catch (error) { setAvatarNotice(error.message); }
+    finally { setAvatarSaving(false); }
   };
 
   const playerAction=player=><button type="button" onClick={async ()=>{
@@ -780,7 +815,7 @@ function Game() {
       try { setResources(JSON.parse(savedResources)); } catch (_) {}
     }
     fetch(api+"/profile/"+encodeURIComponent(sessionStorage.getItem("userId")),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"})
-      .then(response=>response.ok?response.json():null).then(profile=>{setEarthDefender(profile?.earthDefender===true);if(profile?.avatarId){setAvatarId(profile.avatarId);sessionStorage.setItem("avatarId",profile.avatarId);}}).catch(()=>{});
+      .then(response=>response.ok?response.json():null).then(profile=>{setEarthDefender(profile?.earthDefender===true);setAvatarVersion(profile?.avatarVersion||null);if(profile?.avatarId){setAvatarId(profile.avatarId);sessionStorage.setItem("avatarId",profile.avatarId);}}).catch(()=>{});
     const saved = sessionStorage.getItem("castle");
     if (saved) {
       const castle = JSON.parse(saved);
@@ -926,11 +961,26 @@ function Game() {
             </select>
           </label>{" "}
           {earthDefender&&<p>{t("Defender of the Earth","Защитник на Земята")}</p>}
-          <button type="button" onClick={()=>{setShowAvatarPicker(value=>!value);setAvatarNotice("");}}>{t("Player avatar","Аватар на играча")} · {AVATARS.find(avatar=>avatar.id===avatarId)?.icon||"👨‍🚀"}</button>{" "}
+          <button type="button" onClick={()=>{setShowAvatarPicker(value=>!value);setAvatarNotice("");}}>{t("Player avatar","Аватар на играча")} · <PlayerAvatar player={{id:sessionStorage.getItem("userId"),avatarId,avatarVersion}} size={26} /></button>{" "}
           <button type="button" onClick={()=>setShowInformation(true)}>{t("Information","Информация")}</button>{" "}
           <button onClick={logout}>{t("Log Out","Изход")}</button>
           {showAvatarPicker&&<section aria-label={t("Choose an avatar","Избери аватар")} style={{marginTop:12,padding:12,background:"#111820",border:"1px solid #59768a",borderRadius:10,width:"min(92vw, 560px)",boxSizing:"border-box"}}>
             <h3 style={{marginTop:0}}>{t("Choose your Mars avatar","Избери своя марсиански аватар")}</h3>
+            <label style={{display:"block",marginBottom:8}}>
+              {avatarVersion?t("Change custom avatar","Смени качения аватар"):t("Upload avatar","Качи аватар")}
+              <input type="file" accept="image/jpeg,image/png,image/webp,.jpg,.jpeg,.png,.webp"
+                disabled={avatarSaving} style={{display:"block",maxWidth:"100%"}}
+                onChange={event=>{
+                  const file=event.target.files?.[0];
+                  event.target.value="";
+                  if(file)saveAvatarImage(file);
+                }} />
+            </label>
+            <p>{t("JPG, PNG or WebP up to 5 MB. Images are cropped to a 256 × 256 square.","JPG, PNG или WebP до 5 MB. Изображенията се изрязват до квадрат 256 × 256.")}</p>
+            {avatarVersion&&<button type="button" disabled={avatarSaving} onClick={()=>saveAvatarImage(null)}>
+              {t("Remove custom avatar","Премахни качения аватар")}
+            </button>}
+            <h4>{avatarVersion?t("Choose a fallback avatar","Избери резервен аватар"):t("Choose a preset avatar","Избери готов аватар")}</h4>
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(105px,1fr))",gap:8}}>
               {AVATARS.map(avatar=><button key={avatar.id} type="button" disabled={avatarSaving} aria-pressed={avatarId===avatar.id} onClick={()=>saveAvatar(avatar)} style={{display:"flex",flexDirection:"column",alignItems:"center",gap:5,padding:"9px 6px",borderRadius:10,border:avatarId===avatar.id?"2px solid #43c8b3":"1px solid #547188",background:avatarId===avatar.id?"#174c53":"#1c3143",color:"white",cursor:"pointer"}}>
                 <span aria-hidden="true" style={{width:50,height:50,borderRadius:"50%",display:"grid",placeItems:"center",fontSize:29,background:"radial-gradient(circle at 35% 30%,#718a9c,#263443 72%)"}}>{avatar.icon}</span>
@@ -999,7 +1049,7 @@ function Game() {
         <div className="popup-header"><span>{playerMenu.username}</span><button className="close-button" onClick={()=>setPlayerMenu(null)}>X</button></div>
         <div className="popup-content" style={{display:"flex",flexDirection:"column",gap:12,alignContent:"flex-start",padding:16,boxSizing:"border-box"}}>
           <section style={{display:"flex",alignItems:"center",gap:14,background:"#172c3d",border:"1px solid #547188",borderRadius:12,padding:16}}>
-            <span aria-hidden="true" style={{width:78,height:78,flex:"0 0 78px",borderRadius:"50%",display:"grid",placeItems:"center",fontSize:44,background:"radial-gradient(circle at 35% 30%,#718a9c,#263443 72%)"}}>{AVATARS.find(avatar=>avatar.id===playerMenu.avatarId)?.icon||"👨‍🚀"}</span>
+            <PlayerAvatar player={playerMenu} size={78} />
             <div><h2 style={{margin:"0 0 6px"}}>{t("Player profile","Профил на играча")}</h2><strong style={{fontSize:20}}>{playerMenu.username}</strong>{playerMenu.earthDefender&&<div>{t("Defender of the Earth","Защитник на Земята")}</div>}<div>{(()=>{const avatar=AVATARS.find(item=>item.id===playerMenu.avatarId)||AVATARS.find(item=>item.id==="pilot-m");return t(avatar.role,avatar.roleBg);})()}</div></div>
           </section>
           <div style={{display:"flex",gap:18,flexWrap:"wrap"}}>

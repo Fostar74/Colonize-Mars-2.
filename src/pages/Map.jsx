@@ -1,3 +1,4 @@
+import PlayerAvatar from "../shared/PlayerAvatar";
 import ReportsPanel from "./ReportsPanel";
 import usePlayerNotifications from "../utils/usePlayerNotifications";
 import {touchesTile} from "../shared/mapSpacing";
@@ -1340,6 +1341,7 @@ function Map() {
             </details>
           </section>}
           {selectedTarget?.type === "orangeEmpire" && <section>
+            <PlayerAvatar player={{...selectedTarget,npc:true}} size={78} />
             <h3>{t("The Orange Empire", "Оранжевата империя")}</h3>
             <p>{selectedTarget.emperor ? t("Emperor", "Император") : t("Commander", "Командир") + " " + selectedTarget.id}
               {" · "}{t("Level", "Ниво")} {selectedTarget.level}{" · "}{selectedTarget.x}:{selectedTarget.y}</p>

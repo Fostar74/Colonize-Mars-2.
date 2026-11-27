@@ -2,6 +2,7 @@ const crypto = require("crypto");
 const express = require("express");
 const router = express.Router();
 const bcrypt = require("bcrypt");
+const {maxBytes,normalizeAvatar} = require("../database/playerAvatars");
 const DatabaseManager = require("../database/database");
 
 const db = new DatabaseManager();
@@ -754,6 +755,50 @@ router.post("/profile/avatar", requireSession, (req, res) => {
     console.error("Save player avatar:", error);
     res.status(500).json({message:"Unable to save avatar."});
   }
+});
+
+const parseAvatarImage = express.raw({type:()=>true,limit:maxBytes,inflate:false});
+let activeAvatarDecodes = 0;
+const avatarImageTypes = new Set(["image/jpeg","image/png","image/webp","application/octet-stream"]);
+
+router.put("/profile/:userId/avatar-image", requireAuthenticatedPlayer, (req,res,next)=>{
+  if (!avatarImageTypes.has(req.get("content-type")?.split(";")[0].trim().toLowerCase())) {
+    return res.status(415).json({code:"avatar-format"});
+  }
+  if (!db.canStoreAvatarImages()) return res.status(503).json({code:"avatar-storage"});
+  parseAvatarImage(req,res,error=>{
+    if (error) return res.status(error.status===413?413:415).json({code:error.status===413?"avatar-size":"avatar-format"});
+    next();
+  });
+}, async (req,res)=>{
+  if (activeAvatarDecodes>=2) return res.status(429).json({code:"avatar-busy"});
+  let image;
+  activeAvatarDecodes++;
+  try { image = await normalizeAvatar(req.body); }
+  catch { return res.status(400).json({code:"avatar-invalid"}); }
+  finally { activeAvatarDecodes--; }
+  try { res.json(db.setPlayerAvatarImage(Number(req.params.userId),image)); }
+  catch (error) {
+    console.error("Save player avatar image:",error);
+    res.status(500).json({code:"avatar-save"});
+  }
+});
+
+router.delete("/profile/:userId/avatar-image", requireAuthenticatedPlayer, (req,res)=>{
+  try { res.json(db.removePlayerAvatarImage(Number(req.params.userId))); }
+  catch (error) {
+    console.error("Remove player avatar image:",error);
+    res.status(500).json({code:"avatar-save"});
+  }
+});
+
+router.get("/player-avatars/:userId/:version.webp", (req,res)=>{
+  const userId = Number(req.params.userId);
+  const {version} = req.params;
+  if (!Number.isSafeInteger(userId) || userId<1 || !/^[a-f0-9]{64}$/.test(version)) return res.sendStatus(404);
+  const image = db.getPlayerAvatarImage(userId,version);
+  if (!image) return res.sendStatus(404);
+  res.set({"Cache-Control":"public, no-cache","X-Content-Type-Options":"nosniff"}).type("image/webp").send(image);
 });
 
 router.post("/update-stats", requireSession, async (req, res) => {

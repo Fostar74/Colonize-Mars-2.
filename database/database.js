@@ -7,6 +7,7 @@ const {replenishMissingMines} = require("./externalMines");
 const {placedMapObjects}=require("./mapObjects");
 const {calculateCargoCapacity,calculateLoot,resourceNames,unprotectedResources} = require("./pvpLoot");
 const {xpForKills,awardHuman} = require("./combatXp");
+const playerAvatars = require("./playerAvatars");
 const earthChapter = require("./earthChapter");
 const orangeEmpire = require("./orangeEmpire");
 const orangeEmpireCombat = require("./orangeEmpireCombat");
@@ -412,6 +413,7 @@ class DatabaseManager {
     migrateSideQuests(db);
     orangeEmpire.migrate(db);
     earthChapter.migrate(db);
+    playerAvatars.migrate(db);
     orangeEmpireMines.migrate(db);
     this.sideQuests = new SideQuests(db,this);
   }
@@ -1296,9 +1298,10 @@ class DatabaseManager {
       // Unscoped historical private copies do not identify their original alliance.
       // Keep them in their original inboxes. Already scoped shared rows remain visible here.
       const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,
-        sender.username AS sender,m.message_type AS messageType,
+        sender.username AS sender,m.message_type AS messageType,p.avatar_id AS senderAvatarId,avatar.version AS senderAvatarVersion,
         CASE WHEN receipt.read_at IS NULL THEN receipt.id END AS unreadId
         FROM player_messages m JOIN users sender ON sender.id=m.sender_id
+        LEFT JOIN player_profiles p ON p.user_id=m.sender_id LEFT JOIN player_avatar_images avatar ON avatar.user_id=m.sender_id
         LEFT JOIN alliance_message_receipts receipt ON receipt.message_id=m.id AND receipt.recipient_id=@userId
         WHERE m.alliance_id=@allianceId AND m.recipient_id IS NULL AND (
           receipt.id IS NOT NULL AND receipt.read_at IS NULL OR
@@ -1309,8 +1312,12 @@ class DatabaseManager {
     const filter=scope==="trade" ? "m.recipient_id=? AND m.message_type='trade'" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type IN ('private','system')";
     const params=scope==="trade" ? [userId] : [userId,userId];
     const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,m.message_type AS messageType,
-      CASE WHEN m.message_type='system' THEN 'Game System' ELSE sender.username END AS sender,recipient.username AS recipient FROM player_messages m
+      CASE WHEN m.message_type='system' THEN 'Game System' ELSE sender.username END AS sender,recipient.username AS recipient,
+      sp.avatar_id AS senderAvatarId,sa.version AS senderAvatarVersion,
+      rp.avatar_id AS recipientAvatarId,ra.version AS recipientAvatarVersion FROM player_messages m
       JOIN users sender ON sender.id=m.sender_id LEFT JOIN users recipient ON recipient.id=m.recipient_id
+      LEFT JOIN player_profiles sp ON sp.user_id=m.sender_id LEFT JOIN player_avatar_images sa ON sa.user_id=m.sender_id
+      LEFT JOIN player_profiles rp ON rp.user_id=m.recipient_id LEFT JOIN player_avatar_images ra ON ra.user_id=m.recipient_id
       WHERE ${filter} ORDER BY m.id DESC LIMIT 50`).all(...params);
     return {messages};
   }
@@ -1371,11 +1378,11 @@ class DatabaseManager {
 
   rankings(userId){
     const earthWinner = earthChapter.winner(db);
-    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.xp,0) AS points,COALESCE(p.avatar_id,'pilot-m') AS avatarId FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN player_talents r ON r.user_id=u.id LEFT JOIN player_profiles p ON p.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
+    const players=db.prepare("SELECT u.id,u.username,COALESCE(a.name,'') AS alliance,COALESCE(r.xp,0) AS points,COALESCE(p.avatar_id,'pilot-m') AS avatarId,avatar.version AS avatarVersion FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id LEFT JOIN player_talents r ON r.user_id=u.id LEFT JOIN player_profiles p ON p.user_id=u.id LEFT JOIN player_avatar_images avatar ON avatar.user_id=u.id ORDER BY points DESC,u.username COLLATE NOCASE").all();
     const alliances=db.prepare("SELECT a.id,a.name,a.description,u.username AS leader,COUNT(m.user_id) AS memberCount,COALESCE(SUM(r.xp),0) AS points FROM alliances a JOIN users u ON u.id=a.leader_id LEFT JOIN alliance_members m ON m.alliance_id=a.id LEFT JOIN player_talents r ON r.user_id=m.user_id GROUP BY a.id ORDER BY points DESC,memberCount DESC,a.name COLLATE NOCASE").all();
     const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
-    const cyberKnights=db.prepare("SELECT u.id,u.username,COALESCE(ar.knight_level,1) AS knightLevel,COALESCE(ar.prestige,0) AS prestige FROM users u LEFT JOIN alien_rewards ar ON ar.user_id=u.id ORDER BY knightLevel DESC,prestige DESC,u.username COLLATE NOCASE").all();
+    const cyberKnights=db.prepare("SELECT u.id,u.username,COALESCE(ar.knight_level,1) AS knightLevel,COALESCE(ar.prestige,0) AS prestige,p.avatar_id AS avatarId,avatar.version AS avatarVersion FROM users u LEFT JOIN alien_rewards ar ON ar.user_id=u.id LEFT JOIN player_profiles p ON p.user_id=u.id LEFT JOIN player_avatar_images avatar ON avatar.user_id=u.id ORDER BY knightLevel DESC,prestige DESC,u.username COLLATE NOCASE").all();
     for(const row of [...players,...cyberKnights]) if(row.id===earthWinner?.userId) row.earthDefender=true;
     if(process.env.ORANGE_EMPIRE_ENABLED==="true"){
       const npcs=db.prepare("SELECT id,state FROM orange_empire_commanders ORDER BY id").all().map(row=>{
@@ -1681,7 +1688,7 @@ class DatabaseManager {
       const invitations=db.prepare("SELECT a.id,a.name FROM alliance_invitations i JOIN alliances a ON a.id=i.alliance_id WHERE i.user_id=? ORDER BY a.name").all(userId);
       return {alliance:null,requests:[],invitations,...this.allianceDirectory(userId)};
     }
-    const members=db.prepare("SELECT u.id,u.username,m.role FROM alliance_members m JOIN users u ON u.id=m.user_id WHERE m.alliance_id=? ORDER BY CASE WHEN m.role='Leader' THEN 0 WHEN m.role='Co-Leader' THEN 1 ELSE 2 END,u.username").all(membership.id);
+    const members=db.prepare("SELECT u.id,u.username,m.role,p.avatar_id AS avatarId,avatar.version AS avatarVersion FROM alliance_members m JOIN users u ON u.id=m.user_id LEFT JOIN player_profiles p ON p.user_id=u.id LEFT JOIN player_avatar_images avatar ON avatar.user_id=u.id WHERE m.alliance_id=? ORDER BY CASE WHEN m.role='Leader' THEN 0 WHEN m.role='Co-Leader' THEN 1 ELSE 2 END,u.username").all(membership.id);
     const applications=db.prepare("SELECT u.id,u.username,a.applied_at FROM alliance_applications a JOIN users u ON u.id=a.user_id WHERE a.alliance_id=? ORDER BY a.applied_at").all(membership.id);
     const requests=db.prepare("SELECT h.id,h.requester_id,h.building_name,h.building_level,h.requested_at,h.job_key,h.job_ends_at,u.username FROM alliance_help h JOIN users u ON u.id=h.requester_id WHERE h.alliance_id=? ORDER BY h.id DESC LIMIT 30").all(membership.id).filter(h=>{
       const job=this.allianceHelpJob(h.requester_id,h);
@@ -4370,7 +4377,8 @@ Rewards are distributed per participating player, not once per alliance. / На�
 
   getPlayerProfile(userId) {
     db.prepare("INSERT OR IGNORE INTO player_profiles (user_id, avatar_id) VALUES (?, 'pilot-m')").run(Number(userId));
-    const profile = db.prepare("SELECT avatar_id AS avatarId FROM player_profiles WHERE user_id=?").get(Number(userId));
+    const profile = db.prepare(`SELECT p.avatar_id AS avatarId,a.version AS avatarVersion FROM player_profiles p
+      LEFT JOIN player_avatar_images a ON a.user_id=p.user_id WHERE p.user_id=?`).get(Number(userId));
     return earthChapter.winner(db)?.userId===Number(userId) ? {...profile,earthDefender:true} : profile;
   }
 
@@ -4381,8 +4389,32 @@ Rewards are distributed per participating player, not once per alliance. / На�
       const old=this.getPlayerProfile(userId).avatarId;
       db.prepare("UPDATE player_profiles SET avatar_id=? WHERE user_id=?").run(avatarId,Number(userId));
       if(old!==avatarId)this.sideQuests.record(userId,"avatar");
-      return {avatarId};
+      return this.getPlayerProfile(userId);
     }).immediate();
+  }
+
+  canStoreAvatarImages() {
+    return playerAvatars.isPersistentRenderDatabase(dbPath);
+  }
+
+  setPlayerAvatarImage(userId, image) {
+    return db.transaction(()=>{
+      const {avatarVersion} = this.getPlayerProfile(userId);
+      const version = playerAvatars.store(db,userId,image);
+      if (version!==avatarVersion) this.sideQuests.record(userId,"avatar");
+      return this.getPlayerProfile(userId);
+    }).immediate();
+  }
+
+  removePlayerAvatarImage(userId) {
+    return db.transaction(()=>{
+      db.prepare("DELETE FROM player_avatar_images WHERE user_id=?").run(userId);
+      return this.getPlayerProfile(userId);
+    }).immediate();
+  }
+
+  getPlayerAvatarImage(userId, version) {
+    return db.prepare("SELECT image FROM player_avatar_images WHERE user_id=? AND version=?").get(userId,version)?.image;
   }
 
   getEquipmentCount() {

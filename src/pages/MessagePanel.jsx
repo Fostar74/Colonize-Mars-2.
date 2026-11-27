@@ -1,3 +1,4 @@
+import PlayerAvatar from "../shared/PlayerAvatar";
 import { useLanguage } from "../language";
 import React, {useEffect, useState} from "react";
 
@@ -73,8 +74,9 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
     {!messages.length && <p>{t("No messages yet.","Все още няма съобщения.")}</p>}
     <div style={{maxHeight:"40vh",overflowY:"auto"}}>
       {messages.map(message => <article key={message.id} style={{padding:8,borderBottom:"1px solid #47758e"}}>
-        <strong>{message.messageType==="system"?t("Game System","Система на играта"):playerAction ? playerAction({id:message.senderId,username:message.sender}) : message.sender}</strong>
-        {!alliance && message.messageType!=="system" && <> → {playerAction ? playerAction({id:message.recipientId,username:message.recipient}) : message.recipient}</>}
+        {message.messageType!=="system"&&<><PlayerAvatar player={{id:message.senderId,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}} size={26} />{" "}</>}
+        <strong>{message.messageType==="system"?t("Game System","Система на играта"):playerAction ? playerAction({id:message.senderId,username:message.sender,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}) : message.sender}</strong>
+        {!alliance && message.messageType!=="system" && <> → <PlayerAvatar player={{id:message.recipientId,avatarId:message.recipientAvatarId,avatarVersion:message.recipientAvatarVersion}} size={26} /> {playerAction ? playerAction({id:message.recipientId,username:message.recipient,avatarId:message.recipientAvatarId,avatarVersion:message.recipientAvatarVersion}) : message.recipient}</>}
         {" · "}<time>{new Date(message.sentAt).toLocaleString()}</time>
         <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{message.messageType==="system"
           ? message.body.replace(/(^|\n)(Alliance points \/ )Точки на алианса:/g,"$1$2Алианс точки:")
