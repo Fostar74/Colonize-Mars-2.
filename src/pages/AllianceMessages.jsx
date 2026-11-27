@@ -1,3 +1,4 @@
+import PlayerAvatar from "../shared/PlayerAvatar";
 import React, {useEffect,useState} from "react";
 import {useLanguage} from "../language";
 
@@ -77,7 +78,7 @@ export default function AllianceMessages({api,canBroadcast,markDisplayed,playerA
     {loading&&<p>{t("Loading messages…","Зареждане на съобщенията…")}</p>}
     {!loading&&!loadError&&!messages.length&&<p>{t("No alliance messages yet.","Все още няма съобщения на алианса.")}</p>}
     {messages.map(message=><article key={message.id} style={{padding:"8px 0",borderBottom:"1px solid #47758e"}}>
-      <strong>{playerAction?playerAction({id:message.senderId,username:message.sender}):message.sender}</strong>
+      <PlayerAvatar player={{id:message.senderId,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}} size={26} />{" "}<strong>{playerAction?playerAction({id:message.senderId,username:message.sender,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}):message.sender}</strong>
       {" · "}<time dateTime={new Date(message.sentAt).toISOString()}>{new Date(message.sentAt).toLocaleString(language)}</time>
       <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{message.body}</div>
     </article>)}

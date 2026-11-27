@@ -1,3 +1,4 @@
+import PlayerAvatar from "../shared/PlayerAvatar";
 import AllianceMessages from "./AllianceMessages";
 import AllianceMineProgress from "./AllianceMineProgress";
 import marketProducts from "../shared/allianceMarket";
@@ -67,7 +68,7 @@ export default function AlliancePanel({supportTarget,playerAction,tab,setTab,mar
     <div style={{overflowX:"auto"}}><table style={{width:"100%",borderCollapse:"collapse",textAlign:"left"}}>
      <thead><tr><th>{t("Player","Играч")}</th><th>{t("Role","Роля")}</th><th>{t("Actions","Действия")}</th></tr></thead>
      <tbody>{(state.members||[]).map(m=><tr key={m.id} style={{borderTop:"1px solid #416177"}}>
-      <td style={{padding:8}}>{playerName({...m,ally:true})}{String(m.id)===String(getUserId())?localLabel(" (You)"):""}</td>
+      <td style={{padding:8}}><PlayerAvatar player={m} size={30} /> {playerName({...m,ally:true})}{String(m.id)===String(getUserId())?localLabel(" (You)"):""}</td>
       <td>{localLabel(m.role)}</td>
       <td style={{padding:8}}>
        {state.alliance.role==="Leader"&&m.role!=="Leader"&&<><select aria-label={"Role for "+m.username} value={m.role} onChange={e=>action("role",{targetId:m.id,role:e.target.value})} disabled={busy}>
