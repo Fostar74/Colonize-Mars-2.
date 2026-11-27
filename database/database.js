@@ -5,6 +5,7 @@ const {boostedDuration} = require("./marketBoosts");
 const {labyrinthMonster,createBattle,strike,roundLimit} = require("./labyrinthCombat");
 const {replenishMissingMines} = require("./externalMines");
 const {placedMapObjects}=require("./mapObjects");
+const {calculateCargoCapacity,calculateLoot,resourceNames,unprotectedResources} = require("./pvpLoot");
 const {xpForKills,awardHuman} = require("./combatXp");
 const earthChapter = require("./earthChapter");
 const orangeEmpire = require("./orangeEmpire");
@@ -18,7 +19,7 @@ const alienBases = require("../src/shared/alienBases");
 const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {specialUnitCombatBonuses,cargoCapacity:unitCargoCapacity,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
+const {specialUnitCombatBonuses,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -60,17 +61,6 @@ function writeTradeNotification(tradeId,senderId,recipientId,senderName,resource
   db.prepare("INSERT INTO trade_message_notifications(trade_id,message_id) VALUES (?,?)").run(tradeId,Number(result.lastInsertRowid));
 }
 
-function calculateCargoCapacity(survivors={}) {
-  return Object.entries(survivors).reduce((total,[unit,count]) =>
-    total + Math.max(0,Number(count)||0) * Number(unitCargoCapacity[unit]||0),0);
-}
-
-const resourceNames = ["Gold","Iron","Water","Solar"];
-
-function unprotectedResources(resources) {
-  return Object.fromEntries(resourceNames.map(key => [key, Math.max(0, Math.floor(Number(resources[key]) || 0) - 10000)]));
-}
-
 function readSpyReport(serialized) {
   const report = JSON.parse(serialized);
   if (report.resources && !report.resourcesUnprotected) report.resources = unprotectedResources(report.resources);
@@ -84,34 +74,6 @@ function missionRandom(mission) {
     state = (Math.imul(state, 1664525) + 1013904223) >>> 0;
     return state / 4294967296;
   };
-}
-
-function calculateLoot(resources={},capacity=0) {
-  const keys=resourceNames;
-  const available=unprotectedResources(resources);
-  for (const key of keys) available[key] = Math.floor(available[key] * 0.5);
-  const loot=Object.fromEntries(keys.map(key=>[key,0]));
-  let remaining=Math.min(Math.max(0,Math.floor(Number(capacity)||0)),Object.values(available).reduce((sum,n)=>sum+n,0));
-  while(remaining>0){
-    const active=keys.filter(key=>available[key]>0);
-    if(!active.length)break;
-    const share=Math.floor(remaining/active.length);
-    let moved=0;
-    if(share===0){
-      for(const key of active){
-        if(remaining<=0)break;
-        available[key]--;loot[key]++;remaining--;moved++;
-      }
-    }else{
-      for(const key of active){
-        if(remaining<=0)break;
-        const amount=Math.min(available[key],share,remaining);
-        available[key]-=amount;loot[key]+=amount;remaining-=amount;moved+=amount;
-      }
-    }
-    if(!moved)break;
-  }
-  return loot;
 }
 
 function disbandEmptyAlliance(allianceId){
@@ -4313,6 +4275,10 @@ Rewards are distributed per participating player, not once per alliance. / На�
   sendOrangeEmpireSupport(userId, attackId, units, now=Date.now()) {
     if (!Number.isSafeInteger(attackId) || attackId < 1) return {error:"Invalid Orange Empire attack."};
     return orangeEmpireCombat.sendSupport(db,this,userId,attackId,units,now);
+  }
+
+  getOrangeEmpireReports(userId) {
+    return orangeEmpireCombat.reports(db,userId,-1);
   }
 
   getOrangeEmpireCombat(userId) {

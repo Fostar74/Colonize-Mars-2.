@@ -455,7 +455,7 @@ router.get("/reports/:userId",requireSession,(req,res)=>{
     const shieldImpacts=playerMissions.filter(mission=>mission.incoming&&mission.resolved_at>=recentSince&&
       mission.result&&!mission.result.shielded&&!mission.result.error).map(mission=>"player:"+mission.id);
     for(const id of db.getRecentInvasionImpacts(userId,recentSince))shieldImpacts.push("invasion:"+id);
-    res.json({...campaign,mothershipReports:db.getMothershipReports(userId),shieldImpacts,
+    res.json({...campaign,mothershipReports:db.getMothershipReports(userId),orangeEmpireReports:db.getOrangeEmpireReports(userId),shieldImpacts,
       unreadIncoming:playerMissions.filter(mission=>mission.incoming&&!mission.result&&!mission.returned_at&&Number(mission.arrives_at)>now).length});
   }catch(error){console.error("Report inbox:",error);res.status(500).json({message:"Reports unavailable."});}
 });
