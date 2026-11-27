@@ -100,6 +100,7 @@ const buildingBaseCosts = {
   "Vehicle Bay": {Gold:130,Iron:190,Water:70,Solar:110},
   "Drone Factory": {Gold:170,Iron:210,Water:100,Solar:170}
 };
+const buildingNames = Object.freeze([...Object.keys(buildingBaseCosts), "Order", "Defense Grid"]);
 const orderLevelCosts = [30000, 50000, 100000];
 const defenseGridMaxLevel = 30;
 const defenseGridResourceBuildings = ["Gold Synthesizer","Iron Driller","Solar Array","Water Extractor"];
@@ -165,4 +166,4 @@ function buildingPrice(name,nextLevel,discount = 0) {
   return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * levelMultiplier * (100 - discount) / 100)]));
 }
 
-module.exports={specialUnitCombatBonuses,allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,defenseGridLevels,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};
+module.exports={specialUnitCombatBonuses,allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingNames,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,defenseGridLevels,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};
