@@ -35,9 +35,9 @@ function LoginRegister() {
   const [resetCountdown, setResetCountdown] = useState(dailyResetCountdown);
 
   const slides = [
-    { image: riseImage, title: t("Rise of Cyber Knight", "Възходът на Киберрицаря"), subtitle: t("The legend begins", "Легендата започва") },
+    { image: riseImage, title: t("Rise of Cyber Knight", "Възходът на Cyber Knight"), subtitle: t("The legend begins", "Легендата започва") },
     { image: continuesImage, title: t("Leaving Earth", "Напускане на Земята"), subtitle: t("The legend continues", "Легендата продължава") },
-    { image: leavingEarthImage, title: t("Leaving Earth", "Напускане на Земята"), subtitle: t("The legend of Cyber Knight · Part II", "Легендата за Киберрицаря · Част II") },
+    { image: leavingEarthImage, title: t("Leaving Earth", "Напускане на Земята"), subtitle: t("The legend of Cyber Knight · Part II", "Легендата за Cyber Knight · Част II") },
   ];
 
   useEffect(() => {

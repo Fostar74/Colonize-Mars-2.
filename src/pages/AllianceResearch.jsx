@@ -11,7 +11,7 @@ const icons = { Gold: gold, Iron: iron, Water: water, Solar: solar };
 const tabs = [["attack", "Attack", "Атака"], ["health", "Health", "Живот"], ["development", "Development", "Развитие"]];
 
 export default function AllianceResearch({ economy, role, busy, start }) {
-  const { t, label } = useLanguage();
+  const {locale, t, label } = useLanguage();
   const [branch, setBranch] = useState("attack");
   const bonuses = economy?.bonuses || {};
   const job = economy?.researchJob;
@@ -35,7 +35,7 @@ export default function AllianceResearch({ economy, role, busy, start }) {
     <p>{t("Treasury", "Хазна")} · {Object.keys(icons).map(resource => <span key={resource} className="alliance-research-cost">
       <img src={icons[resource]} alt={label(resource)} /> {economy?.treasury?.[resource] || 0}
     </span>)}</p>
-    {job && <p role="status">{t("Research in progress until", "Изследване до")} {new Date(job.endsAt).toLocaleString()} · {(activeEntry ? title(activeEntry) : job.kind)} · {t("Level", "Ниво")} {job.level}</p>}
+    {job && <p role="status">{t("Research in progress until", "Изследване до")} {new Date(job.endsAt).toLocaleString(locale)} · {(activeEntry ? title(activeEntry) : job.kind)} · {t("Level", "Ниво")} {job.level}</p>}
     <div className="alliance-research-tree" data-branch={branch}>
       {rows.map((entries, index) => <div className="alliance-research-row" key={entries[0].kind}>
         {entries.map((entry, column) => {

@@ -1,3 +1,4 @@
+import {battleEventText} from "../shared/localizedMessages";
 import PlayerAvatar from "../shared/PlayerAvatar";
 import ReportsPanel from "./ReportsPanel";
 import usePlayerNotifications from "../utils/usePlayerNotifications";
@@ -154,7 +155,7 @@ function createEarthDetailTexture(){
 
 function Map() {
   const navigate=useNavigate();
-  const { t , label: localLabel} = useLanguage();
+  const {locale, t , label: localLabel} = useLanguage();
   const [showEspionageReports,setShowEspionageReports]=useState(false);
   const notificationApi=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
   const {notifications,dismiss}=usePlayerNotifications(notificationApi,sessionStorage.getItem("userId"));
@@ -441,7 +442,7 @@ function Map() {
     const username = sessionStorage.getItem("username");
 
     if (!username || !savedCastleRaw) {
-      alert("You are not logged in. Please login first.");
+      alert(localLabel("You are not logged in. Please login first."));
       window.location.href = "/#/";
       return;
     }
@@ -467,10 +468,10 @@ function Map() {
         setViewCenter({ x: savedCastle.x, y: savedCastle.y });
       }
     } catch {
-      alert("Invalid castle data. Please log in again.");
+      alert(localLabel("Invalid castle data. Please log in again."));
       window.location.href = "/#/";
     }
-  }, [reconShortcut]);
+  }, [reconShortcut,localLabel]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -698,7 +699,7 @@ function Map() {
     const y=Math.floor((mouseY-offset.y)/tileSize)+1;
     setCursorCoord(x>=1&&x<=100&&y>=1&&y<=100?{x,y}:null);
     const hovered=nearestMapMarker(castles,{x:mouseX,y:mouseY},offset,tileSize,castleMarkerSize(tileSize)*.54);
-    setHoveredTitle(hovered?`${hovered.username} – Headquarter (${hovered.x}:${hovered.y})`:"");
+    setHoveredTitle(hovered?`${hovered.username} – ${t("Headquarters","Щаб")} (${hovered.x}:${hovered.y})`:"");
   };
 
   const handleMapClick = e => {
@@ -912,7 +913,7 @@ function Map() {
         setMineCapacity(Number(data.gatheringCapacity)||mineCapacity);
         window.dispatchEvent(new Event("game-progress-updated"));
         const resource={gold:t("Gold","злато"),iron:t("Iron","желязо"),water:t("Water","вода"),solar:t("Solar","слънчева енергия")}[marchDraft.target.resource];
-        setMarchSuccess(t("Gathering team sent. Mine output:","Походът за добив е изпратен. Добив на мината:")+" "+Number(data.rate).toLocaleString()+" "+resource+" / "+t("hour","час"));
+        setMarchSuccess(t("Gathering team sent. Mine output:","Походът за добив е изпратен. Добив на мината:")+" "+Number(data.rate).toLocaleString(locale)+" "+resource+" / "+t("hour","час"));
       }else if(isStationDefense){
         const latest=await fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"});
         if(latest.ok)setCampaign(await latest.json());
@@ -921,7 +922,7 @@ function Map() {
         mothershipClockOffset.current=data.launchedAt-Date.now();
         setClock(Date.now());
         setCampaign(old=>({...old,mothershipEvent:{...old.mothershipEvent,attacksRemaining:data.attacksRemaining,myAttacks:(old.mothershipEvent?.myAttacks||0)+1,attacks:[...(old.mothershipEvent?.attacks||[]),{id:data.attackId,user_id:sessionStorage.getItem("userId"),username:sessionStorage.getItem("username"),origin_x:data.origin.x,origin_y:data.origin.y,launched_at:data.launchedAt,arrives_at:data.arrivesAt,resolved_at:null,damage:0,xp:0}]}}));
-        setMarchSuccess(t("Cyber Knight is heading to the Alien Command Ship. Your full army returns after the battle in 30 seconds and can be sent again.","Киберрицарят лети към командния кораб на извънземните. Цялата ти армия ще се върне след битката след 30 секунди и ще можеш да я изпратиш отново."));
+        setMarchSuccess(t("Cyber Knight is heading to the Alien Command Ship. Your full army returns after the battle in 30 seconds and can be sent again.","Cyber Knight лети към командния кораб на извънземните. Цялата ти армия ще се върне след битката след 30 секунди и ще можеш да я изпратиш отново."));
       }else if(isAlienAttack){
         const [latestCampaign,latestProgress]=await Promise.all([
           fetch(base+"/alien-campaign/"+sessionStorage.getItem("userId"),{headers:{Authorization:"Bearer "+sessionStorage.getItem("authToken")},cache:"no-store"}),
@@ -931,7 +932,7 @@ function Map() {
         if(latestProgress.ok){const progress=await latestProgress.json();setAvailableArmy(progress.gameProgress?.army||{});}
         setMarchUnits({});
         window.dispatchEvent(new Event("game-progress-updated"));
-        setMarchSuccess(t("Alien Base battle completed instantly. Surviving troops and Cyber Knight are ready for the next mission.","Битката с извънземната база приключи мигновено. Оцелелите войници и Киберрицарят са готови за следващата мисия."));
+        setMarchSuccess(t("Alien Base battle completed instantly. Surviving troops and Cyber Knight are ready for the next mission.","Битката с извънземната база приключи мигновено. Оцелелите войници и Cyber Knight са готови за следващата мисия."));
       }else{
         setCampaign(old=>({...old,playerMissions:[{
           id:data.missionId,attacker_name:marchDraft.origin.username,defender_name:marchDraft.target.username,
@@ -983,7 +984,7 @@ function Map() {
       const data=await response.json();
       if(!response.ok)throw Error(data.message||"Trade failed.");
       setAvailableResources(data.remaining||{});setTradeAmounts({Gold:0,Iron:0,Water:0,Solar:0});
-      setMarchNotice("Trade completed. "+Object.entries(data.resources).filter(([,amount])=>amount>0).map(([resource,amount])=>`${amount.toLocaleString()} ${localLabel(resource)}`).join(" · ")+" sent to "+data.target.username+".");
+      setMarchNotice(t("Trade completed. ","Търговията приключи. ")+Object.entries(data.resources).filter(([,amount])=>amount>0).map(([resource,amount])=>`${amount.toLocaleString(locale)} ${localLabel(resource)}`).join(" · ")+" sent to "+data.target.username+".");
       window.dispatchEvent(new Event("game-progress-updated"));
     }catch(error){setMarchNotice(error.message);}
     finally{setMarchLoading(false);}
@@ -1186,7 +1187,7 @@ function Map() {
       </button>
         </div>
         <div id="map-menu-controls" hidden={!mapMenuOpen}>
-        <div>{t("Alien campaign: defeated level","Извънземна кампания: победено ниво")} {campaign.highestDefeated}{t("/20 · Next: level","/20 · Следващо ниво")} {campaign.nextLevel} {t("· Attacks left:","· Оставащи атаки:")} {campaign.remaining??"—"}{t("/20 · Cyber Knight Lv","/20 · Киберрицар ниво")} {campaign.knightLevel||1}</div>
+        <div>{t("Alien campaign: defeated level","Извънземна кампания: победено ниво")} {campaign.highestDefeated}{t("/20 · Next: level","/20 · Следващо ниво")} {campaign.nextLevel} {t("· Attacks left:","· Оставащи атаки:")} {campaign.remaining??"—"}{t("/20 · Cyber Knight Lv","/20 · Cyber Knight ниво")} {campaign.knightLevel||1}</div>
         <div style={{fontSize:12}}>{t("Instant Alien Base battles · Daily reset: 00:00 UTC","Мигновени битки с извънземните · Нулиране в 00:00 UTC")}</div>
         <div style={{margin:"8px 0",display:"flex",alignItems:"center",gap:6,flexWrap:"wrap"}}>
           <span>{t("Object zoom","Мащаб на обектите")}: {Math.round(zoom*100)}%</span>
@@ -1215,7 +1216,7 @@ function Map() {
               !attack.joined && attack.support_count < 3;
             return <div key={attack.id}>
               <button type="button" onClick={() => centerMapOn(attack.x, attack.y)}>
-                {attack.username} · {attack.x}:{attack.y} · {new Date(attack.arrives_at).toLocaleString()}
+                {attack.username} · {attack.x}:{attack.y} · {new Date(attack.arrives_at).toLocaleString(locale)}
               </button>
               {canReinforce && <button type="button" onClick={() => {
                 if (!ownBase) return;
@@ -1227,7 +1228,7 @@ function Map() {
           })}
           {orangeEmpireReports.length > 0 && <h3>{t("Battle results","Резултати от битки")}</h3>}
           {orangeEmpireReports.map(({id,result,arrives_at}) => <div key={id}>
-            {new Date(arrives_at).toLocaleString()} · {result.cancelled ? t("Attack cancelled","Нападението е отменено")
+            {new Date(arrives_at).toLocaleString(locale)} · {result.cancelled ? t("Attack cancelled","Нападението е отменено")
               : result.victory ? t("Orange Empire victory","Победа за Оранжевата империя") : t("Attack repelled","Нападението е отблъснато")}
           </div>)}
         </details>}
@@ -1258,7 +1259,7 @@ function Map() {
           </label>
           {alienSearchLevel && <div>
             {alienBases.filter(base=>base.level===Number(alienSearchLevel)).map(({x,y})=>(
-              <button key={`${x}:${y}`} onClick={()=>centerMapOn(x,y)} aria-label={`Go to Alien Base level ${alienSearchLevel} at ${x}:${y}`}>
+              <button key={`${x}:${y}`} onClick={()=>centerMapOn(x,y)} aria-label={t(`Go to Alien Base level ${alienSearchLevel} at ${x}:${y}`,`Към извънземна база ниво ${alienSearchLevel} на ${x}:${y}`)}>
                 {x}:{y}
               </button>
             ))}
@@ -1327,17 +1328,17 @@ function Map() {
                   {isOwner&&!defense&&<button type="button" disabled={marchLoading} onClick={()=>{const home=castles.find(c=>c.username===ownUsername);if(home)openMarch("Defend",selectedTarget,home);else setStationNotice(t("Your base could not be found.","Базата ти не е намерена."));}}>{t("Send army to defend","Изпрати армия за защита")}</button>}
                   {isOwner&&defense&&<div><p>{t("Your army at this station","Твоята армия в станцията")}: {defense.status==="travelling"?t("on the way","на път"):t("in garrison","в гарнизона")}</p><button type="button" disabled={stationBusy} onClick={()=>stationRequest("/alien-stations/recall",{stationId:selectedTarget.stationId},t("Your army returned to base.","Армията се върна в базата ти."))}>{t("Recall army","Върни армията")}</button></div>}
                 </div>}
-                {stationNotice&&<p role="status">{stationNotice}</p>}
+                {stationNotice&&<p role="status">{localLabel(stationNotice)}</p>}
               </>;
             })()}
           </section>}          {selectedTarget?.type==="mothership"&&campaign.mothershipEvent&&<section style={{padding:12,margin:"10px 0",background:"#3b2632",border:"1px solid #cc684f",borderRadius:8}}>
-            <strong>{t("The global event lasts 24 hours. Every player gets 10 attacks with up to 50,000 troops led by Cyber Knight. The full army returns immediately after each battle and can be reused. Each march arrives in 30 seconds. Each 1,000 damage counts as one alien population killed and grants 1 XP. The Alien Command Ship cannot be destroyed.","Глобалното събитие трае 24 часа. Всеки играч има 10 атаки с до 50 000 войници, водени от Киберрицаря. Цялата армия се връща веднага след всяка битка и може да бъде използвана отново. Походът пристига за 30 секунди. На всеки 1 000 щети се отчита една убита извънземна популация и се дава 1 опит. Командният кораб на извънземните не може да бъде унищожен.")}</strong>
-            <p>{t("Top 10: 20 extra Cyber Knight missions and equipment with 3 bonuses; rank 1 gets 3 items, rank 2 gets 2.","Първите 10: 20 допълнителни мисии на Киберрицаря и екипировка с 3 бонуса; първият получава 3 предмета, вторият 2.")}</p>
-            <div style={{marginTop:8}}>{t("Your attacks left:","Оставащи твои атаки:")} {campaign.mothershipEvent.attacksRemaining} · {t("Cyber Knight prestige:","Престиж на Киберрицаря:")} {campaign.mothershipEvent.prestige} · {t("Ship integrity:","Здравина на кораба:")} {Number(campaign.mothershipEvent.hp).toLocaleString()}</div>
+            <strong>{t("The global event lasts 24 hours. Every player gets 10 attacks with up to 50,000 troops led by Cyber Knight. The full army returns immediately after each battle and can be reused. Each march arrives in 30 seconds. Each 1,000 damage counts as one alien population killed and grants 1 XP. The Alien Command Ship cannot be destroyed.","Глобалното събитие трае 24 часа. Всеки играч има 10 атаки с до 50 000 войници, водени от Cyber Knight. Цялата армия се връща веднага след всяка битка и може да бъде използвана отново. Походът пристига за 30 секунди. На всеки 1 000 щети се отчита една убита извънземна популация и се дава 1 опит. Командният кораб на извънземните не може да бъде унищожен.")}</strong>
+            <p>{t("Top 10: 20 extra Cyber Knight missions and equipment with 3 bonuses; rank 1 gets 3 items, rank 2 gets 2.","Първите 10: 20 допълнителни мисии на Cyber Knight и екипировка с 3 бонуса; първият получава 3 предмета, вторият 2.")}</p>
+            <div style={{marginTop:8}}>{t("Your attacks left:","Оставащи твои атаки:")} {campaign.mothershipEvent.attacksRemaining} · {t("Cyber Knight prestige:","Престиж на Cyber Knight:")} {campaign.mothershipEvent.prestige} · {t("Ship integrity:","Здравина на кораба:")} {Number(campaign.mothershipEvent.hp).toLocaleString(locale)}</div>
             <h3>{t("Global damage rankings","Глобално класиране по щети")}</h3>
-            {(campaign.mothershipEvent.rankings||[]).map((row,index)=><div key={row.user_id}>{index+1}. {row.username} · {Number(row.damage).toLocaleString()} {t("damage","щети")} · {row.attacks} {t("attacks","атаки")}</div>)}
+            {(campaign.mothershipEvent.rankings||[]).map((row,index)=><div key={row.user_id}>{index+1}. {row.username} · {Number(row.damage).toLocaleString(locale)} {t("damage","щети")} · {row.attacks} {t("attacks","атаки")}</div>)}
             <details style={{marginTop:8}}><summary>{t("All attacks from all players","Всички атаки на играчите")}</summary>
-              <div style={{maxHeight:180,overflowY:"auto"}}>{(campaign.mothershipEvent.attacks||[]).slice().reverse().map(attack=><div key={attack.id}>{attack.username} · {attack.origin_x}:{attack.origin_y} → 50:50 · {attack.resolved_at?Number(attack.damage).toLocaleString()+" "+t("damage","щети")+" · "+Number(attack.xp||0).toLocaleString()+" XP":t("en route","на път")}</div>)}</div>
+              <div style={{maxHeight:180,overflowY:"auto"}}>{(campaign.mothershipEvent.attacks||[]).slice().reverse().map(attack=><div key={attack.id}>{attack.username} · {attack.origin_x}:{attack.origin_y} → 50:50 · {attack.resolved_at?Number(attack.damage).toLocaleString(locale)+" "+t("damage","щети")+" · "+Number(attack.xp||0).toLocaleString(locale)+" XP":t("en route","на път")}</div>)}</div>
             </details>
           </section>}
           {selectedTarget?.type === "orangeEmpire" && <section>
@@ -1345,9 +1346,9 @@ function Map() {
             <h3>{t("The Orange Empire", "Оранжевата империя")}</h3>
             <p>{selectedTarget.emperor ? t("Emperor", "Император") : t("Commander", "Командир") + " " + selectedTarget.id}
               {" · "}{t("Level", "Ниво")} {selectedTarget.level}{" · "}{selectedTarget.x}:{selectedTarget.y}</p>
-            <p>{selectedTarget.emperor ? t("Inferno Overlord","Инферно владетел") : t("Inferno Knight","Инферно рицар")} · {t("Level", "Ниво")} {selectedTarget.knightLevel}</p>
+            <p>{selectedTarget.emperor ? t("Inferno Overlord","Inferno Overlord") : t("Inferno Knight","Inferno Knight")} · {t("Level", "Ниво")} {selectedTarget.knightLevel}</p>
           </section>}
-          {selectedTarget?.type !== "orangeEmpire" && <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Attack the Alien Command Ship · Global Event","Атакувай Командния кораб на извънземните · Глобално събитие"):selectedTarget?.type==="castle"?"Player Base · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):selectedTarget?.type==="allianceMine"?localLabel("Alliance Mine"):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>}
+          {selectedTarget?.type !== "orangeEmpire" && <p style={{color:"#c0d2e3"}}>{selectedTarget?.type==="alien"?t("Alien Stronghold · Level ","Извънземна крепост · Ниво ")+selectedTarget.level:selectedTarget?.type==="mothership"?t("Attack the Alien Command Ship · Global Event","Атакувай Командния кораб на извънземните · Глобално събитие"):selectedTarget?.type==="castle"?t("Player Base","База на играч")+" · "+selectedTarget.username:selectedTarget?.type==="mine"?({gold:t("Gold Mine","Златна мина"),iron:t("Iron Mine","Желязна мина"),water:t("Water Mine","Водна мина"),solar:t("Solar Mine","Соларна мина")}[selectedTarget.resource]||t("Resource Mine","Ресурсна мина")):selectedTarget?.type==="allianceMine"?localLabel("Alliance Mine"):localLabel("Open Sector")} {t("· Coordinates","· Координати")} {selectedTarget?.x}:{selectedTarget?.y}</p>}
           {selectedTarget?.type==="field"&&allianceMine?.canPlace&&!marchDraft&&<section>
             <label>{t("Mine resource","Ресурс на мината")}{" "}
               <select value={mineResource} onChange={event=>setMineResource(event.target.value)}>
@@ -1373,7 +1374,7 @@ function Map() {
           </section>}
           {allianceMineNotice&&<p role="status">{localLabel(allianceMineNotice)}</p>}
           {selectedTarget?.type==="mine"&&<section style={{padding:12,margin:"10px 0",background:"#243449",border:"1px solid #6b8ca5",borderRadius:8}}>
-            <strong>{t("Available resource","Наличен ресурс")}: {Number(selectedTarget.amount||0).toLocaleString()} · {t("Gathering slots used","Заети места за добив")}: {myMineCount}/{mineCapacity}</strong>
+            <strong>{t("Available resource","Наличен ресурс")}: {Number(selectedTarget.amount||0).toLocaleString(locale)} · {t("Gathering slots used","Заети места за добив")}: {myMineCount}/{mineCapacity}</strong>
             {(selectedTarget.claimed_by||selectedTarget.npc_claimed)
               ? <p>{t("This mine is already being gathered by","Тази мина вече се добива от")} {selectedTarget.npc_claimed?t("The Orange Empire","Оранжевата империя"):selectedTarget.owner||t("another player","друг играч")}.</p>
               : <p>{t("Fixed mine stock: 5,000. Base gathering rate: 1,000 per hour. A replacement mine appears at a random free location when this one is depleted.","Фиксиран запас: 5 000. Начална скорост: 1 000 на час. След изчерпване мината се появява на случайно свободно място.")}</p>}
@@ -1383,8 +1384,8 @@ function Map() {
           {selectedTarget?.type==="alien" && <div style={{padding:12,background:"#243449",border:"1px solid #58758e",borderRadius:8}}>
             <strong>{t("Alien garrison · Level","Извънземен гарнизон · Ниво")} {selectedTarget.level}</strong>
             {campaign.garrisons?.[selectedTarget.level] ? <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(180px,1fr))",gap:6,marginTop:8}}>
-              {Object.entries(campaign.garrisons[selectedTarget.level]).map(([unit,count])=><div key={unit}>{localLabel(unit)}: <strong>{count.toLocaleString()}</strong></div>)}
-              <div style={{gridColumn:"1 / -1",marginTop:6,fontWeight:"bold"}}>{t("Total defenders:","Общо защитници:")} {Object.values(campaign.garrisons[selectedTarget.level]).reduce((sum,n)=>sum+n,0).toLocaleString()}</div>
+              {Object.entries(campaign.garrisons[selectedTarget.level]).map(([unit,count])=><div key={unit}>{localLabel(unit)}: <strong>{count.toLocaleString(locale)}</strong></div>)}
+              <div style={{gridColumn:"1 / -1",marginTop:6,fontWeight:"bold"}}>{t("Total defenders:","Общо защитници:")} {Object.values(campaign.garrisons[selectedTarget.level]).reduce((sum,n)=>sum+n,0).toLocaleString(locale)}</div>
             </div> : <p>{t("Loading fixed garrison data...","Зареждане на гарнизона…")}</p>}
             <p style={{fontSize:12}}>{t("Higher-level alien strongholds have larger and more advanced garrisons. The level 20 fortress has an Alien Overlord.","По-високите нива имат по-големи и по-силни гарнизони. Крепостта на ниво 20 има извънземен владетел.")}</p>
           </div>}
@@ -1424,22 +1425,22 @@ function Map() {
               <button type="button" onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div> : <>
             {marchDraft.type === "Attack" && (marchDraft.target.type === "alien"||marchDraft.target.type==="mothership"||marchDraft.target.type==="castle") && <>
-            <p>{t("Cyber Knight leads this attack · Level","Киберрицарят води похода · Ниво")} {campaign.knightLevel || 1} {marchDraft.target.type==="castle"?t("(optional for PvP)","(по избор за PvP)"):t("(required)","(задължителен)")}</p>
+            <p>{t("Cyber Knight leads this attack · Level","Cyber Knight води похода · Ниво")} {campaign.knightLevel || 1} {marchDraft.target.type==="castle"?t("(optional for PvP)","(по избор за PvP)"):t("(required)","(задължителен)")}</p>
             <button type="button" disabled={marchLoading || campaign.knightBusy} aria-pressed={knightAdded} onClick={()=>setKnightAdded(added=>!added)}>
               {knightAdded ? localLabel("Remove Cyber Knight") : localLabel("Add Cyber Knight")}
             </button>
-            {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Киберрицарят трябва да се върне от текущата си мисия преди нова атака.")}</p>}
+            {campaign.knightBusy && <p>{t("Cyber Knight is on a mission and must return before launching another attack.","Cyber Knight трябва да се върне от текущата си мисия преди нова атака.")}</p>}
             </>}
             {marchDraft.type==="Espionage" ? <div style={{margin:"14px 0",padding:14,border:"1px solid #50718b",borderRadius:8}}>
               <h4>🔎 {t("Rover Scout — Espionage","Разузнавателен роувър — Шпионаж")}</h4>
-              <p>{t("Available scouts","Налични разузнавачи")}: {Number(availableArmy["Rover Scout"]||0).toLocaleString()}</p>
+              <p>{t("Available scouts","Налични разузнавачи")}: {Number(availableArmy["Rover Scout"]||0).toLocaleString(locale)}</p>
               <label>{t("Send scouts","Изпрати разузнавачи")}: <input type="number" min="1" max={Math.min(50000,Number(availableArmy["Rover Scout"]||0))} value={marchUnits["Rover Scout"]||0} onChange={e=>setMarchUnits({"Rover Scout":Math.max(0,Math.min(50000,Number(e.target.value)||0))})} /></label>
               <p>{t("Travel: 60 seconds to target, 60 seconds back. No battle or loot.","Пътуване: 60 секунди до целта и 60 обратно. Без битка и плячка.")}</p>
               <button disabled={marchLoading||!Number(marchUnits["Rover Scout"])||Number(marchUnits["Rover Scout"])>Number(availableArmy["Rover Scout"]||0)} onClick={prepareMarch}>{t("Send reconnaissance","Изпрати шпионаж")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div> : <>
-            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",margin:"10px 0"}}><p style={{margin:0}}>{marchDraft.target.type==="mothership"?t("Maximum force selected ·","Избрана е максималната армия ·"):t("Select troops from your base army ·","Избери войски от базата ·")} {selectedPopulation.toLocaleString()} / {marchLimit.toLocaleString()} {t("population","популация")} ({selectedTroops.toLocaleString()} {t("troops","войници")})</p><button type="button" disabled={!availableTroopCount} title={t("Only troops currently available at your base can be selected. Wounded troops must first recover in the Hospital.","Могат да се изберат само наличните войници в базата. Ранените трябва първо да се възстановят в болницата.")} onClick={addAllAvailableTroops}>{availableTroopCount<=marchLimit?t("Add All Available","Добави всички налични"):t("Add up to 50,000","Добави до 50 000")}</button></div>{availableTroopCount>marchLimit&&<p style={{fontSize:12,color:"#b5c7d9"}}>{t("Troops are selected in list order up to 50,000 population.","Войниците се избират по реда в списъка до 50 000 популация.")}</p>}
-            {marchDraft.type==="Attack" && marchDraft.target.type==="castle" && <p>{t("Estimated cargo capacity if the surviving army wins:","Очаквана товароносимост при победа на оцелялата армия:")} {selectedCargoCapacity.toLocaleString()} {t("resources","ресурси")}</p>}
+            <div style={{display:"flex",alignItems:"center",gap:10,flexWrap:"wrap",margin:"10px 0"}}><p style={{margin:0}}>{marchDraft.target.type==="mothership"?t("Maximum force selected ·","Избрана е максималната армия ·"):t("Select troops from your base army ·","Избери войски от базата ·")} {selectedPopulation.toLocaleString(locale)} / {marchLimit.toLocaleString(locale)} {t("population","популация")} ({selectedTroops.toLocaleString(locale)} {t("troops","войници")})</p><button type="button" disabled={!availableTroopCount} title={t("Only troops currently available at your base can be selected. Wounded troops must first recover in the Hospital.","Могат да се изберат само наличните войници в базата. Ранените трябва първо да се възстановят в болницата.")} onClick={addAllAvailableTroops}>{availableTroopCount<=marchLimit?t("Add All Available","Добави всички налични"):t("Add up to 50,000","Добави до 50 000")}</button></div>{availableTroopCount>marchLimit&&<p style={{fontSize:12,color:"#b5c7d9"}}>{t("Troops are selected in list order up to 50,000 population.","Войниците се избират по реда в списъка до 50 000 популация.")}</p>}
+            {marchDraft.type==="Attack" && marchDraft.target.type==="castle" && <p>{t("Estimated cargo capacity if the surviving army wins:","Очаквана товароносимост при победа на оцелялата армия:")} {selectedCargoCapacity.toLocaleString(locale)} {t("resources","ресурси")}</p>}
             {formationMessage&&<p role="status">{localLabel(formationMessage)}</p>}
             {!units.some(unit=>Number(availableArmy[unit]||0)>0) && <p>{t("No trained troops available. Train units at your base before preparing a march.","Няма обучени войски. Обучи единици в базата преди поход.")}</p>}
             <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(190px,1fr))",gap:10}}>
@@ -1485,7 +1486,7 @@ function Map() {
               <button disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedPopulation>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.type==="Construct"?t("Send construction army","Изпрати строителна армия"):marchDraft.type==="Gather"?t("Send gathering team","Изпрати поход за добив"):marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):marchDraft.target.type==="alien"?t("Attack Alien Base","Атакувай извънземната база"):marchDraft.type==="Support"?t("Send reinforcements","Изпрати подкрепление"):marchDraft.target.type==="castle"?t("ATTACK","АТАКА"):t("Launch attack","Изпрати похода")}</button>
               <button onClick={()=>setMarchDraft(null)}>{t("← Back to mission types","← Към видовете мисии")}</button>
             </div>
-            {selectedPopulation>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Киберрицарят може да води най-много 50 000 войници.")}</p>}
+            {selectedPopulation>marchLimit && <p role="alert">{t("Cyber Knight can command at most 50,000 troops.","Cyber Knight може да води най-много 50 000 войници.")}</p>}
             {pvpTravelSeconds!==null&&<p style={{margin:"8px 0",color:"#9cdbff",fontWeight:600}}>{t("Travel to player","Пътуване до играча")}: {pvpTravelLabel} · {pvpDistance} {t("map squares","квадратчета")}</p>}
             <p style={{fontSize:12,color:"#b5c7d9"}}>{marchDraft.target.type==="allianceMine"?t("Work starts on arrival. You can withdraw your army at any time.","Работата започва при пристигане. Можеш да изтеглиш армията по всяко време."):marchDraft.type==="Gather"?t("Selected troops are reserved until the mine is depleted, then they return to your base.","Избраните войски се отделят до изчерпване на мината, след което се връщат в базата."):t("Selected troops leave your base immediately and return after the mission.","Избраните войски напускат базата веднага и се връщат след мисията.")}</p>
             </>}
@@ -1505,12 +1506,12 @@ function Map() {
               const unit=units.find(name=>previewRows[name]===row&&previewRows.columns[name]===column);
               const count=unit?Number(marchUnits[unit]||0):0;
               return <div key={column} style={{minHeight:92,display:"flex",flexDirection:"column",justifyContent:"space-between",padding:6,background:"#f6f0df",border:"1px solid #9d8b6a",borderRadius:4,textAlign:"center"}}>
-                {unit&&count>0&&<><strong style={{fontSize:12}}>{localLabel(unit)}</strong><small>{formationUnitTypes[unit]?.[1] ? t(formationUnitTypes[unit][0],formationUnitTypes[unit][1]) : ""} · {t("Range","Обхват")} {formationUnitTypes[unit]?.[2]}</small><b style={{background:"white",borderRadius:4,padding:3}}>{count.toLocaleString()}</b></>}
+                {unit&&count>0&&<><strong style={{fontSize:12}}>{localLabel(unit)}</strong><small>{formationUnitTypes[unit]?.[1] ? t(formationUnitTypes[unit][0],formationUnitTypes[unit][1]) : ""} · {t("Range","Обхват")} {formationUnitTypes[unit]?.[2]}</small><b style={{background:"white",borderRadius:4,padding:3}}>{count.toLocaleString(locale)}</b></>}
               </div>;
             })}</React.Fragment>)}
           </div></div>
           <div style={{margin:"12px 0",padding:10,textAlign:"center",fontWeight:"bold",background:"#897452",color:"white"}}>{t("Target wall","Стена на целта")}</div>
-          <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString()} · {t("Formation:","Формация:")} {marchFormationSlot==="default"?t("Standard attack","Стандартна атака"):attackNames[marchFormationSlot]||t("Attack formation","Формация за атака")+" "+marchFormationSlot}</p>
+          <p>{t("Troops in formation:","Войници във формацията:")} {selectedTroops.toLocaleString(locale)} · {t("Formation:","Формация:")} {marchFormationSlot==="default"?t("Standard attack","Стандартна атака"):attackNames[marchFormationSlot]||t("Attack formation","Формация за атака")+" "+marchFormationSlot}</p>
           <div style={{display:"flex",justifyContent:"flex-end",gap:8,flexWrap:"wrap"}}>
             <button type="button" onClick={()=>setPreviewOpen(false)}>{t("Back to army selection","Назад към избора на войници")}</button>
             <button type="button" disabled={marchLoading || ((marchDraft.target.type==="alien"||marchDraft.target.type==="mothership") && (campaign.knightBusy || !knightAdded || (marchDraft.target.type==="alien"&&!marchFormationSlot))) || !selectedTroops || selectedPopulation>marchLimit} onClick={prepareMarch} style={{background:"#26765e",color:"white",padding:"10px 22px"}}>{marchDraft.target.type==="mothership"?t("Attack Alien Command Ship (30 sec)","Атакувай командния кораб на извънземните (30 сек.)"):t("Send attack","Изпрати похода")}</button>
@@ -1579,7 +1580,7 @@ function Map() {
                     setPresetName((formationMode==="defense"?defenseNames:attackNames)[slot]||"");
                   }}
                   style={{padding:"9px 12px",border:"1px solid #69a5c2",borderRadius:6,color:"#edf6ff",background:presetSlot===slot?"#27657e":"#20384d"}}>
-                  {name||t("Formation","Формация")+" "+slot}{saved?"":localLabel(" (празен)")}
+                  {name||t("Formation","Формация")+" "+slot}{saved?"":t(" (empty)"," (празен)")}
                 </button>;
               })}
             </div>
@@ -1609,7 +1610,7 @@ function Map() {
           {campaignTab==="active" && !scoutMarches.length && !alienMarches.length && !playerMarches.length && !myGatheringMines.length && !myMothershipMarches.length && !allianceMarch &&
             <p>{t("No active marches. Close this panel and select a target on the map to start a march.","Няма активни походи. Затвори панела и избери цел на картата, за да започнеш поход.")}</p>}
           {campaignTab==="active"&&(campaign.invasionRoutes||[]).length>0&&<section style={{margin:"14px 0",padding:12,border:"1px solid #9c5353",borderRadius:9,background:"rgba(78,25,30,.3)"}}>
-            <h3>⚔️ Alien Invasion — {t("Incoming attacks against alliance members","Атаки срещу членовете на алианса")}</h3>
+            <h3>⚔️ {localLabel("Alien Invasion")} — {t("Incoming attacks against alliance members","Атаки срещу членовете на алианса")}</h3>
             {(campaign.invasionRoutes||[]).map(attack=><div key={attack.id} style={{display:"flex",alignItems:"center",justifyContent:"space-between",gap:10,flexWrap:"wrap",padding:"9px 0",borderBottom:"1px solid #70545a"}}>
               <span>{t("Alien wave","Извънземна вълна")} {attack.level} · {t("Arrival in","Пристига след")} {formatDuration(Math.max(0,Number(attack.arrivesAt)-clock))}</span>
               <button type="button" onClick={()=>{
@@ -1633,8 +1634,8 @@ function Map() {
             {clock<allianceMarch.arrives_at
               ? <p>{t("Arrival in","Пристига след")} {formatDuration(allianceMarch.arrives_at-clock)}</p>
               : allianceMarch.mode==="construction"
-                ? <p>{t("Construction points earned","Спечелени строителни точки")} {(allianceMarch.work/3600000).toLocaleString(undefined,{maximumFractionDigits:2})}</p>
-                : <p>{t("Resources gathered","Добити ресурси")} {allianceMarch.gathered.toLocaleString()} / {allianceMarch.capacity.toLocaleString()} {localLabel(allianceMarch.resource)}</p>}
+                ? <p>{t("Construction points earned","Спечелени строителни точки")} {(allianceMarch.work/3600000).toLocaleString(locale,{maximumFractionDigits:2})}</p>
+                : <p>{t("Resources gathered","Добити ресурси")} {allianceMarch.gathered.toLocaleString(locale)} / {allianceMarch.capacity.toLocaleString(locale)} {localLabel(allianceMarch.resource)}</p>}
             <button type="button" disabled={allianceMineBusy} onClick={()=>changeAllianceMine("withdraw",allianceMarch)}>{t("Withdraw army","Изтегли армията")}</button>
           </section>}
           {campaignTab==="active"&&allianceMineNotice&&<p role="status">{localLabel(allianceMineNotice)}</p>}
@@ -1645,7 +1646,7 @@ function Map() {
               const seconds=travelling?Math.max(0,Math.ceil((Number(mine.arrives_at)-clock)/1000)):Math.ceil(Number(mine.amount||0)/Math.max(1,Number(mine.gathering_rate)||1000)*3600);
               const resource={gold:t("Gold","злато"),iron:t("Iron","желязо"),water:t("Water","вода"),solar:t("Solar","слънчева енергия")}[mine.resource];
               return <div key={mine.id} style={{display:"flex",justifyContent:"space-between",alignItems:"center",gap:10,flexWrap:"wrap",padding:"6px 0",borderBottom:"1px solid #536c80"}}>
-                <span>{resource} · {mine.x}:{mine.y} · {travelling?t("Marching","Походът пътува"):t("Gathering","Събиране")} · {travelling?formatDuration(seconds*1000):Number(mine.amount||0).toLocaleString()+" "+t("remaining","остават")} · {formatDuration(seconds*1000)}</span>
+                <span>{resource} · {mine.x}:{mine.y} · {travelling?t("Marching","Походът пътува"):t("Gathering","Събиране")} · {travelling?formatDuration(seconds*1000):Number(mine.amount||0).toLocaleString(locale)+" "+t("remaining","остават")} · {formatDuration(seconds*1000)}</span>
                 <button type="button" disabled={mineRecallId===Number(mine.id)} onClick={()=>recallMineArmy(mine)}>{mineRecallId===Number(mine.id)?t("Recalling…","Отзоваване…"):t("Recall army","Отзови армията")}</button>
               </div>;
             })}
@@ -1672,21 +1673,21 @@ function Map() {
         {alienMarches.map(m=><details key={m.id} style={{marginBottom:10,borderBottom:"1px solid #536c80",paddingBottom:8}}>
           <summary>{t("Mission #","Мисия №")}{m.id} {t("· Alien Lv","· Извънземна база ниво")} {m.level} · {m.result ? (m.result.victory?localLabel("VICTORY"):localLabel("DEFEAT")) : localLabel("Travelling")}{!m.returned_at && ` · ${m.result ? localLabel("Returning") : localLabel("Arrival")} · ${formatDuration((m.result ? m.returns_at : m.arrives_at)-clock)}` }</summary>
           {campaignTab==="active" ? (m.result
-            ? <p><strong>{t("Survivors:","Оцелели:")}</strong> {Object.entries(m.result.survivors||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString()}`).join(", ")||"0"}</p>
-            : <>{m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}{m.formation?.length?<ul>{m.formation.map(({unit,count,row},index)=><li key={index}>{count.toLocaleString()} {localLabel(unit)} {t("· Row","· Ред")} {row}</li>)}</ul>:m.units&&<p>{t("Dispatched:","Изпратени:")} {Object.entries(m.units).map(([unit,count])=>`${count} ${localLabel(unit)}`).join(", ")}</p>}</>
+            ? <p><strong>{t("Survivors:","Оцелели:")}</strong> {Object.entries(m.result.survivors||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString(locale)}`).join(", ")||"0"}</p>
+            : <>{m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight Lv","Командир: Cyber Knight ниво")} {m.cyberKnightLevel}</p>}{m.formation?.length?<ul>{m.formation.map(({unit,count,row},index)=><li key={index}>{count.toLocaleString(locale)} {localLabel(unit)} {t("· Row","· Ред")} {row}</li>)}</ul>:m.units&&<p>{t("Dispatched:","Изпратени:")} {Object.entries(m.units).map(([unit,count])=>`${count} ${localLabel(unit)}`).join(", ")}</p>}</>
           ) : <>
-            {m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight Lv","Командир: Киберрицар ниво")} {m.cyberKnightLevel}</p>}
+            {m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight Lv","Командир: Cyber Knight ниво")} {m.cyberKnightLevel}</p>}
             {m.result&&<><p>{t("Rounds:","Рундове:")} {m.result.rounds} {t("· Remaining alien defenders:","· Оставащи извънземни защитници:")} {m.result.defendersRemaining}</p>
-              <p>⭐ {t("Experience earned (XP):","Получен опит (XP):")} <strong>{m.result.xpEarned==null?t("Not recorded","Няма запис"):Number(m.result.xpEarned).toLocaleString()}</strong></p>
-              {m.result.equipmentReward&&<><p>🎁 {t("Cyber Knight gear received:","Получена екипировка за Киберрицаря:")} <strong>{t("Plasma","Плазмен")+" "+localLabel(m.result.equipmentReward.slot)}</strong> · {localLabel(m.result.equipmentReward.rarity)} · {"★".repeat(Number(m.result.equipmentReward.stars)||1)}</p>{(m.result.equipmentReward.effects||[]).length>0&&<ul>{m.result.equipmentReward.effects.map((effect,index)=><li key={index}>{effect.kind==="unitAttack"?t("Attack of","Атака на")+" "+localLabel(effect.target)+": +":effect.kind==="unitHealth"?t("Health of","Живот на")+" "+localLabel(effect.target)+": +":effect.kind==="enemyUnitAttack"?t("Enemy attack of","Атака на противниковия")+" "+localLabel(effect.target)+": −":effect.kind==="enemyUnitHealth"?t("Enemy health of","Живот на противниковия")+" "+localLabel(effect.target)+": −":effect.kind==="protocolBoost"?t("Combat protocol","Боен протокол")+" "+localLabel(effect.target)+": +":t("Opponent combat protocol","Противников боен протокол")+" "+localLabel(effect.target)+": −"}{Number(effect.value)||0}%</li>)}</ul>}</>}
+              <p>⭐ {t("Experience earned (XP):","Получен опит (XP):")} <strong>{m.result.xpEarned==null?t("Not recorded","Няма запис"):Number(m.result.xpEarned).toLocaleString(locale)}</strong></p>
+              {m.result.equipmentReward&&<><p>🎁 {t("Cyber Knight gear received:","Получена екипировка за Cyber Knight:")} <strong>{t("Plasma","Плазмен")+" "+localLabel(m.result.equipmentReward.slot)}</strong> · {localLabel(m.result.equipmentReward.rarity)} · {"★".repeat(Number(m.result.equipmentReward.stars)||1)}</p>{(m.result.equipmentReward.effects||[]).length>0&&<ul>{m.result.equipmentReward.effects.map((effect,index)=><li key={index}>{effect.kind==="unitAttack"?t("Attack of","Атака на")+" "+localLabel(effect.target)+": +":effect.kind==="unitHealth"?t("Health of","Живот на")+" "+localLabel(effect.target)+": +":effect.kind==="enemyUnitAttack"?t("Enemy attack of","Атака на противниковия")+" "+localLabel(effect.target)+": −":effect.kind==="enemyUnitHealth"?t("Enemy health of","Живот на противниковия")+" "+localLabel(effect.target)+": −":effect.kind==="protocolBoost"?t("Combat protocol","Боен протокол")+" "+localLabel(effect.target)+": +":t("Opponent combat protocol","Противников боен протокол")+" "+localLabel(effect.target)+": −"}{Number(effect.value)||0}%</li>)}</ul>}</>}
               {m.result.reward&&<p>🎁 {t("Additional reward:","Допълнителна награда:")} {m.result.reward?.item?.name||(m.result.reward?.type==="crafting"?`${m.result.reward.amount} ${t("Universal Forge points","универсални точки за изковаване")}`:m.result.reward?.type==="resources"?`${m.result.reward.amount} ${t("of each resource","от всеки ресурс")}`:m.result.reward?.type==="army"?`${m.result.reward.amount} ${localLabel(m.result.reward.unit)}`:"—")}</p>}
-              {m.result.greenCrystals>0&&<p>💚 {t("Green crystals earned:","Спечелени зелени кристали:")} {Number(m.result.greenCrystals).toLocaleString()}</p>}
-              {m.result.redCrystals>0&&<p>🔴 {t("Red crystals earned:","Спечелени червени кристали:")} {Number(m.result.redCrystals).toLocaleString()}</p>}
-              {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {Object.entries(m.result.wounded).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString()}`).join(", ")}</p>}
-              <p><strong>{t("Starting army:","Начална армия:")}</strong> {Object.entries(m.units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString()}`).join(", ")}</p>
-              <p><strong>{t("Losses:","Загуби:")}</strong> {Object.entries(m.units||{}).map(([unit,count])=>[unit,Math.max(0,Number(count)-Number(m.result.survivors?.[unit]||0))]).filter(([,count])=>count>0).map(([unit,count])=>`${localLabel(unit)}: ${count.toLocaleString()}`).join(", ")||"0"}</p>
-              <p><strong>{t("Survivors:","Оцелели:")}</strong> {Object.entries(m.result.survivors||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString()}`).join(", ")||"0"}</p>
-              {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>{round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{e.restored>0?`Nano Regeneration: ${e.restored} ${localLabel(e.unit)} restored`:<>{localLabel(e.attacker)}: {e.units} {localLabel(e.unit)} → {localLabel(e.target)} · {e.damage} {t("damage","щети")}{Number.isInteger(e.kills)?` · ${e.kills} ${t("defeated","убити")}`:""}{e.dodged?` · ${t("Evaded","Избегнат удар")} ${e.evadedPercent}%`:""}</>}</p>)}</details>)}
+              {m.result.greenCrystals>0&&<p>💚 {t("Green crystals earned:","Спечелени зелени кристали:")} {Number(m.result.greenCrystals).toLocaleString(locale)}</p>}
+              {m.result.redCrystals>0&&<p>🔴 {t("Red crystals earned:","Спечелени червени кристали:")} {Number(m.result.redCrystals).toLocaleString(locale)}</p>}
+              {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {Object.entries(m.result.wounded).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString(locale)}`).join(", ")}</p>}
+              <p><strong>{t("Starting army:","Начална армия:")}</strong> {Object.entries(m.units||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString(locale)}`).join(", ")}</p>
+              <p><strong>{t("Losses:","Загуби:")}</strong> {Object.entries(m.units||{}).map(([unit,count])=>[unit,Math.max(0,Number(count)-Number(m.result.survivors?.[unit]||0))]).filter(([,count])=>count>0).map(([unit,count])=>`${localLabel(unit)}: ${count.toLocaleString(locale)}`).join(", ")||"0"}</p>
+              <p><strong>{t("Survivors:","Оцелели:")}</strong> {Object.entries(m.result.survivors||{}).filter(([,count])=>Number(count)>0).map(([unit,count])=>`${localLabel(unit)}: ${Number(count).toLocaleString(locale)}`).join(", ")||"0"}</p>
+              {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>{round.events.map((e,i)=><p key={i} style={{fontSize:12}}>{battleEventText(e,localLabel,t)}</p>)}</details>)}
             </>}
           </>}
         </details>)}
@@ -1711,14 +1712,14 @@ function Map() {
                 setMarchNotice(t("March recalled; the army is returning.","Походът е върнат; армията се прибира."));
               }catch(error){setMarchNotice(error.message);}finally{setMarchLoading(false);}
             }}>{t("Recall attack","Върни атаката")}</button>}
-            <p>{t("Sent troops:","Изпратени войници:")} {Object.entries(m.units||{}).map(([unit,count])=>`${count.toLocaleString()} ${localLabel(unit)}`).join(", ")}</p>
-            {m.formation?.length>0&&<ul>{m.formation.map((group,index)=><li key={index}>{group.count.toLocaleString()} {localLabel(group.unit)} · {t("Row","Ред")} {group.row}</li>)}</ul>}
+            <p>{t("Sent troops:","Изпратени войници:")} {Object.entries(m.units||{}).map(([unit,count])=>`${count.toLocaleString(locale)} ${localLabel(unit)}`).join(", ")}</p>
+            {m.formation?.length>0&&<ul>{m.formation.map((group,index)=><li key={index}>{group.count.toLocaleString(locale)} {localLabel(group.unit)} · {t("Row","Ред")} {group.row}</li>)}</ul>}
             {m.result&&<div>
               {m.result.shielded&&<p>{m.incoming?t("Your protection blocked this attack; the troops return safely.","Протекцията ти спря атаката; войските се връщат невредими."):t("The target’s protection blocked this attack; your troops return safely.","Протекцията на целта спря атаката; войските ти се връщат невредими.")}</p>}
-              {m.result.recalled?<p>{t("The march was recalled before arrival. No battle took place; both armies remained unchanged.","Походът е върнат преди пристигане. Битка не е имало и двете армии са останали непокътнати.")}</p>:<p>{t("Rounds:","Рундове:")} {m.result.rounds} · {t("Attacker survivors:","Оцелели нападатели:")} {Object.values(m.result.survivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString()} · {t("Defender survivors:","Оцелели защитници:")} {Object.values(m.result.defenderSurvivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString()}</p>}
-              <p>{m.incoming?t("Resources plundered by attacker:","Ресурси, отнети от нападателя:"):t("Loot carried back:","Плячка, която се връща:")} {Object.entries(m.result.loot||{}).filter(([,amount])=>Number(amount)>0).map(([resource,amount])=>String(amount.toLocaleString())+" "+localLabel(resource)).join(", ")||t("None","Няма")} · {t("Cargo capacity:","Товароносимост:")} {Number(m.result.cargoCapacity||0).toLocaleString()}</p>
+              {m.result.recalled?<p>{t("The march was recalled before arrival. No battle took place; both armies remained unchanged.","Походът е върнат преди пристигане. Битка не е имало и двете армии са останали непокътнати.")}</p>:<p>{t("Rounds:","Рундове:")} {m.result.rounds} · {t("Attacker survivors:","Оцелели нападатели:")} {Object.values(m.result.survivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString(locale)} · {t("Defender survivors:","Оцелели защитници:")} {Object.values(m.result.defenderSurvivors||{}).reduce((sum,count)=>sum+count,0).toLocaleString(locale)}</p>}
+              <p>{m.incoming?t("Resources plundered by attacker:","Ресурси, отнети от нападателя:"):t("Loot carried back:","Плячка, която се връща:")} {Object.entries(m.result.loot||{}).filter(([,amount])=>Number(amount)>0).map(([resource,amount])=>String(amount.toLocaleString(locale))+" "+localLabel(resource)).join(", ")||t("None","Няма")} · {t("Cargo capacity:","Товароносимост:")} {Number(m.result.cargoCapacity||0).toLocaleString(locale)}</p>
               {(m.result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
-                {round.events.map((event,index)=><p key={index} style={{fontSize:12}}>{localLabel(event.attacker)}: {event.units} {localLabel(event.unit)} → {localLabel(event.target)} · {event.damage} {t("damage","щети")}{Number.isInteger(event.kills)?` · ${event.kills} ${t("defeated","убити")}`:""}</p>)}
+                {round.events.map((event,index)=><p key={index} style={{fontSize:12}}>{battleEventText(event,localLabel,t)}</p>)}
               </details>)}
             </div>}
           </details>;

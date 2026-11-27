@@ -1,5 +1,6 @@
 import PlayerAvatar from "../shared/PlayerAvatar";
 import React, {useEffect,useState} from "react";
+import {localizedMessageBody} from "../shared/localizedMessages";
 import {useLanguage} from "../language";
 
 export default function AllianceMessages({api,canBroadcast,markDisplayed,playerAction}) {
@@ -80,7 +81,7 @@ export default function AllianceMessages({api,canBroadcast,markDisplayed,playerA
     {messages.map(message=><article key={message.id} style={{padding:"8px 0",borderBottom:"1px solid #47758e"}}>
       <PlayerAvatar player={{id:message.senderId,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}} size={26} />{" "}<strong>{playerAction?playerAction({id:message.senderId,username:message.sender,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}):message.sender}</strong>
       {" · "}<time dateTime={new Date(message.sentAt).toISOString()}>{new Date(message.sentAt).toLocaleString(language)}</time>
-      <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{message.body}</div>
+      <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{localizedMessageBody(message.body,message.messageType,language,localLabel)}</div>
     </article>)}
     {canBroadcast&&<form onSubmit={send} style={{display:"grid",gap:8,marginTop:12}}>
       <label htmlFor="alliance-broadcast">{t("Message to all alliance members","Съобщение до всички членове на алианса")}</label>

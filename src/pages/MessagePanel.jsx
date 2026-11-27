@@ -1,11 +1,12 @@
 import PlayerAvatar from "../shared/PlayerAvatar";
+import {localizedMessageBody} from "../shared/localizedMessages";
 import { useLanguage } from "../language";
 import React, {useEffect, useState} from "react";
 
 const api = (process.env.REACT_APP_API_URL || (window.location.hostname === "localhost" ? "http://localhost:3001" : window.location.origin)).replace(/\/$/, "");
 
 export default function MessagePanel({alliance = false, recipient = "", playerAction}) {
-  const { t , label: localLabel} = useLanguage();
+  const {locale, t, language, label: localLabel} = useLanguage();
   const [body, setBody] = useState("");
   const [messages, setMessages] = useState([]);
   const [error, setError] = useState("");
@@ -77,10 +78,8 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
         {message.messageType!=="system"&&<><PlayerAvatar player={{id:message.senderId,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}} size={26} />{" "}</>}
         <strong>{message.messageType==="system"?t("Game System","Система на играта"):playerAction ? playerAction({id:message.senderId,username:message.sender,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}) : message.sender}</strong>
         {!alliance && message.messageType!=="system" && <> → <PlayerAvatar player={{id:message.recipientId,avatarId:message.recipientAvatarId,avatarVersion:message.recipientAvatarVersion}} size={26} /> {playerAction ? playerAction({id:message.recipientId,username:message.recipient,avatarId:message.recipientAvatarId,avatarVersion:message.recipientAvatarVersion}) : message.recipient}</>}
-        {" · "}<time>{new Date(message.sentAt).toLocaleString()}</time>
-        <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{message.messageType==="system"
-          ? message.body.replace(/(^|\n)(Alliance points \/ )Точки на алианса:/g,"$1$2Алианс точки:")
-          : message.body}</div>
+        {" · "}<time>{new Date(message.sentAt).toLocaleString(locale)}</time>
+        <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{localizedMessageBody(message.body,message.messageType,language,localLabel)}</div>
       </article>)}
     </div>
     {!alliance && !recipient && <p>{t("Select a player and choose Message to start a conversation.","Избери играч и натисни „Съобщение“, за да започнеш разговор.")}</p>}

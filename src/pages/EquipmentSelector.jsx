@@ -5,7 +5,7 @@ import GameProgressManager from "../utils/gameProgress";
 import "./CyberKnightPanel.css";
 
 function EquipmentSelector({ slot, onClose, onEquip }) {
-  const { t } = useLanguage();
+  const { t, label } = useLanguage();
   const [activeTab, setActiveTab] = useState("common");
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
@@ -91,7 +91,7 @@ function EquipmentSelector({ slot, onClose, onEquip }) {
   );
 
   const handleDismantle = (item) => {
-    if (!window.confirm(`Dismantle ${item.name}?`)) return;
+    if (!window.confirm(t(`Dismantle ${item.name}?`,`Разглоби ${label(item.name)}?`))) return;
     setInventory((prev) => prev.filter((g) => g.id !== item.id));
     const current = craftingPoints[slot] || 0;
     const added = craftingCosts[item.rarity] || 0;
@@ -150,14 +150,14 @@ function EquipmentSelector({ slot, onClose, onEquip }) {
               onClick={() => setActiveTab(tab.key)}
               style={{ color: tab.color }}
             >
-              {tab.label}
+              {label(tab.label)}
             </button>
           ))}
         </div>
 
         <div className="rarity-content">
           <div className="crafting-points">
-            {t("Crafting Points (","Точки за изковаване (")}{slot}): {craftingPoints[slot] || 0}
+            {t("Crafting Points (","Точки за изковаване (")}{label(slot)}): {craftingPoints[slot] || 0}
             {equipped && (
               <button className="unequip-button" onClick={handleUnequip}>
                 {t("Unequip","Свали")}
@@ -174,8 +174,8 @@ function EquipmentSelector({ slot, onClose, onEquip }) {
             <div className="gear-grid">
               {filteredGear.map((item) => (
                 <div key={item.id} className={`gear-card ${equipped === item.id ? "equipped" : ""}`}>
-                  <div className="gear-name">{item.name}</div>
-                  <div className="gear-bonus">{item.bonus}</div>
+                  <div className="gear-name">{label(item.name)}</div>
+                  <div className="gear-bonus">{label(item.bonus)}</div>
                   <div className="gear-level">{t("Level","Ниво")} {item.level || item.levelRequirement} / 50</div>
                   <div className="gear-actions">
                     <button onClick={() => handleEquip(item)}>{t("Equip","Екипирай")}</button>

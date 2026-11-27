@@ -45,7 +45,7 @@ function CyberKnightPanel({ onClose }) {
     if(effect.kind==="enemyUnitHealth")return t("Enemy health of","Живот на противниковия")+" "+target+": −"+value;
     if(effect.kind==="protocolBoost")return t("Combat protocol","Боен протокол")+" "+target+": +"+value+"%";
     if(effect.kind==="enemyProtocol")return t("Opponent combat protocol","Противников боен протокол")+" "+target+": −"+value+"%";
-    return effect.target+": "+value+"%";
+    return localLabel(effect.target)+": "+value+"%";
   };
   const effectMaximum=effect=>{
     if(effect.kind==="protocolBoost"||effect.kind==="enemyProtocol")return protocolRanges[effect.target]?.[1];
@@ -56,7 +56,7 @@ function CyberKnightPanel({ onClose }) {
   const itemEffects=item=>(item?.effects||[]).length?item.effects.map(effect=>{
     const maximum=effectMaximum(effect);
     return effectText(effect)+(maximum==null?"":" · "+t("Max at level 50: ","Максимум на ниво 50: ")+maximum+(effect.kind==="protocolBoost"||effect.kind==="enemyProtocol"?"%":""));
-  }):(item?.stats||[]);
+  }):(item?.stats||[]).map(localLabel);
 
   const [inventory, setInventory] = useState([]);
   const [craftingPoints, setCraftingPoints] = useState({});
@@ -109,10 +109,10 @@ function CyberKnightPanel({ onClose }) {
     const nextEquipped = {...equippedItems,[slot]:item};
     progressManager.setUserInfo(sessionStorage.getItem("userId"), sessionStorage.getItem("username"));
     const saved=await progressManager.saveEquipment(nextEquipped);
-    if(!saved){alert("Could not save equipment. Please retry.");return;}
+    if(!saved){alert(localLabel("Could not save equipment. Please retry."));return;}
     setEquippedItems(nextEquipped);
     setRarityTab(item.rarity || "Common");
-    setEquipmentNotice(t("Equipped","Екипирано")+": "+localLabel(slot)+" · "+item.rarity+" · Lv "+(Number(item.level)||0));
+    setEquipmentNotice(t("Equipped","Екипирано")+": "+localLabel(slot)+" · "+localLabel(item.rarity)+" · "+t("Level","Ниво")+" "+(Number(item.level)||0));
     setActiveModal(null);
     setSelectedItem(null);
   };
@@ -134,7 +134,7 @@ function CyberKnightPanel({ onClose }) {
       if(upgraded?.rarity)setRarityTab(upgraded.rarity);
       setCraftingPoints(equipment.craftingPoints);
       setActiveModal(null);
-      setCraftMessage(`${selectedItem.name} upgraded to level ${itemLevel + 1}.`);
+      setCraftMessage(t(`${selectedItem.name} upgraded to level ${itemLevel+1}.`,`${localLabel(selectedItem.name)} е подобрен до ниво ${itemLevel+1}.`));
       window.dispatchEvent(new Event("game-progress-updated"));
     } catch (error) {
       setCraftMessage(error.message);
@@ -176,17 +176,17 @@ function CyberKnightPanel({ onClose }) {
         </div>
 
         <div className="cyber-panel-body">
-          <div className="equipment-status"><strong>{t("Cyber Knight level:","Ниво на Cyber Knight:")} {knightLevel}/50 <span>·</span> {t("Prestige:","Престиж:")} {knightLevel>=50?20:prestige%20}/20 {knightLevel<50&&<>{t("to level","до ниво")} {knightLevel+1}</>}</strong><div>{t("Gear inventory:","Екипировка:")} {inventory.length} <span>·</span> {t("Equipped:","Облечени:")} {Object.values(equippedItems).filter(Boolean).length}/6</div><div>{t("Unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40","Отключване: необикновена 10 · рядка 20 · епична 30 · легендарна 40")}</div>{equipmentNotice&&<div className="equipment-confirmation" role="status">✓ {equipmentNotice}</div>}</div>
+          <div className="equipment-status"><strong>{t("Cyber Knight level:","Ниво на Cyber Knight:")} {knightLevel}/50 <span>·</span> {t("Prestige:","Престиж:")} {knightLevel>=50?20:prestige%20}/20 {knightLevel<50&&<>{t("to level","до ниво")} {knightLevel+1}</>}</strong><div>{t("Gear inventory:","Екипировка:")} {inventory.length} <span>·</span> {t("Equipped:","Облечени:")} {Object.values(equippedItems).filter(Boolean).length}/6</div><div>{t("Unlocks: Uncommon 10 · Rare 20 · Epic 30 · Legendary 40","Отключване: необикновена 10 · рядка 20 · епична 30 · легендарна 40")}</div>{equipmentNotice&&<div className="equipment-confirmation" role="status">✓ {localLabel(equipmentNotice)}</div>}</div>
           <div className="equipment-layout">
             {gearColumns.map(column=><section key={column.side} className={`equipment-column ${column.side}`}>
               <h3>{t(column.title,column.titleBg)}</h3>
               {[...column.slots].sort((a,b)=>Number(!!equippedItems[b])-Number(!!equippedItems[a])).map(slot=>{const currentItem=equippedItems[slot],slotCount=inventory.filter(item=>(item.slot||item.type||"").toUpperCase()===slot).length;return <button key={slot} className={`gear-slot ${currentItem?"is-equipped":""}`} onClick={()=>handleSlotClick(slot)} aria-pressed={!!currentItem}>
                 <span className="gear-icon-frame"><PlasmaGearIcon slot={slot}/></span>
-                <span className="gear-slot-text"><strong>{localLabel(slot)}</strong><small>{currentItem?t("Equipped","Екипирано")+" · "+currentItem.rarity+" · Lv "+(Number(currentItem.level)||0):t("Not equipped","Не е екипирано")}</small><small>{slotCount} {t("in inventory","в инвентара")}</small></span>
+                <span className="gear-slot-text"><strong>{localLabel(slot)}</strong><small>{currentItem?t("Equipped","Екипирано")+" · "+localLabel(currentItem.rarity)+" · "+t("Level","Ниво")+" "+(Number(currentItem.level)||0):t("Not equipped","Не е екипирано")}</small><small>{slotCount} {t("in inventory","в инвентара")}</small></span>
                 {currentItem&&<span className={`equipped-rarity rarity-${rarityClasses[currentItem.rarity]||"common"}`}>✓</span>}
               </button>})}
             </section>)} 
-            <div className="cyber-image-container"><img className="cyber-image" src={cyberKnightImage} alt="Cyber Knight in Martian armor" /></div>
+            <div className="cyber-image-container"><img className="cyber-image" src={cyberKnightImage} alt={t("Cyber Knight in Martian armor","Cyber Knight с марсианска броня")} /></div>
           </div>
         </div>
       </div>
@@ -213,14 +213,14 @@ function CyberKnightPanel({ onClose }) {
           </div>
 
           <div className="item-grid">
-            {!itemsForSlot.length&&<p style={{color:"#d6e7f0"}}>{t("No","Няма")} {rarityTab} {t("items for","предмети за")} {localLabel(selectedSlot)}{t(". Try another rarity or check Gear Inventory above.",". Пробвай друга рядкост или виж инвентара по-горе.")}</p>}
+            {!itemsForSlot.length&&<p style={{color:"#d6e7f0"}}>{t("No","Няма")} {localLabel(rarityTab)} {t("items for","предмети за")} {localLabel(selectedSlot)}{t(". Try another rarity or check Gear Inventory above.",". Пробвай друга рядкост или виж инвентара по-горе.")}</p>}
             {itemsForSlot.map((item, index) => (
                 <div key={item.id||index} className={`item-card rarity-${rarityClasses[item.rarity]||"common"}`}>
                   <div className="item-card-title"><span className="gear-icon-frame"><PlasmaGearIcon slot={item.slot||item.type}/></span><div><span className="rarity-label">{localLabel(item.rarity)}</span><h4>{localLabel(item.slot||item.type)} · {t("Plasma gear","Плазмена екипировка")}</h4></div></div>
                   <p>{t("Item Level:","Ниво на предмета:")} {item.level}</p>
                   <p>{"★".repeat(Number(item.stars)||({Common:1,Uncommon:2,Rare:3,Epic:4,Legendary:5}[item.rarity]||1))} · {t("Bonus slots:","Слотове за бонуси:")} {item.bonusSlots||1}</p>
                   <p>{t("Each bonus scales with item level. Individual maximum values are shown below for level 50.","Всеки бонус нараства с нивото на предмета. Индивидуалните максимуми за ниво 50 са показани по-долу.")}</p>
-                  {knightLevel<(rarityUnlockLevel[item.rarity]||1)&&<p role="status">{t("Unlocks at Cyber Knight level","Отключва се на ниво на Киберрицаря")} {rarityUnlockLevel[item.rarity]}</p>}
+                  {knightLevel<(rarityUnlockLevel[item.rarity]||1)&&<p role="status">{t("Unlocks at Cyber Knight level","Отключва се на ниво на Cyber Knight")} {rarityUnlockLevel[item.rarity]}</p>}
                   {Number(item.level??item.levelRequirement??1)>knightLevel&&<p role="status">{t("Requires Cyber Knight level","Изисква Cyber Knight ниво")} {Number(item.level??item.levelRequirement??1)}</p>}
                   <ul>
                     {itemEffects(item).map((s, i) => (
@@ -263,7 +263,7 @@ function CyberKnightPanel({ onClose }) {
 
       {activeModal === "equip" && selectedItem && (
         <div className="modal-window">
-          <h3>{t("Equip","Екипирай")} {selectedItem.name}?</h3>
+          <h3>{t("Equip","Екипирай")} {localLabel(selectedItem.name)}?</h3>
           <ul>
             {itemEffects(selectedItem).map((s, i) => (
               <li key={i}>{s}</li>
@@ -276,14 +276,14 @@ function CyberKnightPanel({ onClose }) {
 
       {activeModal === "dismantle" && selectedItem && (
         <div className="modal-window">
-          <h3>{t("Dismantle","Разглоби")} {selectedItem.name}?</h3>
-          <p>{t("Dismantling returns 5 Universal Forge points per item level, regardless of rarity. The item will be permanently destroyed.","Претопяването връща по 5 универсални точки за изковаване за всяко ниво на предмета, независимо от рядкостта. Предметът се унищожава окончателно.")} <strong>{t("You will receive: ","Ще получиш: ")}{Math.max(0,Math.min(50,Math.floor(Number(selectedItem.level??selectedItem.levelRequirement??0)||0)))*5} Universal Forge</strong></p>
+          <h3>{t("Dismantle","Разглоби")} {localLabel(selectedItem.name)}?</h3>
+          <p>{t("Dismantling returns 5 Universal Forge points per item level, regardless of rarity. The item will be permanently destroyed.","Претопяването връща по 5 универсални точки за изковаване за всяко ниво на предмета, независимо от рядкостта. Предметът се унищожава окончателно.")} <strong>{t("You will receive: ","Ще получиш: ")}{Math.max(0,Math.min(50,Math.floor(Number(selectedItem.level??selectedItem.levelRequirement??0)||0)))*5} {localLabel("Universal Forge")}</strong></p>
           <button disabled={crafting} onClick={handleDismantle}>{crafting?t("Processing…","Обработка…"):t("Confirm dismantling","Потвърди претопяването")}</button>
           <button onClick={() => setActiveModal(null)}>{t("Cancel","Отказ")}</button>
         </div>
       )}
 
-      {craftMessage && <p role="status">{craftMessage}</p>}
+      {craftMessage && <p role="status">{localLabel(craftMessage)}</p>}
 
       {activeModal === "craft" && selectedItem && (
         <div className="modal-window" style={{boxSizing:"border-box",width:"min(550px, calc(100vw - 24px))",maxHeight:"85dvh",display:"flex",flexDirection:"column",overflow:"hidden",padding:12,zIndex:1200}}>
@@ -292,7 +292,7 @@ function CyberKnightPanel({ onClose }) {
             <div>
               <h4>{t("Current Item","Текущ предмет")}</h4>
               <p>
-                {selectedItem.name} {t("- Level","– Ниво")} {itemLevel}
+                {localLabel(selectedItem.name)} {t("- Level","– Ниво")} {itemLevel}
               </p>
               <ul>
                 {itemEffects(selectedItem).map((s, i) => (
@@ -303,7 +303,7 @@ function CyberKnightPanel({ onClose }) {
             <div>
               <h4>{t("Upgraded Item","Подобрен предмет")}</h4>
               <p>
-                {selectedItem.name} {t("- Level","– Ниво")} {itemLevel + 1}
+                {localLabel(selectedItem.name)} {t("- Level","– Ниво")} {itemLevel + 1}
               </p>
               <ul>
                 {itemEffects(selectedItem).map((s, i) => (

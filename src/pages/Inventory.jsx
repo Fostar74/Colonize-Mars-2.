@@ -30,7 +30,7 @@ const marketItems=[
   }))
 ];
 export default function Inventory(){
-  const { t , label: localLabel} = useLanguage();
+  const {locale, t , label: localLabel} = useLanguage();
   const [tab,setTab]=useState("resources");
   const [reserve,setReserve]=useState(null);
   const [progress,setProgress]=useState(null);
@@ -86,8 +86,8 @@ export default function Inventory(){
       {rows.map(name=>{
         const kind=tab;const count=Number(reserve[kind]?.[name]||0);
         return <div key={name} style={card}><img src={resourceIcons[name]} alt="" width="42" height="42" style={{objectFit:"contain",verticalAlign:"middle",marginRight:8}}/><strong>{localLabel(name)}</strong>
-          <p>{t("In inventory:","В инвентара:")} <b>{count.toLocaleString()}</b></p>
-          <p>{t("In base:","В базата:")} {Number((kind==="resources"?progress?.resources:progress?.army)?.[name]||0).toLocaleString()}</p>
+          <p>{t("In inventory:","В инвентара:")} <b>{count.toLocaleString(locale)}</b></p>
+          <p>{t("In base:","В базата:")} {Number((kind==="resources"?progress?.resources:progress?.army)?.[name]||0).toLocaleString(locale)}</p>
           <div style={{display:"flex",gap:6}}>
             <input aria-label={"Withdraw "+name} type="number" min="1" max={count} value={amounts[kind+name]||""} onChange={e=>setAmounts(v=>({...v,[kind+name]:e.target.value}))} style={{width:85}}/>
             <button disabled={busy||count<1} style={button} onClick={()=>withdraw(kind,name,count)}>{t("Withdraw","Изтегли")}</button>
@@ -102,7 +102,7 @@ export default function Inventory(){
         {marketItems.filter(item=>item.id!=="landing"||Number(reserve.items?.landing)>0).map(item=>{const count=Number(reserve.items?.[item.id]||0),selected=selectedItem===item.id;return <div role="button" tabIndex={0} key={item.id} onClick={()=>{setSelectedItem(item.id);setItemAmount("1");}} onKeyDown={event=>{if(event.key==="Enter"||event.key===" "){event.preventDefault();setSelectedItem(item.id);setItemAmount("1");}}} aria-pressed={selected} style={{...card,textAlign:"left",color:"white",cursor:"pointer",border:selected?"2px solid #83e6ff":"1px solid #4a6c83",opacity:count?1:.65}}>
           <img src={item.icon} alt="" width="64" height="64" style={{objectFit:"contain",display:"block",margin:"0 auto 8px"}}/>
           <strong>{t(item.label,item.bulgarianLabel)}</strong>
-          <p style={{marginBottom:0}}>{t("In inventory:","В инвентара:")} <b>{count.toLocaleString()}</b></p>
+          <p style={{marginBottom:0}}>{t("In inventory:","В инвентара:")} <b>{count.toLocaleString(locale)}</b></p>
         </div>})}
       </div>
       {!Object.values(reserve.items||{}).some(count=>count>0)&&<p>{t("No alliance market items in inventory.","Нямаш предмети от алиансния пазар в инвентара.")}</p>}
@@ -114,14 +114,14 @@ export default function Inventory(){
         {selectedItem!=="protocol_reset"&&!item.single&&<label style={{display:"block",marginTop:14}}>{t("How many items do you want to activate?","Колко предмета искаш да активираш?")}
           <input type="number" min="1" max={count} step="1" value={itemAmount} onChange={event=>setItemAmount(event.target.value)} style={{display:"block",width:130,padding:8,marginTop:6}}/>
         </label>}
-        <p>{t("Available:","Налични:")} {count.toLocaleString()}</p>
+        <p>{t("Available:","Налични:")} {count.toLocaleString(locale)}</p>
         <button type="button" disabled={busy||!Number.isSafeInteger(amount)||amount<1||amount>count} style={button} onClick={()=>activateItem(selectedItem,amount)}>{t("Confirm and activate","Потвърди и активирай")}</button>
       </section>})()}
     </div>}
     {reserve&&tab==="boosters"&&<div style={card}>
       <strong>{t("Universal Forge","Универсални точки за изковаване")}</strong>
-      <p>{t("In inventory:","В инвентара:")} <b>{Number(reserve.boosters?.universalForge || 0).toLocaleString()}</b></p>
-      <p>{t("Use these points to upgrade any equipment slot in Cyber Knight. Slot points are spent first.","Използвай ги за подобрения на екипировката на Киберрицаря. Първо се харчат точките за слота.")}</p>
+      <p>{t("In inventory:","В инвентара:")} <b>{Number(reserve.boosters?.universalForge || 0).toLocaleString(locale)}</b></p>
+      <p>{t("Use these points to upgrade any equipment slot in Cyber Knight. Slot points are spent first.","Използвай ги за подобрения на екипировката на Cyber Knight. Първо се харчат точките за слота.")}</p>
     </div>}
   </div>;
 }

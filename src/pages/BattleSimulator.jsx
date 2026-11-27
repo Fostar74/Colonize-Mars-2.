@@ -1,3 +1,4 @@
+import {battleEventText} from "../shared/localizedMessages";
 import React,{useEffect,useState} from "react";
 import {useLanguage} from "../language";
 import formations from "../shared/formations";
@@ -7,7 +8,7 @@ const units=Object.values(unitEconomy.categories).flat();
 const {marchLimit,defaultFormation,normalizeFormation}=formations;
 
 export default function BattleSimulator(){
-  const {t,label}=useLanguage();
+  const {locale,t,label}=useLanguage();
   const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
   const userId=sessionStorage.getItem("userId");
   const headers=()=>({"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")});
@@ -105,15 +106,15 @@ export default function BattleSimulator(){
       <section style={{padding:10,marginBottom:12,border:"1px solid #52758b",borderRadius:8,background:"#172a3a"}}>
         <strong>{t("Alien garrison","Извънземен гарнизон")} · {t("Level","Ниво")} {level}</strong>
         <div style={{display:"flex",gap:12,flexWrap:"wrap",marginTop:6}}>
-          {Object.entries(garrison).map(([unit,count])=><span key={unit}>{label(unit)}: {Number(count).toLocaleString()}</span>)}
-          <strong>{t("Total","Общо")}: {Object.values(garrison).reduce((sum,count)=>sum+Number(count||0),0).toLocaleString()}</strong>
+          {Object.entries(garrison).map(([unit,count])=><span key={unit}>{label(unit)}: {Number(count).toLocaleString(locale)}</span>)}
+          <strong>{t("Total","Общо")}: {Object.values(garrison).reduce((sum,count)=>sum+Number(count||0),0).toLocaleString(locale)}</strong>
         </div>
       </section>
-      <p>{t("Selected troops:","Избрани войници:")} {total.toLocaleString()} / {marchLimit.toLocaleString()}</p>
+      <p>{t("Selected troops:","Избрани войници:")} {total.toLocaleString(locale)} / {marchLimit.toLocaleString(locale)}</p>
       <div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(185px,1fr))",gap:8}}>
         {units.filter(unit=>Number(army[unit]||0)>0).map(unit=><label key={unit} style={{display:"grid",gap:5,padding:9,background:"#20384d",border:"1px solid #46637a",borderRadius:6}}>
           <strong>{label(unit)}</strong>
-          <small>{t("Available:","Налични:")} {Number(army[unit]).toLocaleString()}</small>
+          <small>{t("Available:","Налични:")} {Number(army[unit]).toLocaleString(locale)}</small>
           <input type="number" min="0" max={Number(army[unit])} value={selected[unit]||0} disabled={busy}
             onChange={event=>setQuantity(unit,event.target.value)}/>
         </label>)}
@@ -126,7 +127,7 @@ export default function BattleSimulator(){
       <div style={{overflowX:"auto"}}><div style={{minWidth:620,display:"grid",gridTemplateColumns:"52px repeat(7,minmax(0,1fr))",gap:5}}>
         {previewBoard.map(({row,units:rowUnits})=><React.Fragment key={row}><strong style={{alignSelf:"center",textAlign:"center"}}>{row}<br/>{t("ROW","РЕД")}</strong>
           {rowUnits.map((entry,column)=><div key={column} style={{minHeight:62,padding:5,background:"#e9dfc5",color:"#211c16",border:"1px solid #897b60",borderRadius:4,textAlign:"center",fontSize:12}}>
-            {entry&&<><strong>{label(entry.unit)}</strong><br/><b>{entry.count.toLocaleString()}</b></>}
+            {entry&&<><strong>{label(entry.unit)}</strong><br/><b>{entry.count.toLocaleString(locale)}</b></>}
           </div>)}
         </React.Fragment>)}
       </div></div>
@@ -139,9 +140,9 @@ export default function BattleSimulator(){
       {simulationInfo&&<p role="status">{t("Simulation complete. Your troops were returned unchanged.","Симулацията приключи. Войниците са запазени без промяна.")} · {t("Simulation","Симулация")} #{simulationInfo.simulationId}</p>}
       {result&&<section style={{padding:12,marginTop:12,border:"1px solid #4f7991",borderRadius:8,background:"#102333"}}>
         <h3>{result.victory?t("Estimated victory","Прогнозна победа"):t("Estimated defeat","Прогнозно поражение")} · {t("Rounds","Рундове")} {result.rounds}</h3>
-        <p>{t("Your surviving troops in this simulation:","Твои оцелели войници в симулацията:")} {Object.values(result.survivors||{}).reduce((sum,count)=>sum+Number(count||0),0).toLocaleString()} · {t("Alien defenders remaining:","Оставащи извънземни защитници:")} {result.defendersRemaining}</p>
+        <p>{t("Your surviving troops in this simulation:","Твои оцелели войници в симулацията:")} {Object.values(result.survivors||{}).reduce((sum,count)=>sum+Number(count||0),0).toLocaleString(locale)} · {t("Alien defenders remaining:","Оставащи извънземни защитници:")} {result.defendersRemaining}</p>
         {(result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
-          {round.events.map((event,index)=><p key={index} style={{fontSize:12}}>{label(event.attacker)+": "+event.units+" "+label(event.unit)+" → "+label(event.target)+" · "+event.damage+" "+t("damage","щети")+(Number.isInteger(event.kills)?" · "+event.kills+" "+t("defeated","победени"):"")}</p>)}
+          {round.events.map((event,index)=><p key={index} style={{fontSize:12}}>{battleEventText(event,label,t)}</p>)}
         </details>)}
       </section>}
     </>}
