@@ -16,6 +16,8 @@ import ironMineImg from "../images/mine-iron.png";
 import solarMineImg from "../images/mine-solar.png";
 import waterMineImg from "../images/mine-water.png";
 import alienBaseImg from "../images/alien-base.png";
+import orangeEmpireBaseImg from "../images/orange-empire-base.png";
+import orangeEmpireEmperorImg from "../images/orange-empire-emperor.png";
 import goldMine3d from "../images/mine-gold-3d.png";
 import ironMine3d from "../images/mine-iron-3d.png";
 import waterMine3d from "../images/mine-water-3d.png";
@@ -326,6 +328,17 @@ function Map() {
   const allianceMineArtRequests=useRef({});
   const allianceMineArtKeys=[...new Set(allianceMines.map(allianceMineArtKey))].sort().join(",");
   const [alienIcon, setAlienIcon] = useState(null);
+  const [empireIcons,setEmpireIcons]=useState({});
+  useEffect(()=>{
+    let active=true;
+    const images=Object.entries({commander:orangeEmpireBaseImg,emperor:orangeEmpireEmperorImg}).map(([key,src])=>{
+      const img=new Image();
+      img.onload=()=>{if(active)setEmpireIcons(previous=>({...previous,[key]:img}));};
+      img.src=src;
+      return img;
+    });
+    return ()=>{active=false;images.forEach(img=>{img.onload=null;});};
+  },[]);
   const [mapMenuOpen, setMapMenuOpen] = useState(true);
   const [alienSearchLevel, setAlienSearchLevel] = useState("");
   const [playerSearch,setPlayerSearch]=useState("");
@@ -513,6 +526,19 @@ function Map() {
       const sx = (base.x - 0.5) * tileSize + offset.x;
       const sy = (base.y - 0.5) * tileSize + offset.y;
       const radius = Math.max(8, tileSize * 0.42);
+      const icon=empireIcons[base.emperor?"emperor":"commander"];
+      const size=Math.max(104,tileSize*2.5)*(base.emperor?1.25:1);
+      if(icon && icon.naturalWidth>0){
+        const height=size*icon.naturalHeight/icon.naturalWidth;
+        if(sx+size/2<0||sy+height/2<0||sx-size/2>canvas.width||sy-height/2>canvas.height)return;
+        ctx.save();
+        ctx.drawImage(icon,sx-size/2,sy-height/2,size,height);
+        ctx.font="bold 16px Arial";ctx.textAlign="center";ctx.lineWidth=4;
+        ctx.strokeStyle="rgba(0,0,0,.9)";ctx.fillStyle="#ffb260";
+        const label=(base.emperor?t("Emperor","Император"):t("Commander","Командир")+" "+base.id)+" · Lv"+base.level;
+        ctx.strokeText(label,sx,sy-height/2-5);ctx.fillText(label,sx,sy-height/2-5);
+        ctx.restore();return;
+      }
       if (sx + radius < 0 || sy + radius < 0 || sx - radius > canvas.width || sy - radius > canvas.height) return;
       ctx.save();
       ctx.beginPath();
@@ -632,7 +658,7 @@ function Map() {
       ctx.fillStyle="#fff2c9";ctx.font="bold 13px Arial";ctx.textAlign="center";
       ctx.fillText(t("ALIEN COMMAND SHIP","КОМАНДНИЯТ КОРАБ НА ИЗВЪНЗЕМНИТЕ"),sx,sy+tileSize*1.05);ctx.restore();
     }
-  }, [offset, castles, orangeEmpireBases, hqIcon, mineIcons, allianceMineArt, alienIcon, allianceBaseIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, allianceMines, t]);
+  }, [offset, castles, orangeEmpireBases, empireIcons, hqIcon, mineIcons, allianceMineArt, alienIcon, allianceBaseIcons, terrainImage, earthDetailTexture, zoom, campaign, mineData, allianceMines, t]);
 
   // All markers and the grid share one fixed world coordinate system.
   // The map is not draggable; only zoom and explicit coordinate navigation change the view.
