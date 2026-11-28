@@ -6,6 +6,7 @@ const {maxBytes,normalizeAvatar} = require("../database/playerAvatars");
 const DatabaseManager = require("../database/database");
 
 const db = new DatabaseManager();
+router.post("/password-reset", require("./passwordRecovery")(db));
 const tokenHash = token => crypto.createHash("sha256").update(token).digest("hex");
 const authorizationHash = req => {
   const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");
@@ -118,7 +119,9 @@ router.post("/login", async (req, res) => {
 
     const token = crypto.randomBytes(32).toString("hex");
     const now = Date.now();
-    db.storeLoginSession(tokenHash(token),user.id,now+SESSION_MS,now);
+    if (!db.storeLoginSession(tokenHash(token),user.id,now+SESSION_MS,now,user.password)) {
+      return res.status(401).json({message:"Invalid username or password."});
+    }
     res.set("Cache-Control","no-store");
     res.status(200).json({
       token,
