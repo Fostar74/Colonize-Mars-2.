@@ -5,7 +5,6 @@ const {xpForKills,awardHuman} = require("./combatXp");
 const {maxPlayerLevel} = require("../src/shared/playerTargeting");
 const {defaultFormation} = require("../src/shared/formations");
 const {armyPopulation} = require("../src/shared/unitProfiles");
-const {armyTravelDuration} = require("../src/shared/unitEconomy");
 const {equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const stations = require("../src/shared/spaceStations");
 const {fight, playerTypes} = require("../shared/combatEngine");
@@ -94,7 +93,7 @@ function sendSupport(db, game, userId, attackId, units, now) {
     if (!current || !validAttackArmy(units) || Object.entries(units).some(([unit,count])=>count > (current.army[unit] || 0))) {
       return {error:"Choose available troops within the march population limit."};
     }
-    const travel = armyTravelDuration(60000, units, game.protocolBonus(userId,"Rapid Deployment"));
+    const travel = 60000;
     if (now + travel > attack.arrives_at) return {error:"Reinforcements would arrive too late."};
     for (const [unit,count] of Object.entries(units)) current.army[unit] -= count;
     writeArmy(db,userId,current.army);

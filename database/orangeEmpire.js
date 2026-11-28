@@ -1,3 +1,4 @@
+const {rarityForEquipmentLevel,rollEquipmentBonuses,normalizeEquipmentItem} = require("../src/shared/cyberKnightEquipment");
 const tactics = require("./orangeEmpireTactics");
 const {placedMapObjects} = require("./mapObjects");
 const {playerLevelFromXp, maxPlayerLevel} = require("../src/shared/playerTargeting");
@@ -19,6 +20,33 @@ const militaryUnits = Object.values(categories).flat();
 const protocolOrder = ["Resource Management", "Accelerated Training", "Battle Command", "Reinforced Armor"];
 const tickMs = 10000;
 const catchUpMs = 24 * 60 * 60 * 1000;
+
+const utcDayMs = 86400000;
+const knightEpoch = Date.UTC(2026,10,27);
+const gearSlots = ["HELMET","ARMOR","BOOTS","WEAPON","SHIELD","GLOVES"];
+
+function knightSchedule(now) {
+  const day=Math.max(0,Math.floor((now-knightEpoch)/utcDayMs));
+  return {day,level:Math.min(50,day+1),nextLevelAt:day>=49?null:knightEpoch+(day+1)*utcDayMs};
+}
+
+function advanceKnight(state,id,now) {
+  const schedule=knightSchedule(now);
+  const knight=state.knight||{};
+  const day=Math.max(knight.dailyResetDay??-1,schedule.day);
+  const level=Math.min(50,day+1);
+  if(knight.dailyResetDay===day&&gearSlots.every(slot=>knight.equippedItems?.[slot]))return false;
+  const rarity=rarityForEquipmentLevel(level);
+  const equippedItems=Object.fromEntries(gearSlots.map(slot=>{
+    const previous=knight.equippedItems?.[slot];
+    const name="Plasma "+slot[0]+slot.slice(1).toLowerCase();
+    const seed=previous||{id:`orange-${id}-${slot.toLowerCase()}`,name,stars:1,...rollEquipmentBonuses(slot,rarity,1,level)};
+    return [slot,normalizeEquipmentItem({...seed,slot,level,rarity,restorationLocked:false})];
+  }));
+  state.knight={...knight,level,equippedItems,dailyResetDay:day,
+    nextLevelAt:level<50?knightEpoch+(day+1)*utcDayMs:null};
+  return true;
+}
 
 function migrate(db) {
   db.exec(`
@@ -249,6 +277,7 @@ function advance(db, {chooseSpawn, garrison, catalog}, now = Date.now()) {
         const template = garrison(id);
         const state = initialState({...template});
         bootstrap(state, id, template);
+        advanceKnight(state,id,now);
         allocateProtocols(state);
         startJobs(state, now, catalog);
         insert.run(id, allianceId, tile.x, tile.y, now, JSON.stringify(state));
@@ -259,9 +288,10 @@ function advance(db, {chooseSpawn, garrison, catalog}, now = Date.now()) {
     const lessons = tactics.lessons(db);
     for (const row of rows) {
       const ticks = Math.floor((now - row.last_processed_at) / tickMs);
-      if (ticks < 1 && row.bootstrapped) continue;
-      const through = row.last_processed_at + Math.max(0,ticks) * tickMs;
       const state = JSON.parse(row.state);
+      const knightChanged=advanceKnight(state,row.id,now);
+      if (ticks < 1 && row.bootstrapped && !knightChanged) continue;
+      const through = row.last_processed_at + Math.max(0,ticks) * tickMs;
       if (ticks > 0) settle(state, row.last_processed_at, through, catalog);
       if (!row.bootstrapped) {
         bootstrap(state, row.id, garrison(row.id));

@@ -235,6 +235,7 @@ function Map() {
   },[marchHistoryOpen,hasRoutes]);
   const [castles, setCastles] = useState([]);
   const [orangeEmpireBases, setOrangeEmpireBases] = useState([]);
+  const [incomingPlayerBattles,setIncomingPlayerBattles]=useState([]);
   const [orangeEmpireAttacks, setOrangeEmpireAttacks] = useState([]);
   const [orangeEmpireReports, setOrangeEmpireReports] = useState([]);
   const [mapError, setMapError] = useState("");
@@ -266,6 +267,7 @@ function Map() {
           const empireBases = data.orangeEmpireBases || [];
           setOrangeEmpireBases(empireBases);
           setOrangeEmpireAttacks(data.orangeEmpireAttacks || []);
+          setIncomingPlayerBattles(data.incomingPlayerBattles||[]);
           setOrangeEmpireReports(data.orangeEmpireReports || []);
           setSelectedTarget(target=>{
             if (target?.type === "orangeEmpire") {
@@ -874,7 +876,7 @@ function Map() {
       const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit],column:formationRows.columns?.[unit]}));
       const payload=isEspionage ? {userId:sessionStorage.getItem("userId"),quantity:Number(marchUnits["Rover Scout"]),target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}}
         : isSupport
-        ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected,orangeEmpireAttackId:marchDraft.target.orangeEmpireAttackId}
+        ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected,orangeEmpireAttackId:marchDraft.target.orangeEmpireAttackId,playerAttackId:marchDraft.target.playerAttackId}
         : isGathering
         ? {userId:sessionStorage.getItem("userId"),mineId:marchDraft.target.id,units:selected}
         : isAlienAttack
@@ -1062,6 +1064,16 @@ function Map() {
       id:(m.playerBattle?"player-attack-":"attack-")+m.id,color:"#ff5252",from:m.result?(m.result.recalled?{x:Number(m.origin.x)+(Number(m.target.x)-Number(m.origin.x))*Math.max(0,Math.min(1,(m.resolved_at-m.launched_at)/Math.max(1,m.arrives_at-m.launched_at))),y:Number(m.origin.y)+(Number(m.target.y)-Number(m.origin.y))*Math.max(0,Math.min(1,(m.resolved_at-m.launched_at)/Math.max(1,m.arrives_at-m.launched_at)))}:m.target):m.origin,to:m.result?m.origin:m.target,
       start:m.result?m.resolved_at:m.launched_at,end:m.result?m.returns_at:m.arrives_at,
     }));
+  const allianceAttacks=[
+    ...incomingPlayerBattles.map(attack=>({...attack,faction:"pvp"})),
+    ...orangeEmpireAttacks.map(attack=>({...attack,faction:"orange"})),
+  ].filter(attack=>attack.arrives_at>clock);
+  const allianceAttackRoutes=allianceAttacks.filter(attack=>attack.faction==="orange"||
+    !(campaign.playerMissions||[]).some(mission=>mission.id===attack.id)).map(attack=>({
+    id:attack.faction+"-incoming-"+attack.id,color:"#ff5252",
+    from:{x:attack.origin_x,y:attack.origin_y},to:{x:attack.x,y:attack.y},
+    start:attack.launched_at,end:attack.arrives_at,
+  }));
   const supportRoutes=(campaign.supportRoutes||[]).flatMap(m=>{
     const sender=castles.find(base=>base.username===m.sender);
     const recipient=castles.find(base=>base.username===m.recipient);
@@ -1104,7 +1116,7 @@ function Map() {
       end: attack.arrives_at,
       clock: mothershipClock,
     }));
-  const routes=[...attackRoutes,...mothershipRoutes,...invasionRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>(route.clock??clock));
+  const routes=[...attackRoutes,...allianceAttackRoutes,...mothershipRoutes,...invasionRoutes,...supportRoutes,...scoutRoutes,...gatheringRoutes].filter(route=>route.end>(route.clock??clock));
   const myMothershipMarches = mothershipRoutes.filter(route =>
     String(route.userId) === sessionStorage.getItem("userId"));
   const screenPoint=point=>({x:(point.x-.5)*tileSize+offset.x,y:(point.y-.5)*tileSize+offset.y});
@@ -1210,23 +1222,6 @@ function Map() {
             {base.emperor ? t("Emperor", "Император") : t("Commander", "Командир") + " " + base.id}
             {" · "}{base.x}:{base.y}
           </button>)}
-          {orangeEmpireAttacks.length > 0 && <h3>{t("Incoming attacks","Входящи нападения")}</h3>}
-          {orangeEmpireAttacks.map(attack => {
-            const ally = castles.find(base => base.user_id === attack.player_id);
-            const canReinforce = ally && ally.username !== ownUsername && !attack.station_id &&
-              !attack.joined && attack.support_count < 3;
-            return <div key={attack.id}>
-              <button type="button" onClick={() => centerMapOn(attack.x, attack.y)}>
-                {attack.username} · {attack.x}:{attack.y} · {new Date(attack.arrives_at).toLocaleString(locale)}
-              </button>
-              {canReinforce && <button type="button" onClick={() => {
-                if (!ownBase) return;
-                const target = {...ally,type:"castle",orangeEmpireAttackId:attack.id};
-                setSelectedTarget(target);
-                openMarch("Support",target,ownBase);
-              }}>{t("Reinforce","Изпрати подкрепление")}</button>}
-            </div>;
-          })}
           {orangeEmpireReports.length > 0 && <h3>{t("Battle results","Резултати от битки")}</h3>}
           {orangeEmpireReports.map(({id,result,arrives_at}) => <div key={id}>
             {new Date(arrives_at).toLocaleString(locale)} · {result.cancelled ? t("Attack cancelled","Нападението е отменено")
@@ -1234,6 +1229,24 @@ function Map() {
             <DesertionReport report={result.report} />
           </div>)}
         </details>}
+        {allianceAttacks.length>0&&<section aria-label={t("Incoming attacks","Входящи нападения")} style={{border:"1px solid #ff6969",padding:9,color:"#ff9e9e",marginBlock:8}}>
+          <strong>{t("Incoming attacks","Входящи нападения")}</strong>
+          {allianceAttacks.map(attack=>{
+            const ally=castles.find(base=>Number(base.user_id)===attack.player_id);
+            const attacker=attack.faction==="orange"?(attack.commander_id===10?t("Emperor","Император"):t("Orange Empire commander","Командир на Оранжевата империя")+" "+attack.commander_id):attack.attacker;
+            return <div key={attack.faction+attack.id} style={{display:"flex",gap:7,flexWrap:"wrap"}}>
+              <button type="button" onClick={()=>centerMapOn(attack.x,attack.y)}>
+                {attacker} → {attack.username} · {attack.x}:{attack.y} · {new Date(attack.arrives_at).toLocaleTimeString(locale)}
+              </button>
+              {ownBase&&ally&&ally.username!==ownUsername&&attack.attacker!==ownUsername&&!attack.station_id&&!attack.joined&&attack.support_count<3&&
+                <button type="button" onClick={()=>{
+                  const target={...ally,type:"castle",...(attack.faction==="orange"?{orangeEmpireAttackId:attack.id}:{playerAttackId:attack.id})};
+                  setSelectedTarget(target);
+                  openMarch("Support",target,ownBase);
+                }}>{t("Reinforce","Изпрати подкрепление")}</button>}
+            </div>;
+          })}
+        </section>}
         {mapError && <div role="alert">{localLabel(mapError)}</div>}
         <div>{t("Coordinates:","Координати:")} {cursorCoord ? `${cursorCoord.x}:${cursorCoord.y}` : localLabel("Move cursor over map")}</div>
         <div style={{display:"flex",gap:5,flexWrap:"wrap"}}>

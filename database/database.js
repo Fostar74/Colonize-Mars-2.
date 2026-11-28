@@ -1,3 +1,4 @@
+const playerBattleSupport = require("./playerBattleSupport");
 const {neuralCommandTiers} = require("../shared/neuralCommand");
 const {recoveryEnabled, initializeRecovery, reserveEmailReset, redeemRecoveryToken} = require("./passwordRecovery");
 const migrateAllianceMines = require("./allianceMineSchema");
@@ -22,7 +23,7 @@ const alienBases = require("../src/shared/alienBases");
 const {rarityByStars,rarityBonusPercent,rarityUnlockLevel,starsForAlienMission,rollEquipmentBonuses,normalizeEquipmentItem,equipmentCombatBonuses} = require("../src/shared/cyberKnightEquipment");
 const spaceStations = require("../src/shared/spaceStations");
 const {units: formationUnits, marchLimit, defaultFormation, normalizeFormation} = require("../src/shared/formations");
-const {specialUnitCombatBonuses,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
+const {cargoDepotLimits,baseProductionPerHour,unitUpgradeLabReduction,specialUnitCombatBonuses,unitPrice,upgradePrice,unitRequirement,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,unitTrainingDuration,unitUpgradeDetails,armyTravelDuration} = require("../src/shared/unitEconomy");
 const tutorialMissions = require("../shared/tutorialMissions");
 const Database = require("better-sqlite3");
 const path = require("path");
@@ -375,6 +376,7 @@ function initializeDatabase() {
     for(const trade of missingTradeMessages){
       writeTradeNotification(trade.id,trade.sender_id,trade.recipient_id,trade.sender_name,JSON.parse(trade.resources),trade.traded_at);
     }
+    playerBattleSupport.migrate(db);
     db.exec("CREATE TABLE IF NOT EXISTS alliance_reinforcements (id INTEGER PRIMARY KEY AUTOINCREMENT, alliance_id INTEGER NOT NULL REFERENCES alliances(id), sender_id INTEGER NOT NULL REFERENCES users(id), recipient_id INTEGER NOT NULL REFERENCES users(id), units TEXT NOT NULL, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, recall_at INTEGER, returned_at INTEGER)");
     const reinforcementColumns=new Set(db.prepare("PRAGMA table_info(alliance_reinforcements)").all().map(column=>column.name));
     if(!reinforcementColumns.has("delivered_at"))db.exec("ALTER TABLE alliance_reinforcements ADD COLUMN delivered_at INTEGER");
@@ -799,7 +801,7 @@ class DatabaseManager {
         buildingJob, buildingQueue, queuedBuildingJob: buildingQueue[0] || null, trainingJob, trainingQueues, barracksReserve, upgradeJobs, unitUpgrades,
         questClaimed: !!state.quest_claimed, quest2Claimed: !!state.quest2_claimed,
         allianceBonuses,
-        productionPerHour: Object.fromEntries(Object.entries(rates).map(([key, name]) => [key, Number(structures[name] || 0) * productionMultiplier * 360])),
+        productionPerHour: Object.fromEntries(Object.entries(rates).map(([key, name]) => [key, baseProductionPerHour(structures[name]) * productionMultiplier])),
         productionRates: Object.fromEntries(Object.entries(rates).map(([key,name]) => [key, Math.round(Number(structures[name] || 0) * productionMultiplier * 10) / 100])),
         serverTime: now
       };
@@ -938,7 +940,7 @@ class DatabaseManager {
       // Upgrade Lab: 1.5% shorter unit upgrade duration per building level.
       // Apply to both profile-specific and generic unit upgrade timers.
       const labLevel=Math.max(0,Math.min(30,Number(current.structures["Upgrade Lab"])||0));
-      const labSpeedMultiplier=1-labLevel*0.015;
+      const labSpeedMultiplier=1-unitUpgradeLabReduction(labLevel)/100;
       const durationMs=Math.max(1000,Math.ceil((specific?.durationMs||upgradeDuration(level,current.allianceBonuses.speed))*labSpeedMultiplier));
       const job = {unit,stat,level:level+1,completionXp,durationMs,resourceCost:{...price},upgradeSpeedVersion:10};
       if (nextSlot === 0) job.endsAt = Date.now() + durationMs;
@@ -1456,7 +1458,7 @@ class DatabaseManager {
     if(process.env.ORANGE_EMPIRE_ENABLED==="true"){
       const npcs=db.prepare("SELECT id,state FROM orange_empire_commanders ORDER BY id").all().map(row=>{
         const state=JSON.parse(row.state);
-        return {id:"orange-empire-"+row.id,commanderId:row.id,npc:true,emperor:row.id===10,commanderLevel:orangeEmpire.maxCommanderLevel,username:row.id===10?"Emperor":"Commander "+row.id,alliance:"The Orange Empire",points:Number(state.xp)||0,avatarId:"pilot-m",knightLevel:Number(state.knight?.level)||1,prestige:Number(state.knight?.prestige)||0};
+        return {id:"orange-empire-"+row.id,commanderId:row.id,npc:true,emperor:row.id===10,commanderLevel:orangeEmpire.maxCommanderLevel,username:row.id===10?"Emperor":"Commander "+row.id,alliance:"The Orange Empire",points:Number(state.xp)||0,avatarId:"pilot-m",knightLevel:Number(state.knight?.level)||1,nextLevelAt:state.knight?.nextLevelAt??null,prestige:0};
       });
       players.push(...npcs);
       cyberKnights.push(...npcs);
@@ -2167,6 +2169,7 @@ class DatabaseManager {
           UNION ALL SELECT MIN(arrives_at) FROM orange_empire_attacks WHERE result IS NULL
           UNION ALL SELECT MIN(returns_at) FROM orange_empire_attacks WHERE returned_at IS NULL
           UNION ALL SELECT MIN(returns_at) FROM orange_empire_support WHERE returned_at IS NULL
+          UNION ALL SELECT MIN(returns_at) FROM player_battle_support WHERE returned_at IS NULL
           UNION ALL SELECT MIN(returns_at) FROM player_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL
           UNION ALL SELECT MIN(arrives_at) FROM alien_missions WHERE resolved_at IS NULL
           UNION ALL SELECT MIN(returns_at) FROM alien_missions WHERE resolved_at IS NOT NULL AND returned_at IS NULL
@@ -2203,6 +2206,7 @@ class DatabaseManager {
           for (const {user_id} of scouts) {
             if (!this.syncGame(user_id,at)) throw new Error("Scout march has no player progress");
           }
+          playerBattleSupport.returnDue(db,this,at);
           this.settlePlayerMissionsAt(at);
           orangeEmpireCombat.settle(db,this,at);
           if (db.prepare(`SELECT 1 FROM saturday_invasion_attacks attack
@@ -2234,6 +2238,7 @@ class DatabaseManager {
     const due=db.prepare("SELECT * FROM player_missions WHERE resolved_at IS NULL AND arrives_at<=? ORDER BY arrives_at,id").all(now);
     for(const mission of due){
       const at=mission.arrives_at;
+      playerBattleSupport.finish(db,this,mission.id,at);
       const data=JSON.parse(mission.army);
       const attacker=this.syncGame(mission.attacker_id,at);
       const defender=this.syncGame(mission.defender_id,at);
@@ -2267,7 +2272,9 @@ class DatabaseManager {
       const attackerAlliance=data.allianceCombat||attacker.allianceBonuses||{},defenderAlliance=defender.allianceBonuses||{};
       const attackerCombat={...attackerProtocols,protocolTrace:attackerProtocols,unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{},unitResearch:attackerAlliance.units||{},allAttack:Number(attackerAlliance.attack)||0,allHealth:Number(attackerAlliance.health)||0,unitEffects:attackerGear.unitEffects,enemyDebuffs:attackerGear.enemyDebuffs};
       const defenderCombat={...defenderProtocols,protocolTrace:defenderProtocols,unitResearch:defenderAlliance.units||{},allAttack:Number(defenderAlliance.attack)||0,allHealth:Number(defenderAlliance.health)||0,unitEffects:defenderGear.unitEffects,enemyDebuffs:defenderGear.enemyDebuffs};
+      const support=playerBattleSupport.contingents(db,this,mission,at,attackerGear);
       const result=fight(data.units||{},validDefenders,data.formation,attackerCombat,{
+        defenderContingents:support.length?support:undefined,
         playerDefense:true,trackCasualties:true,trace:true,hospitalSides:[0,1],
         defenseGridLevel:defender.structures["Defense Grid"],
         random:missionRandom(mission),
@@ -2282,6 +2289,7 @@ class DatabaseManager {
       result.combatXp = {attacker:xpForKills(result.creditedKills.attacker),defender:xpForKills(result.creditedKills.defender)};
       result.combatXp.attacker=awardHuman(db,mission.attacker_id,result.combatXp.attacker);
       result.combatXp.defender=awardHuman(db,mission.defender_id,result.combatXp.defender);
+      playerBattleSupport.finish(db,this,mission.id,at,support,result);
       result.cyberKnightLevel=data.includeCyberKnight?data.cyberKnightLevel:null;
       result.knights={
         attacker:data.includeCyberKnight?{kind:"cyber",level:data.cyberKnightLevel,equipped:attackerEquipment}:false,
@@ -2332,6 +2340,7 @@ class DatabaseManager {
       const now=Date.now();
       const mission=db.prepare("SELECT * FROM player_missions WHERE id=? AND attacker_id=? AND resolved_at IS NULL AND returned_at IS NULL").get(id,Number(userId));
       if(!mission)return {error:"This attack can no longer be recalled."};
+      playerBattleSupport.finish(db,this,id,now);
       if(mission.arrives_at<=now)return {error:"The attack has already reached its target."};
       const data=JSON.parse(mission.army||"{}");
       const survivors=data.units||{};
@@ -2358,6 +2367,16 @@ class DatabaseManager {
       WHERE resolved_at>=? AND user_id=? AND json_type(result,'$.level')='integer'`).pluck().all(since,userId);
   }
 
+  getIncomingPlayerBattles(userId,now=Date.now()){
+    return playerBattleSupport.inbound(db,userId,now);
+  }
+
+  sendPlayerBattleSupport(userId,missionId,army){
+    const now=Date.now();
+    this.advanceCampaignTimeline(now);
+    return playerBattleSupport.send(db,this,userId,missionId,army,now);
+  }
+
   getPlayerMissions(userId) {
     return db.prepare(`SELECT m.*,a.username AS attacker_name,d.username AS defender_name
       FROM player_missions m
@@ -2374,6 +2393,10 @@ class DatabaseManager {
         }
         return {...mission,...data,result:parsed,incoming,unread:incoming?defender_seen_at==null:attacker_seen_at==null};
       });
+  }
+
+  getCargoDepotLimits(userId) {
+    return cargoDepotLimits(this.syncGame(userId)?.structures?.["Cargo Depot"]);
   }
 
   getMarketOffers(userId) {
@@ -2394,7 +2417,7 @@ class DatabaseManager {
     if(!offeredTotal||!requestedTotal)return {error:"An offer must include both resources for sale and requested payment."};
     return db.transaction(()=>{
       const seller=this.syncGame(userId);if(!seller)return {error:"Player base not found."};
-      const level=Math.min(3,Number(seller.structures["Cargo Depot"]||0)),capacity=level*5000;
+      const level=Number(seller.structures["Cargo Depot"]||0),capacity=cargoDepotLimits(level).transaction;
       if(level<3)return {error:"Upgrade the Cargo Depot to level 3 to use the marketplace."};
       if(offeredTotal>capacity||requestedTotal>capacity)return {error:"Each side of an offer is limited to "+capacity.toLocaleString()+" resources."};
       for(const k of keys)if(offered[k]>Number(seller.resources[k]||0))return {error:"Not enough resources to reserve this offer."};
@@ -2403,6 +2426,16 @@ class DatabaseManager {
       const row=db.prepare("INSERT INTO market_offers(seller_id,offered_resources,requested_resources,created_at) VALUES (?,?,?,?)").run(userId,JSON.stringify(offered),JSON.stringify(requested),Date.now());
       return {offerId:Number(row.lastInsertRowid),offers:this.getMarketOffers(userId),remaining:seller.resources,capacity};
     })();
+  }
+
+  resourcesSentToday(userId,now) {
+    const start=Math.floor(now/86400000)*86400000;
+    return db.prepare(`WITH outgoing(resources) AS (
+      SELECT resources FROM interbase_trades WHERE sender_id=@userId AND traded_at>=@start AND traded_at<@end
+      UNION ALL SELECT requested_resources FROM market_offers WHERE accepted_by=@userId AND status='accepted' AND resolved_at>=@start AND resolved_at<@end
+    ) SELECT COALESCE(SUM(MAX(0,CAST(j.value AS INTEGER))),0) AS total
+      FROM outgoing,json_each(outgoing.resources) j WHERE j.key IN ('Gold','Iron','Water','Solar')`)
+      .get({userId,start,end:start+86400000}).total;
   }
 
   sendPlayerResources(userId,recipientId,input) {
@@ -2416,21 +2449,17 @@ class DatabaseManager {
       amounts[key]=value;
     }
     const total=keys.reduce((sum,key)=>sum+amounts[key],0);
-    if(total<=0||total>50000)return {error:"Enter between 1 and 50,000 resources in total."};
+    if(!Number.isSafeInteger(total)||total<=0)return {error:"Enter at least one resource."};
     return db.transaction(()=>{
       const recipient=this.findUserById(recipientId);
       if(!recipient)return {error:"Recipient not found."};
       const sender=this.syncGame(userId),receiver=this.syncGame(recipientId);
       if(!sender||!receiver)return {error:"Player base not found."};
       const now=Date.now();
-      const today=new Date(now).toISOString().slice(0,10);
-      const dayStart=Date.parse(today+"T00:00:00Z");
-      const rows=db.prepare("SELECT resources FROM interbase_trades WHERE sender_id=? AND traded_at>=? AND traded_at<?").all(userId,dayStart,dayStart+86400000);
-      const sentToday=rows.reduce((sum,row)=>{
-        const sent=JSON.parse(row.resources);
-        return sum+keys.reduce((part,key)=>part+Math.max(0,Number(sent[key])||0),0);
-      },0);
-      if(sentToday+total>50000)return {error:"Daily transfer limit: 50,000 total resources (UTC). Remaining: "+Math.max(0,50000-sentToday)+"."};
+      const limits=cargoDepotLimits(sender.structures["Cargo Depot"]);
+      if(total>limits.transaction)return {error:"Cargo Depot transaction capacity exceeded.",capacity:limits.transaction};
+      const sentToday=this.resourcesSentToday(userId,now);
+      if(sentToday+total>limits.daily)return {error:"Daily Cargo Depot transfer limit exceeded.",dailyRemaining:Math.max(0,limits.daily-sentToday)};
       for(const key of keys)if(amounts[key]>Number(sender.resources[key]||0))return {error:"Not enough "+key+"."};
       for(const key of keys){sender.resources[key]-=amounts[key];receiver.resources[key]=Number(receiver.resources[key]||0)+amounts[key];}
       const update=db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?");
@@ -2439,7 +2468,7 @@ class DatabaseManager {
       const trade=db.prepare("INSERT INTO interbase_trades(sender_id,recipient_id,resources,traded_at) VALUES (?,?,?,?)").run(userId,recipientId,JSON.stringify(amounts),now);
       const senderName=this.findUserById(userId)?.username||"Player";
       writeTradeNotification(Number(trade.lastInsertRowid),userId,recipientId,senderName,amounts,now);
-      return {success:true,remaining:sender.resources,sentToday:sentToday+total,dailyRemaining:50000-sentToday-total,recipient:recipient.username};
+      return {success:true,remaining:sender.resources,sentToday:sentToday+total,dailyRemaining:limits.daily-sentToday-total,recipient:recipient.username};
     })();
   }
 
@@ -2453,11 +2482,20 @@ class DatabaseManager {
       if(!seller||!buyer)return {error:"Player base not found."};
       if(Number(seller.structures["Cargo Depot"]||0)<3||Number(buyer.structures["Cargo Depot"]||0)<3)return {error:"Both players need a level 3 Cargo Depot to trade."};
       const offered=JSON.parse(offer.offered_resources),requested=JSON.parse(offer.requested_resources);
+      const now=Date.now();
+      const outgoing=(resources,player,id)=>{
+        const limits=cargoDepotLimits(player.structures["Cargo Depot"]);
+        const amount=keys.reduce((sum,key)=>sum+(Number(resources[key])||0),0);
+        return amount<=limits.transaction&&this.resourcesSentToday(id,now)+amount<=limits.daily;
+      };
+      if(!outgoing(offered,seller,offer.seller_id)||!outgoing(requested,buyer,userId)){
+        return {error:"Cargo Depot transaction or daily transfer limit exceeded."};
+      }
       for(const k of keys)if(Number(requested[k]||0)>Number(buyer.resources[k]||0))return {error:"You do not have enough resources to accept this offer."};
       for(const k of keys){buyer.resources[k]=(Number(buyer.resources[k])||0)+Number(offered[k]||0)-Number(requested[k]||0);seller.resources[k]=(Number(seller.resources[k])||0)+Number(requested[k]||0);}
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(buyer.resources),userId);
       db.prepare("UPDATE game_progress SET resources=?,last_saved=CURRENT_TIMESTAMP WHERE user_id=?").run(JSON.stringify(seller.resources),offer.seller_id);
-      const now=Date.now(),changed=db.prepare("UPDATE market_offers SET status='accepted',accepted_by=?,resolved_at=? WHERE id=? AND status='open'").run(userId,now,offerId);
+      const changed=db.prepare("UPDATE market_offers SET status='accepted',accepted_by=?,resolved_at=? WHERE id=? AND status='open'").run(userId,now,offerId);
       if(changed.changes!==1)throw new Error("Offer was accepted by another player.");
       const sellerName=this.findUserById(offer.seller_id)?.username||"Another player",buyerName=this.findUserById(userId)?.username||"Another player";
       const notify=(sender,recipient,body)=>db.prepare("INSERT INTO player_messages(sender_id,recipient_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?, 'trade')").run(sender,recipient,null,body,now);

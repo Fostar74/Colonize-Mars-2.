@@ -40,7 +40,7 @@ test("weekly dispatch, protected players, per-owner defense, and station gates",
     const allies = ["Alpha","Bravo","Charlie","Delta"].map(name => addPlayer(name,0));
     for (const ally of allies) sql.prepare("INSERT INTO alliance_members(user_id,alliance_id) VALUES (?,?)").run(ally,allianceId);
     game.advanceOrangeEmpire(monday);
-    assert.deepEqual(game.getOrangeEmpireBases().map(base=>[base.level,base.knightLevel]),Array(10).fill([45,1]));
+    assert.deepEqual(game.getOrangeEmpireBases().map(base=>[base.level,base.knightLevel]),Array(10).fill([45,50]));
 
     game.scheduleOrangeEmpireAttacks(monday);
     assert.equal(attacks(leader).length,0);
@@ -68,7 +68,7 @@ test("weekly dispatch, protected players, per-owner defense, and station gates",
     }
     assert.match(game.sendOrangeEmpireSupport(allies[3],first.id,{"Explorer Trooper":100},monday).error,/slot/);
 
-    const setEliteSnapshot = id => sql.prepare("UPDATE orange_empire_attacks SET combat=json_set(combat,'$.protocols',json(?)) WHERE id=?")
+    const setEliteSnapshot = id => sql.prepare("UPDATE orange_empire_attacks SET combat=json_set(combat,'$.protocols',json(?),'$.knight.equippedItems',json('{}')) WHERE id=?")
       .run('{"Battle Command":3}',id);
     setEliteSnapshot(first.id);
     const soloAttack = attacks(solo)[0];
