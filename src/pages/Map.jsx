@@ -1,3 +1,4 @@
+import DesertionReport from "../shared/DesertionReport";
 import {battleEventText} from "../shared/localizedMessages";
 import PlayerAvatar from "../shared/PlayerAvatar";
 import ReportsPanel from "./ReportsPanel";
@@ -1230,6 +1231,7 @@ function Map() {
           {orangeEmpireReports.map(({id,result,arrives_at}) => <div key={id}>
             {new Date(arrives_at).toLocaleString(locale)} · {result.cancelled ? t("Attack cancelled","Нападението е отменено")
               : result.victory ? t("Orange Empire victory","Победа за Оранжевата империя") : t("Attack repelled","Нападението е отблъснато")}
+            <DesertionReport report={result.report} />
           </div>)}
         </details>}
         {mapError && <div role="alert">{localLabel(mapError)}</div>}

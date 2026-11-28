@@ -1,3 +1,4 @@
+const {neuralCommandTiers} = require("../shared/neuralCommand");
 const {recoveryEnabled, initializeRecovery, reserveEmailReset, redeemRecoveryToken} = require("./passwordRecovery");
 const migrateAllianceMines = require("./allianceMineSchema");
 const {hour, constructionTarget, constructionApUnit, firstTime, gatheringStart, cargoFullAt, settleWork} = require("./allianceMineWork");
@@ -1105,14 +1106,14 @@ class DatabaseManager {
   }
   protocolCombatBonuses(userId,own={},opponent={}){
     const value=name=>this.protocolBonusWithEquipment(userId,name,own,opponent);
-    return {rangedAttack:value("Precision Fire"),allHealth:value("Reinforced Armor"),infantryAttack:value("Infantry Command"),infantryHealth:value("Infantry Command"),leadership:value("Battle Command"),dodge:value("Evasion Protocol"),revive:value("Combat Recovery"),mobileAttack:value("Mobile Warfare"),artilleryAttack:value("Heavy Artillery")};
+    return {rangedAttack:value("Precision Fire"),allHealth:value("Reinforced Armor"),infantryAttack:value("Infantry Command"),infantryHealth:value("Infantry Command"),desertion:value("Battle Command"),dodge:value("Evasion Protocol"),revive:value("Combat Recovery"),mobileAttack:value("Mobile Warfare"),artilleryAttack:value("Heavy Artillery")};
   }
   talentCatalog(){
     return [
       ["Rapid Deployment",[20,40,60],"% army speed"],["Resource Management",[10,20,30],"% economy"],
       ["Mining Operations",[20,50,100],"% external mine gathering speed"],["Precision Fire",[20,40,60],"% ranged attack"],
       ["Reinforced Armor",[10,20,30],"% unit HP"],["Infantry Command",[10,25,40],"% infantry attack and HP"],
-      ["Battle Command",[10,20,30],"% army attack (leadership)"],["Advanced Recon",[10,30,50],"% reconnaissance resource discount"],
+      ["Battle Command",neuralCommandTiers,"% enemy desertion per round"],["Advanced Recon",[10,30,50],"% reconnaissance resource discount"],
       ["Evasion Protocol",[5,10,15],"% evade"],["Combat Recovery",[5,10,15],"% revive"],
       ["Mobile Warfare",[10,25,40],"% mobile attack"],["Heavy Artillery",[10,20,30],"% siege attack"],
       ["Advanced Research",[10,20,30],"% XP"],["Accelerated Training",[10,20,30],"% training speed"],
@@ -1281,6 +1282,12 @@ class DatabaseManager {
         const names=db.prepare("SELECT id,username FROM users WHERE id IN (?,?)").all(row.attacker_id,row.defender_id);
         const name=id=>names.find(x=>x.id===id)?.username||"Unknown";
         body="⚔️ Battle report / Боен доклад #"+row.id+"\n"+name(row.attacker_id)+" → "+name(row.defender_id)+" ("+(data.target?.x??"?")+":"+(data.target?.y??"?")+")\n"+(result.victory?"Victory / Победа":"Defeat / Поражение")+" · Rounds / Рундове: "+(result.rounds??0)+"\nAttackers / Нападатели: "+formatArmy(data.units)+"\nAttacker survivors / Оцелели нападатели: "+formatArmy(result.survivors)+"\nDefender survivors / Оцелели защитници: "+formatArmy(result.defenderSurvivors)+"\nLoot / Плячка: "+Object.entries(result.loot||{}).map(([k,v])=>k+": "+v).join(", ");
+        for(const round of result.report||[])for(const side of ["attacker","defender"]){
+          const events=round.events.filter(event=>event.deserted>0&&event.side===side);
+          if(!events.length)continue;
+          const title=side==="attacker"?"Attacker desertion / Дезертирали нападатели":"Defender desertion / Дезертирали защитници";
+          body+="\nRound "+round.round+" / Рунд "+round.round+" · "+title+": "+events.map(event=>event.unit+": "+event.deserted).join(", ");
+        }
       }else{
         const row=db.prepare("SELECT * FROM player_scout_missions WHERE id=? AND user_id=? AND report IS NOT NULL").get(reportId,userId);
         if(!row)return {error:"Espionage report not found."};
@@ -2240,7 +2247,7 @@ class DatabaseManager {
       }
       result.attackerWounded=attackerWounded;
       if(Object.keys(attackerWounded).length)this.recordHospitalWounds(mission.attacker_id,"player-attack",mission.id,attackerWounded,"waiting",null,at);
-      const cargo=calculateCargoCapacity(result.survivors||{});
+      const cargo=calculateCargoCapacity(result.activeSurvivors);
       const loot=result.victory ? calculateLoot(defender.resources,cargo) : {Gold:0,Iron:0,Water:0,Solar:0};
       result.cargoCapacity=cargo;
       result.loot=loot;
@@ -2595,8 +2602,7 @@ class DatabaseManager {
         infantry:this.protocolBonusWithEquipment(attack.user_id,"Infantry Command",gearEffects),
         ranged:this.protocolBonusWithEquipment(attack.user_id,"Precision Fire",gearEffects),
         mobile:this.protocolBonusWithEquipment(attack.user_id,"Mobile Warfare",gearEffects),
-        artillery:this.protocolBonusWithEquipment(attack.user_id,"Heavy Artillery",gearEffects),
-        leadership:this.protocolBonusWithEquipment(attack.user_id,"Battle Command",gearEffects)
+        artillery:this.protocolBonusWithEquipment(attack.user_id,"Heavy Artillery",gearEffects)
       };
       const specialAttackBonus = specialUnitCombatBonuses(army).attack;
       let damage=0;
@@ -2607,7 +2613,7 @@ class DatabaseManager {
         const upgradeBonus=usesProfileUpgrades?0:Math.max(0,Number(upgrades.attack||1)-1)*10+Math.max(0,Number(upgrades.defense||1)-1)*3;
         const attackVs=usesProfileUpgrades?unitCombatStats(group.unit,upgrades).attack:type.attackVs;
         const categoryBonus=protocols[type.category]||0;
-        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+protocols.leadership+specialAttackBonus+Number(attack.knight_level||1)*2;
+        const attackBonus=upgradeBonus+categoryBonus+(Number(alliance.attack)||0)+buffAttack+gearAttack+specialAttackBonus+Number(attack.knight_level||1)*2;
         // The Mother Ship has no target category. Average the unit's matchup values.
         const baseAttack=attackVs
           ? ["infantry","mobile","ranged","artillery"].reduce((sum,category)=>sum+(Number(attackVs[category])||0),0)/4

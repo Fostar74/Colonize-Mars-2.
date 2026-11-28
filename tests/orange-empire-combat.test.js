@@ -68,6 +68,9 @@ test("weekly dispatch, protected players, per-owner defense, and station gates",
     }
     assert.match(game.sendOrangeEmpireSupport(allies[3],first.id,{"Explorer Trooper":100},monday).error,/slot/);
 
+    const setEliteSnapshot = id => sql.prepare("UPDATE orange_empire_attacks SET combat=json_set(combat,'$.protocols',json(?)) WHERE id=?")
+      .run('{"Battle Command":3}',id);
+    setEliteSnapshot(first.id);
     const soloAttack = attacks(solo)[0];
     sql.prepare("INSERT INTO alliance_market_buffs(user_id,kind,expires_at) VALUES (?,'protection',?)").run(solo,monday+day);
     game.advanceCampaignTimeline(monday+day);
@@ -76,12 +79,20 @@ test("weekly dispatch, protected players, per-owner defense, and station gates",
     assert.ok(resolved.defenderSurvivors["Explorer Trooper"]>50000);
     assert.equal(Object.keys(resolved.contingentSurvivors).length,3);
     assert.ok(resolved.combatXp.defender>0);
+    const desertions = resolved.report[0].events.filter(event=>event.deserted>0);
+    assert.equal(desertions.find(event=>event.contingentId===undefined).deserted,54000);
+    assert.deepEqual(desertions.filter(event=>event.contingentId!==undefined).map(event=>event.deserted),[6,6,6]);
+    assert.deepEqual(game.getOrangeEmpireReports(leader).find(report=>report.id===first.id).result.report[0].events,desertions);
     const xp = id=>sql.prepare("SELECT xp FROM player_talents WHERE user_id=?").get(id).xp;
     assert.equal(xp(leader),39000+resolved.combatXp.defender);
     assert.ok(sql.prepare("SELECT 1 FROM orange_empire_lessons WHERE lesson='plan:balanced'").get());
     for (const row of sql.prepare("SELECT * FROM orange_empire_support WHERE attack_id=?").all(first.id)) {
       const returned = JSON.parse(row.army)["Explorer Trooper"];
       assert.equal(troops(row.sender_id)["Explorer Trooper"],900+returned);
+      assert.ok(returned>=6);
+      const wound = sql.prepare("SELECT wounded FROM hospital_entries WHERE user_id=? AND source=? AND source_id=?")
+        .get(row.sender_id,"orange-empire-defense",first.id);
+      assert.equal(wound ? JSON.parse(wound.wounded)["Explorer Trooper"] : 0,Math.floor((100-returned)*0.3));
       assert.ok(row.returned_at);
     }
     assert.deepEqual(JSON.parse(attacks(solo)[0].result),{cancelled:true});
@@ -111,9 +122,23 @@ test("weekly dispatch, protected players, per-owner defense, and station gates",
       sql.prepare(`INSERT INTO alliance_station_defenders(station_id,alliance_id,user_id,army,status,sent_at,arrives_at)
         VALUES (1,?,?,?,'garrison',?,?)`).run(allianceId,member,stationArmy,monday,monday);
     }
+    setEliteSnapshot(second.id);
+    const stationHomes = new Map([leader,...allies].map(id=>[id,troops(id)["Explorer Trooper"]]));
     game.scheduleOrangeEmpireAttacks(monday+4*day);
     const stationResult = JSON.parse(attacks(leader)[1].result);
     assert.deepEqual(Object.keys(stationResult.contingentSurvivors).map(Number),allies.slice(0,3));
+    const stationDesertions = stationResult.report.flatMap(round=>round.events.filter(event=>event.deserted>0));
+    const readStation = id => JSON.parse(sql.prepare("SELECT army FROM alliance_station_defenders WHERE user_id=?").get(id).army);
+    for (const id of [leader,...allies.slice(0,3)]) {
+      const owner = id===leader ? undefined : id;
+      const deserters = stationDesertions.filter(event=>event.contingentId===owner).reduce((n,event)=>n+event.deserted,0);
+      const survivors = id===leader ? stationResult.defenderSurvivors : stationResult.contingentSurvivors[id];
+      assert.ok(deserters>=60);
+      assert.equal(troops(id)["Explorer Trooper"],stationHomes.get(id)+deserters);
+      assert.equal(readStation(id)["Explorer Trooper"]+deserters,survivors["Explorer Trooper"]);
+    }
+    assert.ok(game.getOrangeEmpireReports(allies[0]).find(report=>report.id===second.id).result.report.length);
+    assert.ok(!game.getOrangeEmpireReports(allies[3]).some(report=>report.id===second.id));
     assert.equal(sql.prepare("SELECT army FROM alliance_station_defenders WHERE user_id=?").get(allies[3]).army,stationArmy);
     assert.equal(attacks(leader).length,2);
     assert.equal(attacks(solo).length,2);

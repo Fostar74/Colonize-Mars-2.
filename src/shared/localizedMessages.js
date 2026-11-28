@@ -39,7 +39,10 @@ export function localizedMessageBody(body, kind, language, label) {
           return select(en,translation)+":"+values;
         }
       }
-      return line.replace(/^(Victory \/ Победа|Defeat \/ Поражение) · Rounds \/ Рундове:/,
+      return line.replace(/^Round (\d+) \/ Рунд \d+ · (Attacker desertion|Defender desertion) \/ (Дезертирали нападатели|Дезертирали защитници): (.*)$/,
+        (_,round,en,bgLabel,units)=>select("Round","Рунд")+" "+round+" · "+select(en,bgLabel)+": "+units.split(", ").map(
+          unit=>unit.replace(/^(.*): (\d+)$/,(_,name,count)=>label(name)+": "+count)).join(", "))
+        .replace(/^(Victory \/ Победа|Defeat \/ Поражение) · Rounds \/ Рундове:/,
         (_,outcome)=>outcome.split(" / ")[bg?1:0]+" · "+select("Rounds","Рундове")+":")
         .replace(/^Scouts \/ Разузнавачи: (\d+) · Survivors \/ Оцелели:/,
           (_,count)=>select("Scouts","Разузнавачи")+": "+count+" · "+select("Survivors","Оцелели")+":");
@@ -70,6 +73,11 @@ export function localizedMessageBody(body, kind, language, label) {
 }
 
 export function battleEventText(event,label,t) {
+  if (event.deserted>0) {
+    const force = event.contingentId != null ? t("Reinforcement","Подкрепление")+" #"+event.contingentId
+      : event.side === "attacker" ? t("Attackers","Нападатели") : t("Defenders","Защитници");
+    return label("Neural Command")+" · "+force+": "+event.deserted+" "+label(event.unit)+" "+t("deserted and returned alive","се оттеглиха и се върнаха живи");
+  }
   if (event.restored>0) return label("Nano Regeneration")+": "+event.restored+" "+label(event.unit)+" "+t("restored","възстановени");
   return label(event.attacker)+": "+event.units+" "+label(event.unit)+" → "+label(event.target)
     +" · "+event.damage+" "+t("damage","щети")+(Number.isInteger(event.kills)?" · "+event.kills+" "+t("defeated","убити"):"")
