@@ -1,4 +1,7 @@
 const labelsBg = {
+  "Cargo Depot transaction capacity exceeded.": "Надвишен е капацитетът на Товарното депо за сделка.",
+  "Daily Cargo Depot transfer limit exceeded.": "Надвишен е дневният лимит за преводи на Товарното депо.",
+  "Cargo Depot transaction or daily transfer limit exceeded.": "Надвишен е капацитетът за сделка или дневният лимит на Товарното депо.",
   "Labyrinth action failed.": "Действието в Лабиринта е неуспешно.",
   "Leave and disband this alliance? It will be removed from the rankings.": "Да напуснеш и разпуснеш този алианс? Той ще бъде премахнат от класирането.",
   "Leave this alliance? Leadership will pass automatically to another member.": "Да напуснеш алианса? Лидерството автоматично ще премине към друг член.",

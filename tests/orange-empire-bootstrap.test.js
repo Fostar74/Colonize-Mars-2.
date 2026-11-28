@@ -17,7 +17,7 @@ const Game = require("../database/database");
 test("boosts fresh and existing commanders exactly once, preserving earned progress", () => {
   const game = new Game();
   const sql = new SQLite(process.env.DATABASE_PATH);
-  const now = Date.now();
+  const now = Date.UTC(2026,10,27,12);
   const rows = () => sql.prepare("SELECT * FROM orange_empire_commanders ORDER BY id").all();
   const markers = () => sql.prepare("SELECT * FROM orange_empire_bootstrap ORDER BY commander_id").all();
   const saveState = sql.prepare("UPDATE orange_empire_commanders SET state=? WHERE id=?");
@@ -76,9 +76,12 @@ test("boosts fresh and existing commanders exactly once, preserving earned progr
 
     game.advanceOrangeEmpire(now);
     const boosted = rows();
-    const {structures,army,...progress} = JSON.parse(boosted[0].state);
-    const {structures:oldStructures,army:oldArmy,...previousProgress} = existing;
+    const {structures,army,knight,...progress} = JSON.parse(boosted[0].state);
+    const {structures:oldStructures,army:oldArmy,knight:oldKnight,...previousProgress} = existing;
     assert.deepEqual(progress,previousProgress);
+    assert.equal(oldKnight.level,8);
+    assert.equal(knight.level,1);
+    assert.equal(Object.keys(knight.equippedItems).length,6);
     assert.equal(structures["Gold Synthesizer"],29);
     assert.equal(structures["Training Center"],15);
     assert.equal(structures.Order,3);

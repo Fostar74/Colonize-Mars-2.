@@ -1,3 +1,4 @@
+import {cargoDepotLimits} from "../shared/unitEconomy";
 import BattleReplay from "../shared/BattleReplay";
 import BattleKnights from "../shared/BattleKnights";
 import {battleEventText} from "../shared/localizedMessages";
@@ -64,6 +65,7 @@ const saveHospitalAlertIds = (userId,ids) => {
 };
 
 function MarketPanel() {
+  const [limits,setLimits]=useState({transaction:0,daily:0});
   const {locale,t,label}=useLanguage();
   const resources=["Gold","Iron","Water","Solar"];
   const empty=()=>({Gold:0,Iron:0,Water:0,Solar:0});
@@ -80,6 +82,7 @@ function MarketPanel() {
     const data=await response.json();
     if(!response.ok)throw Error(data.message||"Marketplace unavailable.");
     setOffers(data.offers||[]);
+    setLimits(data.cargoLimits||{transaction:0,daily:0});
   };
   useEffect(()=>{refresh().catch(error=>setNotice(error.message));},[]);
   const send=async(path,body={})=>{
@@ -101,15 +104,16 @@ function MarketPanel() {
   const inputGrid=(values,setValues,title)=><section style={{padding:10,border:"1px solid #6a8193",borderRadius:8,margin:"10px 0"}}>
     <strong>{title}</strong><div style={{display:"grid",gridTemplateColumns:"repeat(auto-fit,minmax(130px,1fr))",gap:8,marginTop:8}}>
       {resources.map(key=><label key={key} style={{display:"flex",flexDirection:"column",gap:4,fontSize:13}}>{label(key)}
-        <input type="number" min="0" max="15000" value={values[key]} onChange={e=>setValues(old=>({...old,[key]:Math.max(0,Math.min(15000,Math.floor(Number(e.target.value)||0)))}))}/>
+        <input type="number" min="0" max={limits.transaction} value={values[key]} onChange={e=>setValues(old=>({...old,[key]:Math.max(0,Math.min(limits.transaction,Math.floor(Number(e.target.value)||0)))}))}/>
       </label>)}
-    </div><small>{t("Total","Общо")}: {total(values).toLocaleString(locale)} / 15,000</small>
+    </div><small>{t("Total","Общо")}: {total(values).toLocaleString(locale)} / {limits.transaction.toLocaleString(locale)}</small>
   </section>;
   return <div style={{color:"#f5f0e6"}}>
-    <p>{t("Create a barter offer. Offered resources are reserved until it is accepted or you cancel it. Each side is limited to 15,000 resources; both players need a level 3 Cargo Depot.","Създай бартерна оферта. Предложените ресурси се запазват, докато бъде приета или отменена. Всяка страна на сделката е ограничена до 15 000 ресурса; и двамата играчи трябва да имат Товарно депо ниво 3.")}</p>
+    <p>{t("Create a barter offer. Offered resources are reserved until it is accepted or you cancel it. Both players need a level 3 Cargo Depot.","Създай бартерна оферта. Предложените ресурси се запазват, докато бъде приета или отменена. И двамата играчи трябва да имат Товарно депо ниво 3.")}</p>
+    <p>{t("Transaction capacity","Капацитет на сделка")}: {limits.transaction.toLocaleString(locale)} · {t("Daily transfer limit","Дневен лимит за преводи")}: {limits.daily.toLocaleString(locale)}</p>
     {inputGrid(offered,setOffered,t("You offer","Ти предлагаш"))}
     {inputGrid(requested,setRequested,t("You request in exchange","Искаш в замяна"))}
-    <button type="button" disabled={busy||total(offered)<=0||total(requested)<=0||total(offered)>15000||total(requested)>15000}
+    <button type="button" disabled={busy||total(offered)<=0||total(requested)<=0||total(offered)>limits.transaction||total(requested)>limits.transaction}
       onClick={()=>send("/market/offers",{offered,requested})}>{t("Publish offer","Публикувай оферта")}</button>
     {notice&&<p role="status">{label(notice)}</p>}
     <h3>{t("Marketplace offers","Оферти на пазара")}</h3>
@@ -543,6 +547,7 @@ function Game() {
   const [hospitalWoundedCount,setHospitalWoundedCount]=useState(0);
   const [hospitalEntries,setHospitalEntries]=useState([]);
   const [incomingAlert,setIncomingAlert]=useState(false);
+  const [alliedAttacks,setAlliedAttacks]=useState([]);
   const [shieldImpact,setShieldImpact]=useState(0);
   const lastUnreadRef=useRef(0);
   const handleReportsRead=useCallback(async()=>{
@@ -566,6 +571,7 @@ function Game() {
   const [playerMenu,setPlayerMenu]=useState(null);
   const [playerNotice,setPlayerNotice]=useState("");
   const [giftOpen,setGiftOpen]=useState(false);
+  const giftLimits=cargoDepotLimits(JSON.parse(sessionStorage.getItem("structures")||"{}")["Cargo Depot"]);
   const [giftAmounts,setGiftAmounts]=useState({Gold:"",Iron:"",Water:"",Solar:""});
   const [giftBusy,setGiftBusy]=useState(false);
   const [inviting,setInviting]=useState(false);
@@ -669,6 +675,10 @@ function Game() {
         if(!response.ok)return;
         const data=await response.json();
         if(!active)return;
+        setAlliedAttacks([
+          ...(data.incomingPlayerBattles||[]).map(attack=>({...attack,faction:"pvp"})),
+          ...(data.orangeEmpireAttacks||[]).map(attack=>({...attack,faction:"orange"})),
+        ]);
         const impacts=data.shieldImpacts||[];
         if(!firstReport&&impacts.some(id=>!seenImpacts.has(id)))setShieldImpact(Date.now());
         for(const id of impacts)seenImpacts.add(id);
@@ -1071,15 +1081,15 @@ function Game() {
           <button type="button" disabled={String(playerMenu.id)===String(sessionStorage.getItem("userId"))} onClick={()=>{setGiftOpen(v=>!v);setPlayerNotice("");}}>{t("Send resources","Изпрати ресурси")}</button>
           {giftOpen&&<div style={{width:"100%",padding:12,border:"1px solid #5b8297",borderRadius:8}}>
             <strong>{t("Send resources to","Изпрати ресурси на")} {playerMenu.username}</strong>
-            <p>{t("Daily limit: 50,000 total resources, resets at 00:00 UTC.","Дневен лимит: общо 50 000 ресурса, нулира се в 00:00 UTC.")}</p>
+            <p>{t("Daily transfer limit","Дневен лимит за преводи")}: {giftLimits.daily.toLocaleString(locale)} · 00:00 UTC</p>
             <div style={{display:"grid",gridTemplateColumns:"repeat(2,minmax(120px,1fr))",gap:8}}>
-              {["Gold","Iron","Water","Solar"].map(key=><label key={key}>{t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])}<input type="number" min="0" max="50000" step="1" value={giftAmounts[key]} onChange={e=>setGiftAmounts(old=>({...old,[key]:e.target.value}))} style={{display:"block",width:"100%",boxSizing:"border-box"}}/></label>)}
+              {["Gold","Iron","Water","Solar"].map(key=><label key={key}>{t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])}<input type="number" min="0" max={giftLimits.transaction} step="1" value={giftAmounts[key]} onChange={e=>setGiftAmounts(old=>({...old,[key]:e.target.value}))} style={{display:"block",width:"100%",boxSizing:"border-box"}}/></label>)}
             </div>
-            <p>{t("Total","Общо")}: {Object.values(giftAmounts).reduce((sum,v)=>sum+(Number(v)||0),0).toLocaleString(locale)} / 50 000</p>
+            <p>{t("Total","Общо")}: {Object.values(giftAmounts).reduce((sum,v)=>sum+(Number(v)||0),0).toLocaleString(locale)} / {giftLimits.transaction.toLocaleString(locale)}</p>
             <button type="button" disabled={giftBusy} onClick={async()=>{
               const amounts=Object.fromEntries(Object.entries(giftAmounts).map(([key,value])=>[key,value===""?0:Number(value)]));
               const total=Object.values(amounts).reduce((sum,value)=>sum+value,0);
-              if(!Object.values(amounts).every(n=>Number.isSafeInteger(n)&&n>=0)||total<1||total>50000){setPlayerNotice(t("Enter 1–50,000 whole resources in total.","Въведи общо от 1 до 50 000 цели единици ресурси."));return;}
+              if(!Object.values(amounts).every(n=>Number.isSafeInteger(n)&&n>=0)||total<1||total>giftLimits.transaction){setPlayerNotice(t("Enter a whole amount within your Cargo Depot capacity.","Въведи цяло количество в рамките на капацитета на Товарното депо."));return;}
               setGiftBusy(true);setPlayerNotice("");
               try{
                 const response=await fetch(api+"/players/send-resources",{method:"POST",headers:{"Content-Type":"application/json",Authorization:"Bearer "+sessionStorage.getItem("authToken")},body:JSON.stringify({userId:Number(sessionStorage.getItem("userId")),recipientId:Number(playerMenu.id),resources:amounts})});
@@ -1108,6 +1118,15 @@ function Game() {
         <button type="button" onClick={()=>openBlueNotification(toastNotifications[0])}>{toastNotifications[0].kind==="espionage_report"?t("View report","Виж доклада"):toastNotifications[0].kind==="gathering_return"?t("View map","Виж картата"):toastNotifications[0].kind==="side_quest_unlocked"?t("View quests","Виж мисиите"):toastNotifications[0].kind.startsWith("alliance_mine_")?t("View alliance","Виж алианса"):t("View messages","Виж съобщенията")}</button>
         <button type="button" aria-label={t("Dismiss","Затвори")} onClick={()=>dismissNotification(activeNoticeId)}>×</button>
       </div>}
+      {alliedAttacks.length>0&&<aside aria-label={t("Incoming alliance attacks","Входящи атаки срещу алианса")}
+        style={{position:"fixed",bottom:14,right:14,zIndex:900,maxWidth:"min(92vw,520px)",maxHeight:"30vh",overflow:"auto",padding:8,background:"#5d2029",color:"white",border:"1px solid #ff7373"}}>
+        {alliedAttacks.map(attack=><div key={attack.faction+attack.id}>
+          <button type="button" onClick={()=>{sessionStorage.setItem("mapReportTarget",JSON.stringify({x:attack.x,y:attack.y}));navigate("/map");}}>
+            {(attack.faction==="orange"?t("The Orange Empire","Оранжевата империя"):attack.attacker)+" → "+attack.username}
+            {" · "+new Date(attack.arrives_at).toLocaleTimeString(locale)}
+          </button>
+        </div>)}
+      </aside>}
       {showReports&&<ReportsPanel initialTab={reportsTab} onClose={()=>setShowReports(false)} onRead={handleReportsRead}/>}
       {showQuests && (
         <div className="popup">

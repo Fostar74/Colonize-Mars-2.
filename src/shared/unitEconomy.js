@@ -166,4 +166,11 @@ function buildingPrice(name,nextLevel,discount = 0) {
   return Object.fromEntries(Object.entries(base).map(([resource,amount])=>[resource,Math.ceil(amount * levelMultiplier * (100 - discount) / 100)]));
 }
 
-module.exports={specialUnitCombatBonuses,allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingNames,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,defenseGridLevels,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};
+function cargoDepotLimits(level){
+  const valid=Math.max(0,Math.min(buildingMaxLevel("Cargo Depot"),Math.floor(Number(level)||0)));
+  return {transaction:5000*valid,daily:10000*valid};
+}
+const baseProductionPerHour = level => (Number(level)||0)*360;
+const unitUpgradeLabReduction = level => Math.max(0,Math.min(30,Number(level)||0))*1.5;
+
+module.exports={baseProductionPerHour,unitUpgradeLabReduction,cargoDepotLimits,specialUnitCombatBonuses,allianceUpgradeDuration,categories,cargoCapacity,unitPrice,upgradePrice,upgradeDuration,unitRequirement,buildingNames,buildingMaxLevel,buildingRequirements,buildingDuration,buildingPrice,defenseGridLevels,unitTrainingDuration,unitUpgradeDetails,armySpeed,armyTravelDuration};

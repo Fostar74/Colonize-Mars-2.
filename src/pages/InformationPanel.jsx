@@ -1,6 +1,7 @@
 import React,{useState} from "react";
 import {useLanguage} from "../language";
-import {buildingMaxLevel,buildingRequirements,defenseGridLevels} from "../shared/unitEconomy";
+import {buildingNames,buildingGuide} from "../shared/buildingGuide";
+import {baseProductionPerHour,unitUpgradeLabReduction,buildingMaxLevel,buildingRequirements,defenseGridLevels} from "../shared/unitEconomy";
 import {explorerTrooper,nanoShieldman,exoSoldier,plasmaBladesman,railgunner,pulseSniper,droneOperator} from "../shared/unitProfiles";
 import {roverScout,hoverbikeRider,mechWalker,hoverDroneRider} from "../shared/mobileUnitProfiles";
 import {demolitionBot,missileCarrier,particleBlaster,orbitalStrikeBeacon} from "../shared/heavyUnitProfiles";
@@ -44,6 +45,9 @@ export default function InformationPanel(){
  const {locale,t,label}=useLanguage();
  const [page,setPage]=useState("home");
  const [wallLevel,setWallLevel]=useState(1);
+ const [guideBuilding,setGuideBuilding]=useState("Gold Synthesizer");
+ const [guideLevel,setGuideLevel]=useState(1);
+ const guide=buildingGuide(guideBuilding,guideLevel);
  const wallStats=defenseGridLevels[wallLevel];
  const [selectedProtocol,setSelectedProtocol]=useState(null);
  const res=["Gold","Iron","Water","Solar"],atk=[t("Ground troops","Сухопътни войски"),t("Mobile troops","Мобилни войски"),t("Ranged troops","Стрелкови войски"),t("Walls","Стени"),t("Heavy systems","Тежки системи")];
@@ -203,6 +207,33 @@ export default function InformationPanel(){
   </>}
   {section?.id==="buildings"&&<>
    <h2>{t("Buildings","Сгради")}</h2>
+   <section style={{padding:14,border:"1px solid #54758a",borderRadius:10,background:"#172432",marginBottom:12}}>
+    <label>{t("Building","Сграда")}{" "}
+      <select value={guideBuilding} onChange={event=>{setGuideBuilding(event.target.value);setGuideLevel(1);}}>
+        {buildingNames.map(name=><option key={name} value={name}>{label(name)}</option>)}
+      </select>
+    </label>
+    <h3>{label(guideBuilding)} · {t("Maximum level","Максимално ниво")} {guide.maxLevel}</h3>
+    <img src={(process.env.PUBLIC_URL||"")+"/earth-base/"+guide.art+".webp"} alt="" loading="lazy" style={{width:"min(160px,100%)",display:"block"}} />
+    {guide.purpose&&<p>{t(...guide.purpose)}</p>}
+    {guideBuilding==="Defense Grid"?<p>{t("See the Defense Grid table below for attack, health and construction rules.","Виж таблицата отдолу за атака, здраве и изисквания за строеж.")}</p>:<>
+      <label>{t("Choose level","Избери ниво")}{" "}
+        <select value={guideLevel} onChange={event=>setGuideLevel(Number(event.target.value))}>
+          {Array.from({length:guide.maxLevel},(_,index)=>index+1).map(level=><option key={level}>{level}</option>)}
+        </select>
+      </label>
+      <dl>
+        <dt>{t("Base cost","Базова цена")}</dt><dd>{Object.entries(guide.cost).map(([resource,amount])=>label(resource)+" "+amount.toLocaleString(locale)).join(" · ")}</dd>
+        <dt>{t("Base construction time","Базово време за строеж")}</dt><dd>{time(guide.durationMs/1000)}</dd>
+        <dt>{t("Requirements","Изисквания")}</dt><dd>{Object.entries(guide.requirements).map(([name,level])=>label(name)+" "+level).join(" · ")||t("No extra prerequisites","Няма допълнителни изисквания")}</dd>
+        {guide.resource&&<><dt>{t("Base hourly production","Базов добив на час")}</dt><dd>{baseProductionPerHour(guideLevel).toLocaleString(locale)} {label(guide.resource)}</dd></>}
+        {guideBuilding==="Upgrade Lab"&&<><dt>{t("Upgrade time reduction","Намаление на времето за подобрение")}</dt><dd>{unitUpgradeLabReduction(guideLevel).toLocaleString(locale)}%</dd></>}
+        {guide.cargo&&<><dt>{t("Transaction capacity","Капацитет на сделка")}</dt><dd>{guide.cargo.transaction.toLocaleString(locale)}</dd><dt>{t("Daily transfer limit","Дневен лимит за преводи")}</dt><dd>{guide.cargo.daily.toLocaleString(locale)}</dd></>}
+        {guide.units.length>0&&<><dt>{t("Units unlocked at this level","Единици, отключени на това ниво")}</dt><dd>{guide.units.map(label).join(" · ")}</dd></>}
+        {!guide.units.length&&["Training Center","Vehicle Bay","Drone Factory","Order","Combat Simulator"].includes(guideBuilding)&&!(guideBuilding==="Combat Simulator"&&guideLevel===1)&&<dd>{t("No new unit unlock at this level.","На това ниво няма отключване на нова единица.")}</dd>}
+      </dl>
+    </>}
+   </section>
    <article style={{padding:14,border:"1px solid #54758a",borderRadius:10,background:"#172432"}}>
     <h3>{label("Defense Grid")}</h3>
     <h4>{t("Information","Информация")}</h4>

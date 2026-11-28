@@ -89,7 +89,7 @@ test("opt-in map, idempotent placement, bounded development and persisted NPC-on
     const map = await getMap("true", token);
     assert.deepEqual(positionList(map.orangeEmpireBases), positionList(seeded));
     assert.deepEqual(map.orangeEmpireBases.filter(base => base.emperor).map(base => base.id), [10]);
-    assert.ok(map.orangeEmpireBases.every(base => base.knightLevel === 1));
+    assert.ok(map.orangeEmpireBases.every(base => base.knightLevel === Math.min(50,1+Math.max(0,Math.floor((now-Date.UTC(2026,10,27))/86400000)))));
     assert.equal(map.bases.length, 1);
 
     for (let ticks = 1; ticks <= 180; ticks++) game.advanceOrangeEmpire(now + ticks * 10000);
