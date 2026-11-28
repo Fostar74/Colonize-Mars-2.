@@ -85,7 +85,8 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
         if(active){
           let seen=[];try{seen=JSON.parse(localStorage.getItem(reportReadStorageKey(userId))||"[]");}catch{}
           const read=new Set(Array.isArray(seen)?seen:[]);
-                  setData(body);
+                  const unreadIds=[...(body.mothershipReports||[]).map(m=>"mothership:"+m.id),...(body.missions||[]).filter(m=>m.result).map(m=>"alien:"+m.id),...(body.playerMissions||[]).filter(m=>m.result).map(m=>"player:"+m.id),...(body.gatheringReports||[]).map(m=>"gathering:"+m.id)];
+          setData(body);
           try{localStorage.setItem(reportReadStorageKey(userId),JSON.stringify([...new Set([...read,...unreadIds])]));}catch{}
         }
         await fetch(api+"/reports/read",{method:"POST",headers:{"Content-Type":"application/json",...auth()},body:JSON.stringify({userId})});
