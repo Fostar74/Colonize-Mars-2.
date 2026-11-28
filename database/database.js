@@ -1,3 +1,4 @@
+const {recoveryEnabled, initializeRecovery, reserveEmailReset, redeemRecoveryToken} = require("./passwordRecovery");
 const migrateAllianceMines = require("./allianceMineSchema");
 const {hour, constructionTarget, constructionApUnit, firstTime, gatheringStart, cargoFullAt, settleWork} = require("./allianceMineWork");
 const marketProducts = require("../src/shared/allianceMarket");
@@ -116,6 +117,7 @@ function initializeDatabase() {
       expires_at INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS login_sessions_expiry ON login_sessions(expires_at);`);
+    if (recoveryEnabled()) initializeRecovery(db);
     db.exec("CREATE TABLE IF NOT EXISTS player_activity (user_id INTEGER PRIMARY KEY REFERENCES users(id), last_seen_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS beginner_protection_forfeits (user_id INTEGER PRIMARY KEY REFERENCES users(id), forfeited_at INTEGER NOT NULL)");
     db.exec("CREATE TABLE IF NOT EXISTS player_profiles (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, avatar_id TEXT NOT NULL DEFAULT 'pilot-m')");
@@ -574,11 +576,26 @@ class DatabaseManager {
     return this.getGameProgress(userId);
   }
 
-  storeLoginSession(tokenHash,userId,expiresAt,now){
-    db.transaction(()=>{
+  storeLoginSession(tokenHash,userId,expiresAt,now,verifiedPasswordHash){
+    return db.transaction(()=>{
       db.prepare("DELETE FROM login_sessions WHERE expires_at<=?").run(now);
-      db.prepare("INSERT INTO login_sessions(token_hash,user_id,expires_at) VALUES (?,?,?)").run(tokenHash,userId,expiresAt);
+      return db.prepare(`INSERT INTO login_sessions(token_hash,user_id,expires_at)
+        SELECT ?,id,? FROM users WHERE id=? AND password=COALESCE(?,password)`)
+        .run(tokenHash,expiresAt,userId,verifiedPasswordHash ?? null).changes === 1;
     })();
+  }
+
+  reservePasswordResetEmail(email) {
+    return reserveEmailReset(db, email);
+  }
+
+  hasActivePasswordReset(hash) {
+    return Boolean(db.prepare("SELECT 1 FROM password_resets WHERE token_hash=? AND expires_at>?")
+      .get(hash, Date.now()));
+  }
+
+  redeemPasswordReset(hash, passwordHash) {
+    return redeemRecoveryToken(db, hash, passwordHash);
   }
 
   findLoginSession(tokenHash,now){
