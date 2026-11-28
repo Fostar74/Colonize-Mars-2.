@@ -282,6 +282,13 @@ router.get("/reports/recipients/:userId",requireSession,(req,res)=>{
   try{res.json({players:db.searchReportRecipients(Number(req.params.userId),req.query.q)});}
   catch(error){console.error("Search report recipients:",error);res.status(500).json({message:"Player search unavailable."});}
 });
+router.get("/reports/shared/:userId/:messageId", requireAuthenticatedPlayer, (req,res)=>{
+  const report=db.getSharedBattleReport(Number(req.params.userId),Number(req.params.messageId));
+  res.set("Cache-Control","no-store");
+  if(!report)return res.status(404).json({message:"Battle report not found."});
+  return res.json(report);
+});
+
 router.post("/reports/share",requireSession,(req,res)=>{
   try{
     const result=db.shareBattleReport(Number(req.body.userId),req.body.reportType,Number(req.body.reportId),req.body.scope,req.body.recipient);

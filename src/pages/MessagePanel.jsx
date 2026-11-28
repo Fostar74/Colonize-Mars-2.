@@ -1,3 +1,4 @@
+import SharedBattleReport from "../shared/SharedBattleReport";
 import PlayerAvatar from "../shared/PlayerAvatar";
 import {localizedMessageBody} from "../shared/localizedMessages";
 import { useLanguage } from "../language";
@@ -80,6 +81,7 @@ export default function MessagePanel({alliance = false, recipient = "", playerAc
         {!alliance && message.messageType!=="system" && <> → <PlayerAvatar player={{id:message.recipientId,avatarId:message.recipientAvatarId,avatarVersion:message.recipientAvatarVersion}} size={26} /> {playerAction ? playerAction({id:message.recipientId,username:message.recipient,avatarId:message.recipientAvatarId,avatarVersion:message.recipientAvatarVersion}) : message.recipient}</>}
         {" · "}<time>{new Date(message.sentAt).toLocaleString(locale)}</time>
         <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{localizedMessageBody(message.body,message.messageType,language,localLabel)}</div>
+        {!!message.hasBattleReport&&<SharedBattleReport messageId={message.id} api={api} />}
       </article>)}
     </div>
     {!alliance && !recipient && <p>{t("Select a player and choose Message to start a conversation.","Избери играч и натисни „Съобщение“, за да започнеш разговор.")}</p>}

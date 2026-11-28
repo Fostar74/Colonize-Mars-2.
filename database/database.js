@@ -256,6 +256,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS mothership_events (id INTEGER PRIMARY KEY AUTOINCREMENT, week_start INTEGER NOT NULL UNIQUE, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, hp_remaining INTEGER NOT NULL, rewards_distributed INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS mothership_attacks (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL REFERENCES mothership_events(id), user_id INTEGER NOT NULL REFERENCES users(id), army TEXT NOT NULL, formation TEXT NOT NULL, origin_x INTEGER NOT NULL, origin_y INTEGER NOT NULL, knight_level INTEGER NOT NULL DEFAULT 1, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, damage INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL DEFAULT 0)");
     if(!db.prepare("PRAGMA table_info(mothership_attacks)").all().some(c=>c.name==="knight_level"))db.exec("ALTER TABLE mothership_attacks ADD COLUMN knight_level INTEGER NOT NULL DEFAULT 1");
+    if(!db.prepare("PRAGMA table_info(mothership_attacks)").all().some(c=>c.name==="knight_snapshot"))db.exec("ALTER TABLE mothership_attacks ADD COLUMN knight_snapshot TEXT");
     db.exec("CREATE INDEX IF NOT EXISTS mothership_attacks_event ON mothership_attacks(event_id,id)");
     db.exec("CREATE TABLE IF NOT EXISTS mothership_hospital (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), event_id INTEGER NOT NULL REFERENCES mothership_events(id), wounded TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'waiting', healing_cost TEXT NOT NULL, created_at INTEGER NOT NULL, heals_at INTEGER)");
     db.exec("CREATE TABLE IF NOT EXISTS hospital_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), source TEXT NOT NULL, source_id INTEGER NOT NULL, wounded TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'waiting', healing_cost TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, heals_at INTEGER, recovered_at INTEGER)");
@@ -358,6 +359,8 @@ function initializeDatabase() {
     )`);
     db.exec("CREATE INDEX IF NOT EXISTS player_notifications_unread ON player_notifications(recipient_id,read_at,id)");
     const messageColumns=db.prepare("PRAGMA table_info(player_messages)").all().map(column=>column.name);
+    if(!messageColumns.includes("battle_report_type")) db.exec("ALTER TABLE player_messages ADD COLUMN battle_report_type TEXT");
+    if(!messageColumns.includes("battle_report_id")) db.exec("ALTER TABLE player_messages ADD COLUMN battle_report_id INTEGER");
     if(!messageColumns.includes("message_type"))db.exec("ALTER TABLE player_messages ADD COLUMN message_type TEXT NOT NULL DEFAULT 'private'");
     db.exec("UPDATE player_messages SET message_type='trade' WHERE id IN (SELECT message_id FROM trade_message_notifications) OR body LIKE 'Marketplace offer #% accepted by%' OR body LIKE 'Marketplace purchase completed from%'");
     db.exec("CREATE TABLE IF NOT EXISTS alliance_invitations (user_id INTEGER NOT NULL REFERENCES users(id), alliance_id INTEGER NOT NULL REFERENCES alliances(id), PRIMARY KEY(user_id, alliance_id))");
@@ -1099,6 +1102,18 @@ class DatabaseManager {
     const protocol=this.talentCatalog().find(item=>item.name===name);
     return tier&&protocol?protocol.values[tier-1]:0;
   }
+  battleParticipant(userId,coordinates) {
+    const row=db.prepare(`SELECT u.username,a.name AS alliance,COALESCE(p.xp,0) AS xp,p.talents
+      FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id
+      LEFT JOIN player_talents p ON p.user_id=u.id WHERE u.id=?`).get(userId);
+    if(!row)return null;
+    return {name:row.username,alliance:row.alliance,level:this.playerLevel(row.xp),
+      coordinates:{x:coordinates?.x,y:coordinates?.y},protocolTiers:JSON.parse(row.talents||"{}")};
+  }
+
+  knightLevelForReport(userId) {
+    return Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level)||1;
+  }
   equipmentBonuses(userId){return equipmentCombatBonuses(this.getUserEquipment(userId)?.equippedItems||{});}
   protocolBonusWithEquipment(userId,name,own={},opponent={}){
     const added=Number(own.protocolBoosts?.[name]?.value)||0,removed=Number(opponent.enemyProtocolDebuffs?.[name]?.value)||0;
@@ -1263,22 +1278,23 @@ class DatabaseManager {
   searchReportRecipients(userId,query){
     const term=String(query||"").trim();
     if(term.length<3||term.length>32)return [];
-    return db.prepare("SELECT id,username FROM users WHERE username LIKE ? AND id<>? ORDER BY username LIMIT 15").all("%"+term.replace(/[\\%_]/g,"\\  listMessages(userId, scope){")+"%",userId);
+    return db.prepare("SELECT id,username FROM users WHERE instr(lower(username),lower(?))>0 AND id<>? ORDER BY username LIMIT 15").all(term,userId);
   }
 
   shareBattleReport(userId,reportType,reportId,scope,recipientName){
-    if(!["player","scout"].includes(reportType)||!["alliance","private"].includes(scope)||!Number.isSafeInteger(reportId)||reportId<1)return {error:"Invalid report or destination."};
+    if(!["player","scout","alien"].includes(reportType)||!["alliance","private"].includes(scope)||!Number.isSafeInteger(reportId)||reportId<1)return {error:"Invalid report or destination."};
     return db.transaction(()=>{
       const member=scope==="alliance"?db.prepare("SELECT alliance_id FROM alliance_members WHERE user_id=?").get(userId):null;
       if(scope==="alliance"&&!member)return {error:"Join an alliance to share reports."};
       const recipient=scope==="private"?this.findUserByUsername(String(recipientName||"").trim()):null;
       if(scope==="private"&&(!recipient||recipient.id===userId))return {error:"Select an existing player."};
-      let body="";
+      let body="", attachment=null;
       const formatArmy=army=>Object.entries(army||{}).filter(([,n])=>Number(n)>0).map(([name,n])=>name+": "+Number(n).toLocaleString()).join(", ")||"0";
       if(reportType==="player"){
         const row=db.prepare("SELECT * FROM player_missions WHERE id=? AND resolved_at IS NOT NULL AND (attacker_id=? OR defender_id=?)").get(reportId,userId,userId);
         if(!row)return {error:"Battle report not found."};
         const result=JSON.parse(row.result||"{}"),data=JSON.parse(row.army||"{}");
+        attachment={type:"player",id:row.id};
         const names=db.prepare("SELECT id,username FROM users WHERE id IN (?,?)").all(row.attacker_id,row.defender_id);
         const name=id=>names.find(x=>x.id===id)?.username||"Unknown";
         body="⚔️ Battle report / Боен доклад #"+row.id+"\n"+name(row.attacker_id)+" → "+name(row.defender_id)+" ("+(data.target?.x??"?")+":"+(data.target?.y??"?")+")\n"+(result.victory?"Victory / Победа":"Defeat / Поражение")+" · Rounds / Рундове: "+(result.rounds??0)+"\nAttackers / Нападатели: "+formatArmy(data.units)+"\nAttacker survivors / Оцелели нападатели: "+formatArmy(result.survivors)+"\nDefender survivors / Оцелели защитници: "+formatArmy(result.defenderSurvivors)+"\nLoot / Плячка: "+Object.entries(result.loot||{}).map(([k,v])=>k+": "+v).join(", ");
@@ -1288,6 +1304,17 @@ class DatabaseManager {
           const title=side==="attacker"?"Attacker desertion / Дезертирали нападатели":"Defender desertion / Дезертирали защитници";
           body+="\nRound "+round.round+" / Рунд "+round.round+" · "+title+": "+events.map(event=>event.unit+": "+event.deserted).join(", ");
         }
+      }else if(reportType==="alien"){
+        const row=db.prepare("SELECT * FROM alien_missions WHERE id=? AND user_id=? AND resolved_at IS NOT NULL AND result IS NOT NULL").get(reportId,userId);
+        if(!row)return {error:"Battle report not found."};
+        const result=JSON.parse(row.result),data=JSON.parse(row.army);
+        attachment={type:"alien",id:row.id};
+        body="⚔️ Alien base report / Доклад за извънземна база #"+row.id
+          +"\nAlien Base level / Ниво на извънземна база: "+row.level
+          +"\n"+(result.victory?"Victory / Победа":"Defeat / Поражение")+" · Rounds / Рундове: "+(result.rounds??0)
+          +"\nAttackers / Нападатели: "+formatArmy(data.units)
+          +"\nAttacker survivors / Оцелели нападатели: "+formatArmy(result.survivors)
+          +"\nDefender survivors / Оцелели защитници: "+formatArmy(result.defenderSurvivors);
       }else{
         const row=db.prepare("SELECT * FROM player_scout_missions WHERE id=? AND user_id=? AND report IS NOT NULL").get(reportId,userId);
         if(!row)return {error:"Espionage report not found."};
@@ -1296,22 +1323,39 @@ class DatabaseManager {
       }
       const now=Date.now();
       if(scope==="private"){
-        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,body,sent_at,message_type) VALUES (?,?,?,?,'private')")
-          .run(userId,recipient.id,body,now);
+        db.prepare("INSERT INTO player_messages(sender_id,recipient_id,body,sent_at,message_type,battle_report_type,battle_report_id) VALUES (?,?,?,?,'private',?,?)")
+          .run(userId,recipient.id,body,now,attachment?.type??null,attachment?.id??null);
         db.prepare("INSERT INTO player_notifications(recipient_id,kind,alliance_name,created_at) VALUES (?,'player_message','',?)")
           .run(recipient.id,now);
-      }else this.storeAllianceMessage(userId,member.alliance_id,body,now,"alliance");
+      }else this.storeAllianceMessage(userId,member.alliance_id,body,now,"alliance",attachment);
       return {success:true};
     })();
   }
 
-  storeAllianceMessage(userId, allianceId, body, now, type){
-    const message=db.prepare("INSERT INTO player_messages(sender_id,alliance_id,body,sent_at,message_type) VALUES (?,?,?,?,?)")
-      .run(userId,allianceId,body,now,type);
+  storeAllianceMessage(userId, allianceId, body, now, type, attachment=null){
+    const message=db.prepare("INSERT INTO player_messages(sender_id,alliance_id,body,sent_at,message_type,battle_report_type,battle_report_id) VALUES (?,?,?,?,?,?,?)")
+      .run(userId,allianceId,body,now,type,attachment?.type??null,attachment?.id??null);
     // A message body is shared. Receipts contain only delivery and read state.
     return db.prepare(`INSERT INTO alliance_message_receipts(recipient_id,message_id)
       SELECT user_id,? FROM alliance_members WHERE alliance_id=? AND user_id<>?`)
       .run(message.lastInsertRowid,allianceId,userId).changes;
+  }
+
+  getSharedBattleReport(userId,messageId) {
+    const attachment=db.prepare(`SELECT battle_report_type AS type,battle_report_id AS id FROM player_messages m
+      WHERE m.id=? AND ((m.recipient_id IS NOT NULL AND (m.sender_id=? OR m.recipient_id=?))
+      OR (m.recipient_id IS NULL AND EXISTS(SELECT 1 FROM alliance_members WHERE alliance_id=m.alliance_id AND user_id=?)))`)
+      .get(messageId,userId,userId,userId);
+    const table=attachment?.type==="player"?"player_missions":attachment?.type==="alien"?"alien_missions":null;
+    if(!table)return null;
+    const row=db.prepare(`SELECT result FROM ${table} WHERE id=? AND resolved_at IS NOT NULL`).get(attachment.id);
+    if(!row?.result)return null;
+    const result=JSON.parse(row.result);
+    return {
+      knights:result.knights??null,traceVersion:result.traceVersion,report:result.traceVersion?result.report:[],
+      participants:result.participants,combatXp:result.combatXp,xpEarned:result.xpEarned,
+      victory:result.victory,loot:result.loot
+    };
   }
 
   listMessages(userId, scope){
@@ -1321,7 +1365,7 @@ class DatabaseManager {
       if(!member)return {error:"Join an alliance to view its chat."};
       // Unscoped historical private copies do not identify their original alliance.
       // Keep them in their original inboxes. Already scoped shared rows remain visible here.
-      const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,
+      const messages=db.prepare(`SELECT m.id,m.body,m.battle_report_type IS NOT NULL AS hasBattleReport,m.sent_at AS sentAt,m.sender_id AS senderId,
         sender.username AS sender,m.message_type AS messageType,p.avatar_id AS senderAvatarId,avatar.version AS senderAvatarVersion,
         CASE WHEN receipt.read_at IS NULL THEN receipt.id END AS unreadId
         FROM player_messages m JOIN users sender ON sender.id=m.sender_id
@@ -1335,7 +1379,7 @@ class DatabaseManager {
     }
     const filter=scope==="trade" ? "m.recipient_id=? AND m.message_type='trade'" : "(m.recipient_id=? OR (m.sender_id=? AND m.recipient_id IS NOT NULL)) AND m.message_type IN ('private','system')";
     const params=scope==="trade" ? [userId] : [userId,userId];
-    const messages=db.prepare(`SELECT m.id,m.body,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,m.message_type AS messageType,
+    const messages=db.prepare(`SELECT m.id,m.body,m.battle_report_type IS NOT NULL AS hasBattleReport,m.sent_at AS sentAt,m.sender_id AS senderId,m.recipient_id AS recipientId,m.message_type AS messageType,
       CASE WHEN m.message_type='system' THEN 'Game System' ELSE sender.username END AS sender,recipient.username AS recipient,
       sp.avatar_id AS senderAvatarId,sa.version AS senderAvatarVersion,
       rp.avatar_id AS recipientAvatarId,ra.version AS recipientAvatarVersion FROM player_messages m
@@ -1407,11 +1451,12 @@ class DatabaseManager {
     const member=db.prepare("SELECT alliance_id,role FROM alliance_members WHERE user_id=?").get(userId);
     const pending=new Set(db.prepare("SELECT alliance_id FROM alliance_applications WHERE user_id=?").all(userId).map(a=>a.alliance_id));
     const cyberKnights=db.prepare("SELECT u.id,u.username,COALESCE(ar.knight_level,1) AS knightLevel,COALESCE(ar.prestige,0) AS prestige,p.avatar_id AS avatarId,avatar.version AS avatarVersion FROM users u LEFT JOIN alien_rewards ar ON ar.user_id=u.id LEFT JOIN player_profiles p ON p.user_id=u.id LEFT JOIN player_avatar_images avatar ON avatar.user_id=u.id ORDER BY knightLevel DESC,prestige DESC,u.username COLLATE NOCASE").all();
+    for(const row of players)row.commanderLevel=this.playerLevel(row.points);
     for(const row of [...players,...cyberKnights]) if(row.id===earthWinner?.userId) row.earthDefender=true;
     if(process.env.ORANGE_EMPIRE_ENABLED==="true"){
       const npcs=db.prepare("SELECT id,state FROM orange_empire_commanders ORDER BY id").all().map(row=>{
         const state=JSON.parse(row.state);
-        return {id:"orange-empire-"+row.id,commanderId:row.id,npc:true,emperor:row.id===10,username:row.id===10?"Emperor":"Commander "+row.id,alliance:"The Orange Empire",points:Number(state.xp)||0,avatarId:"pilot-m",knightLevel:Number(state.knight?.level)||1,prestige:Number(state.knight?.prestige)||0};
+        return {id:"orange-empire-"+row.id,commanderId:row.id,npc:true,emperor:row.id===10,commanderLevel:orangeEmpire.maxCommanderLevel,username:row.id===10?"Emperor":"Commander "+row.id,alliance:"The Orange Empire",points:Number(state.xp)||0,avatarId:"pilot-m",knightLevel:Number(state.knight?.level)||1,prestige:Number(state.knight?.prestige)||0};
       });
       players.push(...npcs);
       cyberKnights.push(...npcs);
@@ -2211,26 +2256,37 @@ class DatabaseManager {
       const defenseRows=defence.defenseSlot ? defence.defensePresets[defence.defenseSlot] : null;
       const fallback=defaultFormation(true);
       const defenseFormation=Object.entries(defender.army).filter(([,count])=>Number(count)>0).map(([unit,count])=>({
-        unit,count,row:defenseRows?.[unit]||fallback[unit]||1
+        unit,count,row:defenseRows?.[unit]||fallback[unit]||1,column:defenseRows?.columns?.[unit]
       }));
       const {fight,playerTypes}=require("../shared/combatEngine");
       const validDefenders=Object.fromEntries(Object.entries(defender.army).filter(([unit,count])=>playerTypes[unit]&&Number(count)>0));
-      const attackerGear=data.includeCyberKnight?this.equipmentBonuses(mission.attacker_id):equipmentCombatBonuses({}),defenderGear=this.equipmentBonuses(mission.defender_id);
+      const attackerEquipment=data.includeCyberKnight?this.getUserEquipment(mission.attacker_id)?.equippedItems||{}:{};
+      const defenderEquipment=this.getUserEquipment(mission.defender_id)?.equippedItems||{};
+      const attackerGear=equipmentCombatBonuses(attackerEquipment),defenderGear=equipmentCombatBonuses(defenderEquipment);
       const attackerProtocols=this.protocolCombatBonuses(mission.attacker_id,attackerGear,defenderGear),defenderProtocols=this.protocolCombatBonuses(mission.defender_id,defenderGear,attackerGear);
       const attackerAlliance=data.allianceCombat||attacker.allianceBonuses||{},defenderAlliance=defender.allianceBonuses||{};
-      const attackerCombat={...attackerProtocols,unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{},unitResearch:attackerAlliance.units||{},allAttack:Number(attackerAlliance.attack)||0,allHealth:Number(attackerAlliance.health)||0,unitEffects:attackerGear.unitEffects,enemyDebuffs:attackerGear.enemyDebuffs};
-      const defenderCombat={...defenderProtocols,unitResearch:defenderAlliance.units||{},allAttack:Number(defenderAlliance.attack)||0,allHealth:Number(defenderAlliance.health)||0,unitEffects:defenderGear.unitEffects,enemyDebuffs:defenderGear.enemyDebuffs};
+      const attackerCombat={...attackerProtocols,protocolTrace:attackerProtocols,unitUpgrades:data.unitUpgrades||attacker.unitUpgrades||{},unitResearch:attackerAlliance.units||{},allAttack:Number(attackerAlliance.attack)||0,allHealth:Number(attackerAlliance.health)||0,unitEffects:attackerGear.unitEffects,enemyDebuffs:attackerGear.enemyDebuffs};
+      const defenderCombat={...defenderProtocols,protocolTrace:defenderProtocols,unitResearch:defenderAlliance.units||{},allAttack:Number(defenderAlliance.attack)||0,allHealth:Number(defenderAlliance.health)||0,unitEffects:defenderGear.unitEffects,enemyDebuffs:defenderGear.enemyDebuffs};
       const result=fight(data.units||{},validDefenders,data.formation,attackerCombat,{
-        playerDefense:true,trackCasualties:true,hospitalSides:[0,1],
+        playerDefense:true,trackCasualties:true,trace:true,hospitalSides:[0,1],
+        defenseGridLevel:defender.structures["Defense Grid"],
         random:missionRandom(mission),
         defenderUnitUpgrades:defender.unitUpgrades||{},
         defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit]),
         defenderBonuses:defenderCombat
       });
+      result.participants={
+        attacker:this.battleParticipant(mission.attacker_id, data.origin),
+        defender:this.battleParticipant(mission.defender_id, data.target),
+      };
       result.combatXp = {attacker:xpForKills(result.creditedKills.attacker),defender:xpForKills(result.creditedKills.defender)};
-      awardHuman(db,mission.attacker_id,result.combatXp.attacker);
-      awardHuman(db,mission.defender_id,result.combatXp.defender);
+      result.combatXp.attacker=awardHuman(db,mission.attacker_id,result.combatXp.attacker);
+      result.combatXp.defender=awardHuman(db,mission.defender_id,result.combatXp.defender);
       result.cyberKnightLevel=data.includeCyberKnight?data.cyberKnightLevel:null;
+      result.knights={
+        attacker:data.includeCyberKnight?{kind:"cyber",level:data.cyberKnightLevel,equipped:attackerEquipment}:false,
+        defender:{kind:"cyber",level:this.knightLevelForReport(mission.defender_id),equipped:defenderEquipment}
+      };
       const defenderWounded={};
       for(const [unit,count] of Object.entries(validDefenders)){
         const killed=Math.max(0,Number(count||0)-Number(result.defenderSurvivors?.[unit]||0));
@@ -2589,7 +2645,8 @@ class DatabaseManager {
       const current=this.syncGame(attack.user_id,attack.arrives_at),army=JSON.parse(attack.army),formation=JSON.parse(attack.formation);
       if(!current)throw new Error("Mothership march has no player progress");
       const {playerTypes}=require("../shared/combatEngine");
-      const gear=this.getUserEquipment(attack.user_id),items=Object.values(gear?.equippedItems||{}),gearEffects=this.equipmentBonuses(attack.user_id);
+      const equipped=this.getUserEquipment(attack.user_id)?.equippedItems||{};
+      const items=Object.values(equipped),gearEffects=equipmentCombatBonuses(equipped);
       let gearAttack=0,gearXp=0;
       for(const item of items)for(const stat of item?.stats||[]){
         if(typeof stat!=="string")continue;
@@ -2628,7 +2685,8 @@ class DatabaseManager {
       // Mother Ship attacks are score runs: return the entire committed army after every battle.
       for(const [unit,count] of Object.entries(army))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),attack.user_id);
-      db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=? WHERE id=?").run(attack.arrives_at,damage,xp,attack.id);
+      db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=?,knight_snapshot=? WHERE id=?")
+        .run(attack.arrives_at,damage,xp,JSON.stringify({kind:"cyber",level:attack.knight_level,equipped}),attack.id);
       this.sideQuests.record(attack.user_id,"mothership",null,1,attack.arrives_at);
       db.prepare("UPDATE mothership_events SET hp_remaining=MAX(1,hp_remaining-?) WHERE id=?").run(damage,eventId);
     }
@@ -2766,13 +2824,14 @@ class DatabaseManager {
           const formations=require("../src/shared/formations"),combat=require("../shared/combatEngine");
           const defaultRows=formations.defaultFormation();
           const defense=this.getFormations(attack.user_id),preset=defense.defensePresets?.[String(defense.defenseSlot)]||{};
-          const defenseFormation=Object.entries(army).map(([unit,count])=>({unit,count,row:Number(preset[unit])||Number(defaultRows[unit])||1}));
+          const defenseFormation=Object.entries(army).map(([unit,count])=>({unit,count,row:Number(preset[unit])||Number(defaultRows[unit])||1,column:preset.columns?.[unit]}));
           const alliance=current.allianceBonuses||{};
-          const gear=this.equipmentBonuses(attack.user_id),protocols=this.protocolCombatBonuses(attack.user_id,gear);
+          const equipped=this.getUserEquipment(attack.user_id)?.equippedItems||{};
+          const gear=equipmentCombatBonuses(equipped),protocols=this.protocolCombatBonuses(attack.user_id,gear);
           const result=combat.fight(aliens,army,null,{
-            ...protocols,unitResearch:alliance.units||{},unitUpgrades:current.unitUpgrades,allAttack:Number(alliance.attack)||0,allHealth:protocols.allHealth+(Number(alliance.health)||0),
+            ...protocols,protocolTrace:protocols,unitResearch:alliance.units||{},unitUpgrades:current.unitUpgrades,allAttack:Number(alliance.attack)||0,allHealth:protocols.allHealth+(Number(alliance.health)||0),
             unitEffects:gear.unitEffects,enemyDebuffs:gear.enemyDebuffs
-          },{playerDefense:true,defenderFormation: defenseFormation,attackerIsAlien:true,random:missionRandom({id:attack.id,defender_id:attack.user_id,launched_at:attack.launched_at})});
+          },{playerDefense:true,trace:true,defenderFormation: defenseFormation,attackerIsAlien:true,random:missionRandom({id:attack.id,defender_id:attack.user_id,launched_at:attack.launched_at})});
           const survivors=result.defenderSurvivors||{},wounded={};
           for(const [unit,count] of Object.entries(army)){const lost=Math.max(0,(Number(count)||0)-(Number(survivors[unit])||0));if(lost>0)wounded[unit]=lost;}
           const lost=Object.values(wounded).reduce((sum,count)=>sum+Number(count||0),0);
@@ -2782,7 +2841,9 @@ class DatabaseManager {
           const score=Math.max(0,enemyCount-enemyRemaining);
           db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(survivors),attack.user_id);
           const remaining=Object.values(survivors).reduce((sum,count)=>sum+Number(count||0),0),eliminated=remaining<=0;
-          const battle={level,rounds:result.rounds,report:result.report,enemyUnits:enemyCount,alienCasualties:score,troopsLost:lost,troopsWounded:lost,remaining};
+          const battle={level,rounds:result.rounds,report:result.report,traceVersion:result.traceVersion,
+            knights:{attacker:false,defender:{kind:"cyber",level:this.knightLevelForReport(attack.user_id),equipped}},
+            enemyUnits:enemyCount,alienCasualties:score,troopsLost:lost,troopsWounded:lost,remaining};
           db.prepare("UPDATE saturday_invasion_members SET score=score+?,waves=waves+1,eliminated=?,last_battle=? WHERE run_id=? AND user_id=?").run(score,eliminated?1:0,JSON.stringify(battle),event.id,attack.user_id);
           db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(at,JSON.stringify(battle),attack.id);
           if(eliminated)cancelPendingAttacks(event.id,attack.user_id,at);
@@ -2930,10 +2991,11 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   getMothershipReports(userId) {
-    return db.prepare(`SELECT id, resolved_at, damage, xp, knight_level, army, formation
+    return db.prepare(`SELECT id, resolved_at, damage, xp, knight_level, army, formation, knight_snapshot
       FROM mothership_attacks WHERE user_id=? AND resolved_at IS NOT NULL
-      ORDER BY resolved_at DESC,id DESC LIMIT 50`).all(userId).map(report=>({
-        ...report,army:JSON.parse(report.army),formation:JSON.parse(report.formation)
+      ORDER BY resolved_at DESC,id DESC LIMIT 50`).all(userId).map(({knight_snapshot,...report})=>({
+        ...report,army:JSON.parse(report.army),formation:JSON.parse(report.formation),
+        knights:knight_snapshot?{attacker:JSON.parse(knight_snapshot)}:null
       }));
   }
 
@@ -3545,15 +3607,21 @@ Rewards are distributed per participating player, not once per alliance. / На�
       for(const mission of due){
         const armyData=JSON.parse(mission.army);
         const {fight}=require("../shared/combatEngine");
-        const gear=this.equipmentBonuses(userId),protocols=this.protocolCombatBonuses(userId,gear);
+        const equipped=this.getUserEquipment(userId)?.equippedItems||{};
+        const gear=equipmentCombatBonuses(equipped),protocols=this.protocolCombatBonuses(userId,gear);
         const result=fight(armyData.units,this.getAlienArmy(mission.level),armyData.formation,{
-          ...protocols,unitEffects:gear.unitEffects,enemyDebuffs:gear.enemyDebuffs,
+          ...protocols,protocolTrace:protocols,unitEffects:gear.unitEffects,enemyDebuffs:gear.enemyDebuffs,
           allHealth:protocols.allHealth + (armyData.allianceCombat?.health || 0),
           allAttack:armyData.allianceCombat?.attack || 0,
           unitResearch:armyData.allianceCombat?.units,
           unitUpgrades:armyData.unitUpgrades,
-        });
+        },{trace:true});
         if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
+        result.knights={attacker:{kind:"cyber",level:armyData.cyberKnightLevel||this.knightLevelForReport(userId),equipped},defender:false};
+        result.participants={
+          attacker:this.battleParticipant(userId,armyData.origin),
+          defender:{kind:"alien",level:mission.level,coordinates:armyData.target},
+        };
         const wounded={};
         for(const [unit,count] of Object.entries(armyData.units||{})){
           const saved=Math.floor(Math.max(0,Number(count||0)-Number(result.survivors?.[unit]||0))*0.30);
@@ -4309,7 +4377,7 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   getOrangeEmpireReports(userId) {
-    return orangeEmpireCombat.reports(db,userId,-1);
+    return orangeEmpireCombat.reports(db,userId,-1,true);
   }
 
   getOrangeEmpireCombat(userId) {

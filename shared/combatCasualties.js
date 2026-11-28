@@ -1,4 +1,4 @@
-const owner = (side, group) => side===0 ? "attacker" : group.contingent ? "support:"+group.contingent.id : "defender";
+const owner = (side, group) => side===0 ? "attacker" : group?.contingent ? "support:"+group.contingent.id : "defender";
 
 function trackVolleys(shots, hits, casualties) {
   for (const {side,target,group,appliedDamage} of shots) {

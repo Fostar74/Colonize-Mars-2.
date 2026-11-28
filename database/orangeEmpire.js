@@ -305,4 +305,4 @@ function validAttackArmy(army) {
   return population > 0 && population <= marchLimit;
 }
 
-module.exports = {advance, combatEnabled, eligibleHumanTarget, mapBases, migrate, validAttackArmy};
+module.exports = {advance, combatEnabled, eligibleHumanTarget, mapBases, maxCommanderLevel, migrate, validAttackArmy};
