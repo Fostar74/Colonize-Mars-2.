@@ -1,26 +1,50 @@
 # Password recovery
 
-Issue #149 adds an owner-issued recovery link. Recovery is disabled unless
-`PASSWORD_RECOVERY_ENABLED=true`. There is no public issuance endpoint or email
-sender in this change.
+Password redemption is disabled unless `PASSWORD_RECOVERY_ENABLED=true`.
+Public email requests additionally require `PASSWORD_RECOVERY_EMAIL_ENABLED=true`,
+a trusted `PASSWORD_RECOVERY_ORIGIN` (the HTTPS game origin), and the existing
+Gmail SMTP configuration. Leave the public switch unset until after receipt
+and redemption have been verified with an authorized test inbox.
 
-## Service prerequisites
+## Gmail SMTP
 
-Render reports one existing paid game instance with a disk mounted at
-`/var/data`. Confirm the deployed SQLite path resolves to that disk before
-activation. Main deploys automatically, so review this change on its feature
-branch and wait for owner approval before merging or enabling recovery.
+The owner configured a dedicated Gmail account in Render. The application uses
+`SMTP_HOST=smtp.gmail.com`, `SMTP_PORT=465` (implicit TLS) or `587` (required
+STARTTLS), `SMTP_USER` and `SMTP_PASS`. Keep the app password exclusively in
+the managed secret environment. The sender and TLS certificate are verified
+through the authenticated SMTP connection. No Cloudflare mail or R2 changes
+are required.
 
-Cloudflare Email Service on Workers Free can send to verified destinations using
-HTTPS once an eligible existing domain and sender are configured. That restriction
-prevents general player delivery on the free tier. The Cloudflare dashboard
-required sign-in during verification. Account role, sender onboarding, the
-disabled Add control and delivery to an authorized test address remain unverified.
-R2 is used for backups and provides no email permissions.
+The login page shows “Forgot password?” only when the server can accept
+requests. Responses are generic for known, unknown and rate-limited addresses.
+Each account can have only one active link. The database reserves at most
+two send attempts per account and 40 total in a rolling 24 hours, including
+failed sends. Limits persist across restarts. An active link from a failed
+or interrupted attempt can delay retry by up to 30 minutes. The request API
+also limits peer and global request rates and bounds concurrent SMTP sends.
+Render's ingress can cause users to share a peer limit.
 
-- [Cloudflare Email Service pricing](https://developers.cloudflare.com/email-service/platform/pricing/)
-- [Cloudflare sending setup](https://developers.cloudflare.com/email-service/get-started/send-emails/)
-- [Cloudflare destination verification](https://developers.cloudflare.com/email-service/configuration/destination-addresses/)
+## Controlled delivery check before public activation
+
+1. Obtain approval for the test inbox. Use this PR checkout, an isolated
+   server and a fresh SQLite database with a single synthetic account
+   registered to that inbox. Keep the server private or loopback-only.
+   Provision the SMTP settings through an approved secret environment.
+2. Set both recovery switches only on that isolated instance. Request reset
+   from the login page. Verify the message arrives in the authorized inbox,
+   that it is from the dedicated sender, and that the link targets the
+   expected HTTPS origin. For loopback-only tests, redeem the fragment token
+   on the same isolated server.
+3. Verify the new password works, the old session and password are rejected,
+   and the original player data is intact. Record delivery and redemption
+   results without the password, link, token or recipient address.
+4. Render's production service deploys automatically from main. Wait for
+   review and owner approval before merging, deploying or changing production
+   switches. Verify that production SQLite uses its existing disk mount.
+
+The automated integration test replaces the SMTP transport and exercises
+request, message generation, and redemption with synthetic accounts.
+It does not establish inbox delivery.
 
 ## Private issuance after owner approval
 

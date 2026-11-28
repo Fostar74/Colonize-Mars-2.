@@ -7,6 +7,7 @@ const DatabaseManager = require("../database/database");
 
 const db = new DatabaseManager();
 router.post("/password-reset", require("./passwordRecovery")(db));
+require("./passwordRecoveryEmail")(router, db);
 const tokenHash = token => crypto.createHash("sha256").update(token).digest("hex");
 const authorizationHash = req => {
   const match = /^Bearer ([a-f0-9]{64})$/.exec(req.get("authorization") || "");

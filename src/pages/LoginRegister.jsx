@@ -24,6 +24,9 @@ function LoginRegister() {
   const { t, label: localLabel } = useLanguage();
   const navigate = useNavigate();
   const {state} = useLocation();
+  const [recoveryAvailable, setRecoveryAvailable] = useState(false);
+  const [requestingReset, setRequestingReset] = useState(false);
+  const [recoveryStatus, setRecoveryStatus] = useState(null);
   const [isRegister, setIsRegister] = useState(false);
   const [email, setEmail] = useState("");
   const [username, setUsername] = useState("");
@@ -51,6 +54,34 @@ function LoginRegister() {
       window.clearInterval(clockTimer);
     };
   }, []);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch("/password-reset/request", {signal: controller.signal})
+      .then(response => response.ok ? response.json() : null)
+      .then(result => setRecoveryAvailable(result?.enabled === true))
+      .catch(() => {});
+    return () => controller.abort();
+  }, []);
+
+  async function requestPasswordReset(event) {
+    event.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
+    setRecoveryStatus(null);
+    try {
+      const response = await fetch("/password-reset/request", {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify({email}),
+      });
+      setRecoveryStatus(response.status === 202 ? "received" : "unavailable");
+    } catch {
+      setRecoveryStatus("unavailable");
+    } finally {
+      setSubmitting(false);
+    }
+  }
 
   const handleSubmit = async e => {
     e.preventDefault();
@@ -130,11 +161,23 @@ function LoginRegister() {
         <section className="login-panel" aria-label={t("Account access", "Достъп до акаунта")}>
           <div className="login-panel-heading">
             <span className="login-panel-kicker">{t("COMMANDER ACCESS", "ДОСТЪП НА КОМАНДИРА")}</span>
-            <h2>{isRegister ? t("Join the colony", "Присъедини се към колонията") : t("Welcome back", "Добре дошъл отново")}</h2>
-            <p>{isRegister ? t("Create your account and take your place on Mars.", "Създай акаунт и заеми мястото си на Марс.") : t("Your colony is waiting for you.", "Колонията те очаква.")}</p>
+            <h2>{requestingReset ? t("Recover your account", "Възстанови достъпа си") : isRegister ? t("Join the colony", "Присъедини се към колонията") : t("Welcome back", "Добре дошъл отново")}</h2>
+            <p>{requestingReset ? t("Enter the email you registered with.", "Въведи имейла, с който се регистрира.") : isRegister ? t("Create your account and take your place on Mars.", "Създай акаунт и заеми мястото си на Марс.") : t("Your colony is waiting for you.", "Колонията те очаква.")}</p>
           </div>
 
-          <form onSubmit={handleSubmit} className="login-form">
+          {requestingReset ? <form onSubmit={requestPasswordReset} className="login-form">
+            <label htmlFor="recovery-email">{t("Registered email", "Имейл за регистрация")}</label>
+            <input id="recovery-email" type="email" autoComplete="email" required maxLength={254}
+              value={email} onChange={event => setEmail(event.target.value)} />
+            <button type="submit" className="primary-button" disabled={submitting}>{t("Send reset link", "Изпрати връзка за смяна")}</button>
+            <button type="button" className="secondary-button" disabled={submitting} onClick={() => {
+              setRequestingReset(false);
+              setRecoveryStatus(null);
+            }}>{t("Back to login", "Обратно към входа")}</button>
+            {recoveryStatus && <p role="status">{recoveryStatus === "received"
+              ? t("If an account matches, you’ll receive a reset link. Check your inbox and spam folder.", "Ако има акаунт с този имейл, ще получиш връзка за смяна на паролата. Провери входящата поща и папката за спам.")
+              : t("Password recovery is temporarily unavailable.", "Възстановяването на паролата временно не е достъпно.")}</p>}
+          </form> : <form onSubmit={handleSubmit} className="login-form">
             {isRegister && (
               <input type="email" placeholder={t("Email", "Имейл")} value={email} required autoComplete="email" onChange={e => setEmail(e.target.value)} />
             )}
@@ -152,8 +195,13 @@ function LoginRegister() {
             <button type="button" className="secondary-button" disabled={submitting} onClick={() => { setIsRegister(!isRegister); setPassword(""); setMessage(""); }}>
               {isRegister ? t("Already have an account? Log in", "Вече имаш акаунт? Вход") : t("New to Mars? Create an account", "Нов си на Марс? Създай акаунт")}
             </button>
-          </form>
-          {message && <p role="status" className="login-message">{localLabel(message)}</p>}
+            {!isRegister && recoveryAvailable && <button type="button" className="secondary-button" disabled={submitting} onClick={() => {
+              setRequestingReset(true);
+              setPassword("");
+              setMessage("");
+            }}>{t("Forgot password?", "Забравена парола?")}</button>}
+          </form>}
+          {!requestingReset && message && <p role="status" className="login-message">{localLabel(message)}</p>}
         </section>
       </div>
 

@@ -1,4 +1,4 @@
-const {recoveryEnabled, initializeRecovery, redeemRecoveryToken} = require("./passwordRecovery");
+const {recoveryEnabled, initializeRecovery, reserveEmailReset, redeemRecoveryToken} = require("./passwordRecovery");
 const migrateAllianceMines = require("./allianceMineSchema");
 const {hour, constructionTarget, constructionApUnit, firstTime, gatheringStart, cargoFullAt, settleWork} = require("./allianceMineWork");
 const marketProducts = require("../src/shared/allianceMarket");
@@ -583,6 +583,10 @@ class DatabaseManager {
         SELECT ?,id,? FROM users WHERE id=? AND password=COALESCE(?,password)`)
         .run(tokenHash,expiresAt,userId,verifiedPasswordHash ?? null).changes === 1;
     })();
+  }
+
+  reservePasswordResetEmail(email) {
+    return reserveEmailReset(db, email);
   }
 
   hasActivePasswordReset(hash) {

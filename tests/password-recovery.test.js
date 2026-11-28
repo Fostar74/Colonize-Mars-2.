@@ -1,7 +1,7 @@
 const assert = require("node:assert/strict");
 const {test} = require("node:test");
 const {once} = require("node:events");
-const {mkdtempSync, rmSync} = require("node:fs");
+const {mkdtempSync, rmSync, readFileSync} = require("node:fs");
 const {join} = require("node:path");
 const {tmpdir} = require("node:os");
 const {spawn, execFileSync} = require("node:child_process");
@@ -11,14 +11,41 @@ const {hashToken} = require("../database/passwordRecovery");
 test("private recovery link resets only the fixture account and revokes its sessions", async () => {
   const dir = mkdtempSync(join(tmpdir(), "cm149-"));
   const env = {...process.env, DATABASE_PATH: join(dir, "game.sqlite"), ORANGE_EMPIRE_ENABLED: "false"};
+  const smtpCapture = join(dir, "outbox.jsonl");
+  Object.assign(env, {
+    SMTP_HOST: "smtp.gmail.com", SMTP_PORT: "465", SMTP_USER: "sender@example.test",
+    SMTP_PASS: "fixture-only", PASSWORD_RECOVERY_ORIGIN: "https://game.example.test",
+  });
   let child, sql, origin;
-  async function start(enabled) {
+  const outbox = () => {
+    try {
+      return readFileSync(smtpCapture, "utf8").trim().split("\n").map(line => JSON.parse(line));
+    } catch (error) {
+      if (error.code === "ENOENT") return [];
+      throw error;
+    }
+  };
+  async function start(enabled, emailEnabled = false) {
     env.PASSWORD_RECOVERY_ENABLED = String(enabled);
+    env.PASSWORD_RECOVERY_EMAIL_ENABLED = String(emailEnabled);
     child = spawn(process.execPath, ["-e", `
+      const assert = require("node:assert/strict");
+      require("nodemailer").createTransport = options => {
+        assert.equal(options.host, "smtp.gmail.com");
+        assert.equal(options.port, 465);
+        assert.equal(options.secure, true);
+        assert.equal(options.requireTLS, true);
+        assert.equal(options.tls.rejectUnauthorized, true);
+        assert.equal(options.auth.user, "sender@example.test");
+        assert.equal(options.auth.pass, "fixture-only");
+        return {sendMail: async message => require("node:fs").appendFileSync(
+          process.env.TEST_OUTBOX, JSON.stringify(message) + "\\n"
+        )};
+      };
       const express = require("express");
       const app = express().use(express.json()).use(require("./routes/auth"));
       const server = app.listen(0, "127.0.0.1", () => console.log("PORT=" + server.address().port));
-    `], {env, stdio: ["ignore", "pipe", "inherit"]});
+    `], {env: {...env, TEST_OUTBOX: smtpCapture}, stdio: ["ignore", "pipe", "inherit"]});
     origin = await new Promise((resolve, reject) => {
       child.once("exit", code => reject(new Error("Fixture server exited " + code)));
       child.stdout.on("data", chunk => {
@@ -55,6 +82,8 @@ test("private recovery link resets only the fixture account and revokes its sess
   };
   try {
     await start(false);
+    assert.deepEqual(await (await request("/password-reset/request")).json(), {enabled: false});
+    assert.equal((await request("/password-reset/request", {email: identifier})).status, 404);
     const missing = await reset("a".repeat(64));
     assert.equal(missing.status, 404);
     assert.equal(missing.headers.get("cache-control"), "no-store");
@@ -106,6 +135,39 @@ test("private recovery link resets only the fixture account and revokes its sess
     const throttled = await reset(token);
     assert.equal(throttled.status, 429);
     assert.ok(Number(throttled.headers.get("retry-after")) > 0);
+    assert.deepEqual(await (await request("/password-reset/request")).json(), {enabled: false});
+    await stop();
+
+    await start(true, true);
+    assert.deepEqual(await (await request("/password-reset/request")).json(), {enabled: true});
+    for (const email of ["missing@example.test", "  FIXTURE@example.test  ", "fixture@example.test"]) {
+      const response = await request("/password-reset/request", {email});
+      assert.equal(response.status, 202);
+      assert.equal(response.headers.get("cache-control"), "no-store");
+      assert.deepEqual(await response.json(), {code: "request-received"});
+    }
+    const messages = outbox();
+    assert.equal(messages.length, 1);
+    assert.deepEqual(messages[0].to, {address: identifier});
+    const link = new URL(messages[0].text.split("\n").at(-1));
+    assert.equal(link.origin, "https://game.example.test");
+    assert.equal(link.search, "");
+    const emailToken = new URLSearchParams(link.hash.split("?")[1]).get("token");
+    assert.equal((await reset(emailToken, original)).status, 204);
+    assert.equal((await login(updated)).status, 401);
+    assert.equal((await login(original)).status, 200);
+    assert.equal((await request("/get-progress/" + userId, null, after.token)).status, 401);
+
+    // Simulate another attempt already made earlier in the rolling window.
+    const addAttempt = sql.prepare("INSERT INTO password_reset_sends(user_id, attempted_at) VALUES (?, ?)");
+    addAttempt.run(userId, Date.now());
+    await stop();
+    await start(true, true);
+    assert.equal((await request("/password-reset/request", {email: identifier})).status, 202);
+    assert.equal(outbox().length, 1);
+    for (let i = 2; i < 40; i++) addAttempt.run(userId, Date.now());
+    assert.equal((await request("/password-reset/request", {email: "other@example.test"})).status, 202);
+    assert.equal(outbox().length, 1);
   } finally {
     if (child && child.exitCode === null) await stop();
     sql?.close();
