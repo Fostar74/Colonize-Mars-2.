@@ -33,7 +33,7 @@ function createGroups(army,types,formation){
   if(Array.isArray(formation)&&formation.length){
     for(const entry of formation){
       if(!entry||!types[entry.unit]||!Number.isSafeInteger(entry.count)||entry.count<=0||!Number.isInteger(entry.row)||entry.row<1||entry.row>4)throw Error("Invalid formation.");
-      groups.push({unit:entry.unit,count:entry.count,row:entry.row,original:entry.count,...types[entry.unit]});
+      groups.push({unit:entry.unit,count:entry.count,row:entry.row,column:Number.isInteger(entry.column)&&entry.column>=0&&entry.column<7?entry.column:null,original:entry.count,...types[entry.unit]});
     }
     for(const [unit,count] of Object.entries(army))if(groups.filter(g=>g.unit===unit).reduce((a,g)=>a+g.count,0)!==count)throw Error("Formation does not match selected troops.");
   } else {
@@ -82,11 +82,33 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     const healthMultiplier=Math.max(.01,1+((Number(ownerBonuses.allHealth)||0)+(group.contingent?.special.health??specialBonuses[side].health)+(research?.health||0)+(group.category==="infantry"?(Number(ownerBonuses.infantryHealth)||0):0))/100);
     group.hp=Math.max(1,group.hp+flatHealth)*healthMultiplier;
   }
+  const traceGroup = (group,index) => ({
+    id:index,unit:group.unit,row:group.row,column:group.column??null,
+    count:group.count,contingentId:group.contingent?.id??null,
+  });
+  const protocolFields=["rangedAttack","allHealth","infantryAttack","infantryHealth","desertion","dodge","revive","mobileAttack","artilleryAttack"];
+  const traceEffects = () => sides.map((groups,side) => {
+    const bonuses=new Map();
+    for(const group of groups){
+      if(group.count<=0)continue;
+      const id=group.contingent?.id??null;
+      if(bonuses.has(id))continue;
+      const owner=bonusesForGroup(side,group)||{};
+      const source=owner.protocolTrace||owner;
+      bonuses.set(id,{contingentId:id,values:Object.fromEntries(protocolFields.filter(key=>Number(source[key])>0).map(key=>[key,source[key]]))});
+    }
+    return [...bonuses.values()];
+  });
   const report=[];let rounds=0;
   const alive=side=>side.some(g=>g.count>0);
   while(alive(sides[0])&&alive(sides[1])&&rounds<(options.maxRounds??80)){
     rounds++;
     const round={round:rounds,events:[]};
+    if(options.trace){
+      round.start=sides.map(groups=>groups.map(traceGroup));
+      round.protocols=traceEffects();
+      round.losses=[{},{}];
+    }
     applyDesertion(sides,(side,group)=>group.contingent ? group.contingent.bonuses : playerBonusesForSide(side),round.events);
     for(const group of sides[0])group.roundStartCount=group.count;
     for(const group of sides[1])if(group.contingent)group.roundStartCount=group.count;
@@ -121,6 +143,12 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         target.count-=killed;
         casualties.set(target,killed);
       }
+      if(options.trace)for(const [target,killed] of casualties){
+        if(!killed)continue;
+        const side=sides[0].includes(target)?0:1;
+        const index=sides[side].indexOf(target);
+        round.losses[side][index]=(round.losses[side][index]||0)+killed;
+      }
       if(options.trackCasualties)trackVolleys(shots,hits,casualties);
       // Distribute actual casualties among contributing volleys. The sum of
       // per-shot kills equals the casualties applied to each target group.
@@ -141,7 +169,11 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
           shot.kills++;remainder--;
         }
       }
-      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?(attackerIsAlien?"Alien Base":"Player"):(defenderIsPlayer?"Player Defense":"Alien Base"),unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:Math.round(shot.appliedDamage??shot.damage),dodged:!!shot.dodged,evadedPercent:shot.evadedPercent||0,kills:shot.kills});
+      for(const shot of shots)round.events.push({phase:step,attacker:shot.side===0?(attackerIsAlien?"Alien Base":"Player"):(defenderIsPlayer?"Player Defense":"Alien Base"),unit:shot.group.unit,units:shot.count,target:shot.target.unit,damage:Math.round(shot.appliedDamage??shot.damage),dodged:!!shot.dodged,evadedPercent:shot.evadedPercent||0,kills:shot.kills,...(options.trace?{
+        sourceSide:shot.side,sourceGroup:sides[shot.side].indexOf(shot.group),
+        targetSide:1-shot.side,targetGroup:sides[1-shot.side].indexOf(shot.target),
+        appliedDamage:shot.appliedDamage,phaseTargetLoss:casualties.get(shot.target)||0,
+      }:{})});
     }
     // Restore a percentage of casualties at the end of each round, capped
     // at the original deployed group size. Fractions accumulate per group.
@@ -156,7 +188,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         const lostThisRound=Math.max(0,(group.roundStartCount??eligible)-group.count);
         group.reviveCarry=(group.reviveCarry||0)+lostThisRound*reviveRate;
         const restored=Math.min(missing,Math.floor(group.reviveCarry+1e-9));
-        if(restored>0){group.count+=restored;group.reviveCarry-=restored;round.events.push({phase:4,attacker:"Nano Regeneration",unit:group.unit,restored});}
+        if(restored>0){group.count+=restored;group.reviveCarry-=restored;round.events.push({phase:4,attacker:"Nano Regeneration",unit:group.unit,restored,...(options.trace?{sourceSide:side,sourceGroup:sides[side].indexOf(group),rate:reviveRate*100}:{})});}
       }
     }
     // Shift only when the frontmost occupied row is eliminated.
@@ -165,6 +197,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
         for(const g of side)if(g.count>0)g.row=Math.max(1,g.row-1);
       }
     }
+    if(options.trace)round.end=sides.map(groups=>groups.map(group=>group.count));
     report.push(round);
   }
   // A dispatched battle counts as at least one round, even against an empty defense.
@@ -179,6 +212,7 @@ function fight(attackerArmy,defenderArmy,formation,bonuses={},options={}){
     survivors:countArmy(attackerArmy,sides[0],returned),
     activeSurvivors:countArmy(attackerArmy,sides[0],group=>group.count),
     defenderSurvivors:countArmy(defenderArmy,sides[1].filter(group=>!group.contingent),returned),
+    ...(options.trace&&report[0]?.start?{traceVersion:1}:{}),
     defendersRemaining:sides[1].reduce((sum,group)=>sum+group.count,0),provisional:true,
     ...(options.trackCasualties?{creditedKills:creditedKills(sides,options.hospitalSides||[])}:{}),
     ...(options.defenderContingents?{contingentSurvivors}:{}),

@@ -1,14 +1,25 @@
+import BattleReplay from "../shared/BattleReplay";
 import DesertionReport from "../shared/DesertionReport";
 import React, { useEffect, useState } from "react";
 import { useLanguage } from "../language";
 import { useNavigate } from "react-router-dom";
-import alienBases from "../shared/alienBases";
+import BattleKnights from "../shared/BattleKnights";
 
 const api=(process.env.REACT_APP_API_URL||(window.location.hostname==="localhost"?"http://localhost:3001":window.location.origin)).replace(/\/$/,"");
 const auth=()=>({Authorization:"Bearer "+sessionStorage.getItem("authToken")});
 const reportReadStorageKey=userId=>`colonize-mars-read-battle-reports:${userId}`;
 const countUnits=units=>Object.values(units||{}).reduce((total,count)=>total+(Number(count)||0),0);
 const diff=(initial,remaining)=>Object.fromEntries(Object.entries(initial||{}).map(([unit,count])=>[unit,Math.max(0,(Number(count)||0)-(Number(remaining?.[unit])||0))]).filter(([,count])=>count>0));
+
+
+function FullBattleReport({result}) {
+  const {t}=useLanguage();
+  const [open,setOpen]=useState(false);
+  return <details onToggle={event=>setOpen(event.currentTarget.open)}>
+    <summary>{t("Full report","Пълен доклад")}</summary>
+    {open&&<><BattleKnights knights={result.knights} /><BattleReplay result={result.replay||result} /></>}
+  </details>;
+}
 
 
 export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
@@ -123,6 +134,9 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       {!m.incoming&&!m.result.recalled&&m.result.defenderSurvivors&&army(t("Enemy surviving defenders","Оцелели защитници на противника"),m.result.defenderSurvivors)}
       {m.result.error&&<p>{localLabel(m.result.error)}</p>}
       <DesertionReport report={m.result.report} />
+    <FullBattleReport result={m.result} />
+    {shareControls("alien",m.id)}
+      {!m.result.recalled&&!m.result.shielded&&<FullBattleReport result={m.result} />}
       {shareControls("player",m.id)}}
     </article>;
   };
@@ -226,6 +240,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
             <h3>{t("The Orange Empire","Оранжевата империя")} · {report.commander_id===10?t("Emperor","Император"):t("Commander","Командир")+" "+report.commander_id} · {coordinateLink(report.x,report.y)}</h3>
             <p>{new Date(report.arrives_at).toLocaleString(locale)} · {report.result.cancelled?t("Attack cancelled","Нападението е отменено"):report.result.victory?t("Orange Empire victory","Победа за Оранжевата империя"):t("Defense held","Защитата устоя")}</p>
             <DesertionReport report={report.result.report} />
+            {!report.result.cancelled&&<FullBattleReport result={report.result} />}
             {report.result.loot&&<p><strong>{t("Resources plundered","Отнети ресурси")}:</strong> {lootSummary(report.result)}</p>}
           </article>)}
         </details>}

@@ -6,7 +6,7 @@ import {rarityUnlockLevel,protocolLabels,protocolRanges,unitRanges} from "../sha
 import GameProgressManager from "../utils/gameProgress";
 import cyberKnightImage from "../images/cyber-knight-expanded.jpg";
 
-function PlasmaGearIcon({slot}) {
+export function PlasmaGearIcon({slot}) {
   const common={fill:"none",stroke:"currentColor",strokeWidth:2.4,strokeLinecap:"round",strokeLinejoin:"round"};
   const shapes={
     HELMET:<><path d="M14 31a18 18 0 0 1 36 0v8H14z"/><path d="M18 29h28l-5 8H23z"/><path d="M20 43h24M25 15l7-5 7 5"/></>,

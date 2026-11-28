@@ -871,7 +871,7 @@ function Map() {
         return;
       }
       const base=(process.env.REACT_APP_API_URL||window.location.origin).replace(/\/$/,"");
-      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit]}));
+      const formation=Object.entries(selected).map(([unit,count])=>({unit,count,row:formationRows[unit],column:formationRows.columns?.[unit]}));
       const payload=isEspionage ? {userId:sessionStorage.getItem("userId"),quantity:Number(marchUnits["Rover Scout"]),target:{username:marchDraft.target.username,x:marchDraft.target.x,y:marchDraft.target.y}}
         : isSupport
         ? {userId:Number(sessionStorage.getItem("userId")),recipientId:Number(marchDraft.target.user_id),units:selected,orangeEmpireAttackId:marchDraft.target.orangeEmpireAttackId}

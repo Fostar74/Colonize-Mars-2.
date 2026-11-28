@@ -1,3 +1,4 @@
+import SharedBattleReport from "../shared/SharedBattleReport";
 import PlayerAvatar from "../shared/PlayerAvatar";
 import React, {useEffect,useState} from "react";
 import {localizedMessageBody} from "../shared/localizedMessages";
@@ -82,6 +83,7 @@ export default function AllianceMessages({api,canBroadcast,markDisplayed,playerA
       <PlayerAvatar player={{id:message.senderId,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}} size={26} />{" "}<strong>{playerAction?playerAction({id:message.senderId,username:message.sender,avatarId:message.senderAvatarId,avatarVersion:message.senderAvatarVersion}):message.sender}</strong>
       {" · "}<time dateTime={new Date(message.sentAt).toISOString()}>{new Date(message.sentAt).toLocaleString(language)}</time>
       <div style={{whiteSpace:"pre-wrap",overflowWrap:"anywhere"}}>{localizedMessageBody(message.body,message.messageType,language,localLabel)}</div>
+        {!!message.hasBattleReport&&<SharedBattleReport messageId={message.id} api={api} />}
     </article>)}
     {canBroadcast&&<form onSubmit={send} style={{display:"grid",gap:8,marginTop:12}}>
       <label htmlFor="alliance-broadcast">{t("Message to all alliance members","Съобщение до всички членове на алианса")}</label>

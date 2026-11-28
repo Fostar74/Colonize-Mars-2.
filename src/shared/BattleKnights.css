@@ -1,0 +1,13 @@
+.battle-knights { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit,minmax(min(100%,22rem),1fr)); }
+.battle-knight-layout { display: grid; grid-template-columns: minmax(0,1fr) minmax(0,1.2fr) minmax(0,1fr); gap: 5px; align-items: start; text-align: center; }
+.battle-knight-layout img { display: block; width: 100%; border-radius: 8px; }
+.battle-knight-slots { display: grid; gap: 5px; }
+.battle-knight-slot { padding: 4px; border: 1px solid #6585a0; border-radius: 5px; color: var(--rarity,#c9e2f2); overflow-wrap: anywhere; }
+.battle-knight-slot summary { cursor: pointer; }
+.battle-knight-slot .plasma-gear-icon { display: block; margin: auto; width: 26px; height: 26px; }
+.battle-knight-slot small { display: block; }
+.battle-replay-scroll { overflow-x: auto; }
+.battle-replay-grid { display: grid; grid-template-columns: repeat(7,minmax(4.5rem,1fr)); gap: 3px; min-width: 33rem; }
+.battle-replay-cell { min-height: 3.2rem; border: 1px solid #53718b; border-radius: 4px; padding: 3px; text-align: center; font-size: .78rem; }
+.battle-replay-loss { color: #ff9595; }
+.battle-replay li { margin-block: 5px; }

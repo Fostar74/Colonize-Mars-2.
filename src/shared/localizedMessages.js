@@ -1,11 +1,12 @@
 // Recognize stored game templates at display time. Ordinary player text stays intact.
 const battleHead = "⚔️ Battle report / Боен доклад #";
+const alienHead = "⚔️ Alien base report / Доклад за извънземна база #";
 const scoutHead = "🔎 Espionage / Шпионаж #";
 const shipHead = "ATTACK THE ALIEN COMMAND SHIP · FINAL RESULTS / АТАКУВАЙ КОМАНДНИЯ КОРАБ НА ИЗВЪНЗЕМНИТЕ · ФИНАЛНИ РЕЗУЛТАТИ";
 const invasionHead = "ALIEN INVASION · FINAL RESULTS / ОКОНЧАТЕЛНО КЛАСИРАНЕ";
 
 const reportFields = {
-  Attackers:"Нападатели", "Attacker survivors":"Оцелели нападатели",
+  "Alien Base level":"Ниво на извънземна база", Attackers:"Нападатели", "Attacker survivors":"Оцелели нападатели",
   "Defender survivors":"Оцелели защитници", Loot:"Плячка",
   "Unprotected resources":"Незащитени ресурси", Defenders:"Защитници", Buildings:"Сгради",
 };
@@ -26,10 +27,11 @@ export function localizedMessageBody(body, kind, language, label) {
     return body.startsWith("Trade received from ") && index >= 0
       ? select(body.slice(0,index),body.slice(index+3)) : body;
   }
-  if ((body.startsWith(battleHead) && body.includes("\nAttacker survivors / Оцелели нападатели:")) ||
+  if (((body.startsWith(battleHead) || body.startsWith(alienHead)) && body.includes("\nAttacker survivors / Оцелели нападатели:")) ||
       (body.startsWith(scoutHead) && body.includes("\nDefenders / Защитници:"))) {
     return body.split("\n").map(line=>{
       if (line.startsWith(battleHead)) return select("⚔️ Battle report #","⚔️ Боен доклад №")+line.slice(battleHead.length);
+      if (line.startsWith(alienHead)) return select("⚔️ Alien base report #","⚔️ Доклад за извънземна база №")+line.slice(alienHead.length);
       if (line.startsWith(scoutHead)) return select("🔎 Espionage #","🔎 Шпионаж №")+line.slice(scoutHead.length);
       for (const [en,translation] of Object.entries(reportFields)) {
         const prefix = en+" / "+translation+":";
