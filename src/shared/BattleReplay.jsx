@@ -56,16 +56,33 @@ export default function BattleReplay({result}) {
       </p>)}
     </div>)}
     {formation(0)}
+    {round.grid?.startHealth>0&&<div className="battle-replay-grid-barrier">
+      {label("Defense Grid")} · {t("Level","Ниво")} {round.grid.level} · {count(round.grid.startHealth)} HP
+      {" → "}{round.grid.endHealth>0?count(round.grid.endHealth)+" HP":t("Destroyed","Разрушена")}
+    </div>}
     {formation(1)}
     <h4>{t("Units restored at round end","Възстановени единици в края на рунда")}</h4>
     {recoveries.length ? recoveries.map((event,index)=><p key={index}>{sideName(event.sourceSide)} · {battleEventText(event,label,t)} ({count(event.rate)}%)</p>) : <p>—</p>}
     <button type="button" aria-expanded={analyse} onClick={()=>setAnalyse(!analyse)}>{analyse?t("Hide round analysis","Скрий анализа на рунда"):t("Show round analysis","Покажи анализа на рунда")}</button>
     {analyse&&<ol>{round.events.map((event,index)=><li key={index}>
-      {event.sourceGroup!=null&&event.targetGroup!=null
+      {event.kind==="grid-attack"
+        ? <>{sideName(0)} · {coordinate(round.start[0][event.sourceGroup])} · {count(event.units)} {label(event.unit)}
+          {" → "}{label("Defense Grid")} · {t("Damage","Щети")} {count(event.appliedDamage)}
+          {event.destroyed&&" · "+t("Destroyed","Разрушена")}</>
+        : event.kind==="grid-shot"
+        ? <>{label("Defense Grid")} #{event.turret} · {count(event.baseDamage)} {t("base damage","базови щети")}
+          {" → "}{coordinate(round.start[0][event.targetGroup])} · {battleEventText(event,label,t)}</>
+        : event.kind==="grid-no-target"
+        ? <>{label("Defense Grid")} #{event.turret} · {t("No eligible target","Няма допустима цел")}</>
+        : event.kind==="no-target"
+        ? <>{sideName(event.sourceSide)} · {coordinate(round.start[event.sourceSide][event.sourceGroup])} · {count(event.units)} {label(event.unit)} · {t("No eligible target","Няма допустима цел")}</>
+        : event.sourceGroup!=null&&event.targetGroup!=null
         ? <>{sideName(event.sourceSide)} · {coordinate(round.start[event.sourceSide][event.sourceGroup])} · {count(event.units)} {label(event.unit)}
           {" → "}{sideName(event.targetSide)} · {coordinate(round.start[event.targetSide][event.targetGroup])} · {label(event.target)}
-          {" · "}{t("Damage","Щети")} {count(event.appliedDamage)} · {t("Target losses in this phase","Загуби на целта през фазата")} {count(event.phaseTargetLoss)}
-          {event.dodged&&" · "+t("Evaded","Избегнат удар")+" "+event.evadedPercent+"%"}</>
+          {" · "}{t("Damage","Щети")} {count(event.appliedDamage)} · {t("Target losses","Загуби на целта")} {count(event.targetLoss??event.phaseTargetLoss)}
+          {event.dodged&&" · "+t("Evaded","Избегнат удар")+" "+event.evadedPercent+"%"}
+          {event.segments>1&&" · "+t("Subgroup","Подгрупа")+" "+event.segment+"/"+event.segments}
+          {event.eligibleTargets>1&&" · "+t("Random target","Случайна цел")+" "+(event.targetIndex+1)+"/"+event.eligibleTargets}</>
         : battleEventText(event,label,t)}
     </li>)}</ol>}
   </section>;

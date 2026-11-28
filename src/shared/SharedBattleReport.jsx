@@ -1,3 +1,4 @@
+import BattleReportHeader from "./BattleReportHeader";
 import React, {useState} from "react";
 import {useLanguage} from "../language";
 import BattleKnights from "./BattleKnights";
@@ -24,6 +25,6 @@ export default function SharedBattleReport({messageId,api}) {
     <summary>{t("Full report","Пълен доклад")}</summary>
     {state?.loading&&<p role="status">{t("Loading report…","Зареждане на доклада…")}</p>}
     {state?.error&&<p role="alert">{t("Report unavailable.","Докладът не е наличен.")}</p>}
-    {state?.result&&<><BattleKnights knights={state.result.knights} /><BattleReplay result={state.result} /></>}
+    {state?.result&&<><BattleReportHeader result={state.result} /><BattleKnights knights={state.result.knights} /><BattleReplay result={state.result} /></>}
   </details>;
 }

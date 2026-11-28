@@ -1,7 +1,8 @@
+import PlayerAvatar from "./PlayerAvatar";
 import React from "react";
 import {useLanguage} from "../language";
 import {PlasmaGearIcon} from "../pages/CyberKnightPanel";
-import {describeEquipmentEffect} from "./cyberKnightEquipment";
+import {protocolLabels} from "./cyberKnightEquipment";
 import cyberKnight from "../images/cyber-knight-expanded.jpg";
 import "./BattleKnights.css";
 
@@ -16,6 +17,19 @@ const names = {cyber:"Cyber Knight",inferno:"Inferno Knight",emperor:"Emperor In
 export default function BattleKnights({knights}) {
   const {t,label,language} = useLanguage();
   if (!knights) return <p>{t("Knight equipment was not recorded for this battle.","За тази битка няма запис на екипировката на рицарите.")}</p>;
+  const effectText = effect => {
+    const target=protocolLabels[effect.target]?.[language==="bg"?1:0]||label(effect.target);
+    const value=Number(effect.value)||0;
+    const descriptions={
+      unitAttack:[t("Attack","Атака"),"+"],unitHealth:[t("Health","Здраве"),"+"],
+      enemyUnitAttack:[t("Enemy attack","Атака на противника"),"−"],
+      enemyUnitHealth:[t("Enemy health","Здраве на противника"),"−"],
+      protocolBoost:[t("Protocol","Протокол"),"+","%"],
+      enemyProtocol:[t("Opponent protocol","Противников протокол"),"−","%"],
+    };
+    const [kind,sign,suffix=""]=descriptions[effect.kind]||["",""];
+    return [kind,target].filter(Boolean).join(" ")+" "+sign+value+suffix;
+  };
   const column = (position, knight) => <div className="battle-knight-slots">
     {position.map(slot => {
       const item = knight.equipped?.[slot];
@@ -25,7 +39,7 @@ export default function BattleKnights({knights}) {
         label(item.rarity),
         t("Level","Ниво")+" "+(item.level??item.levelRequirement??"—"),
         "★".repeat(Math.min(5,Number(item.stars)||0)),
-        ...((item.effects||[]).length ? item.effects.map(effect=>label(describeEquipmentEffect(effect,language))) : (item.stats||[]).map(label)),
+        ...((item.effects||[]).length ? item.effects.map(effectText) : (item.stats||[]).map(label)),
       ].filter(Boolean);
       return <details className={"battle-knight-slot rarity-"+String(item.rarity||"").toLowerCase()} key={slot}>
         <summary title={details.join(" · ")}><PlasmaGearIcon slot={slot} /><span>{slotName}</span></summary>
@@ -38,7 +52,9 @@ export default function BattleKnights({knights}) {
       <h4>{side==="attacker"?t("Attacking knight","Нападащ рицар"):t("Defending knight","Защитаващ рицар")} · {names[knight.kind]} · {t("Level","Ниво")} {knight.level}</h4>
       <div className="battle-knight-layout">
         {column(left,knight)}
-        {knight.kind==="cyber" ? <img src={cyberKnight} alt={names[knight.kind]} /> : <p>{t("Portrait unavailable","Портретът не е наличен")}</p>}
+        {knight.kind==="cyber" ? <img src={cyberKnight} alt={names[knight.kind]} /> : <div title={t("Orange Empire commander artwork","Изображение на командир от Оранжевата империя")}>
+          <PlayerAvatar player={{npc:true,commanderId:knight.commanderId,emperor:knight.kind==="emperor"}} size={100} />
+        </div>}
         {column(right,knight)}
       </div>
     </section>)}

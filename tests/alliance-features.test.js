@@ -232,7 +232,10 @@ test("alliance mine, protocol reset, and protected resources use persistent tran
         assert.equal(result.totalLoot,0);
         const report=game.getResourceGatheringReports(defender.userId)[0];
         assert.equal(report.returnedAt,cargoFull);
-        return result;
+        const {participants,...outcome}=result;
+        assert.equal(participants.attacker.name,name+"Raider");
+        assert.equal(participants.defender.name,name+"Defender");
+        return outcome;
       };
       assert.deepEqual(scenario("Late",true),scenario("OnTime",false));
     });

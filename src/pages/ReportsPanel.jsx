@@ -1,3 +1,5 @@
+import BattleArmySummary from "../shared/BattleArmySummary";
+import BattleReportHeader from "../shared/BattleReportHeader";
 import BattleReplay from "../shared/BattleReplay";
 import DesertionReport from "../shared/DesertionReport";
 import React, { useEffect, useState } from "react";
@@ -17,7 +19,7 @@ function FullBattleReport({result}) {
   const [open,setOpen]=useState(false);
   return <details onToggle={event=>setOpen(event.currentTarget.open)}>
     <summary>{t("Full report","Пълен доклад")}</summary>
-    {open&&<><BattleKnights knights={result.knights} /><BattleReplay result={result.replay||result} /></>}
+    {open&&<><BattleReportHeader result={result} /><BattleKnights knights={result.knights} /><BattleReplay result={result.replay||result} /></>}
   </details>;
 }
 
@@ -47,8 +49,8 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       .then(r=>r.ok?r.json():{players:[]}).then(data=>{if(active)setRecipientMatches(data.players||[]);}).catch(()=>{if(active)setRecipientMatches([]);});
     return()=>{active=false;};
   },[sharing,shareScope,recipientQuery,userId]);
-  const shareControls=(type,id)=><div style={{marginTop:10}}>
-    <button type="button" onClick={()=>{setSharing(sharing?.type===type&&sharing?.id===id?null:{type,id});setShareScope("alliance");setRecipientQuery("");setSelectedRecipient("");setShareNotice("");}}>{t("Share","Сподели")}</button>
+  const shareControls=(type,id)=><div>
+    <button type="button" onClick={()=>{setSharing(sharing?.type===type&&sharing?.id===id?null:{type,id});setShareScope("alliance");setRecipientQuery("");setSelectedRecipient("");setShareNotice("");}}>{type==="player"?t("Forward","Препрати"):t("Share","Сподели")}</button>
     {sharing?.type===type&&sharing?.id===id&&<div style={{padding:10,marginTop:6,border:"1px solid #64839a",borderRadius:8}}>
       <label>{t("Share with","Сподели с")}: <select value={shareScope} onChange={e=>{setShareScope(e.target.value);setRecipientQuery("");setSelectedRecipient("");}}><option value="alliance">{t("Alliance","Алианс")}</option><option value="private">{t("Player","Играч")}</option></select></label>
       {shareScope==="private"&&<div style={{marginTop:8}}>
@@ -123,6 +125,8 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     const enemyRemaining=m.incoming?(m.result.survivors||{}):null;
     return <article key={"player-"+m.id} style={card}>
       <h3>{title} · {coordinateLink(m.target?.x,m.target?.y)}</h3>
+      {Number.isFinite(m.resolved_at)&&<time dateTime={new Date(m.resolved_at).toISOString()}>{new Date(m.resolved_at).toLocaleString(locale)}</time>}
+      {m.result.report?.[0]?.grid&&<p>{t("Defense Grid level","Ниво на Отбранителната мрежа")}: {m.result.report[0].grid.level}</p>}
       <p>{outcome}{!m.result.recalled&&" · "+t("Rounds","Рундове")+": "+(m.result.rounds??"—")}</p>
       {!m.incoming&&m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Cyber Knight ниво")} {m.cyberKnightLevel}</p>}
       {m.result.loot&&!m.result.recalled&&<p><strong>{m.incoming?t("Resources plundered","Отнети ресурси"):t("Loot","Плячка")}:</strong> {lootSummary(m.result)}</p>}
@@ -133,11 +137,13 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       {m.result.recalled&&<p>{t("No battle took place; the attacking army returned unchanged.","Битка не е имало; нападателната армия се е върнала непокътната.")}</p>}
       {!m.incoming&&!m.result.recalled&&m.result.defenderSurvivors&&army(t("Enemy surviving defenders","Оцелели защитници на противника"),m.result.defenderSurvivors)}
       {m.result.error&&<p>{localLabel(m.result.error)}</p>}
-      <DesertionReport report={m.result.report} />
-    <FullBattleReport result={m.result} />
-    {shareControls("alien",m.id)}
-      {!m.result.recalled&&!m.result.shielded&&<FullBattleReport result={m.result} />}
-      {shareControls("player",m.id)}}
+      <BattleArmySummary result={m.result} />
+      <BattleArmySummary result={m.result} />
+    <DesertionReport report={m.result.report} />
+      <div className="battle-report-actions">
+        {!m.result.recalled&&!m.result.shielded&&<FullBattleReport result={m.result} />}
+        {shareControls("player",m.id)}
+      </div>}
     </article>;
   };
   const alienReport=m=>{
@@ -165,7 +171,8 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     };
     const returnStatus=m.returned_at?t("Army returned","Армията се прибра"):m.returns_at?`${t("Returning","Връща се")} · ${Math.max(0,Math.ceil((Number(m.returns_at)-clock)/1000))} ${t("sec.","сек.")}`:"";
     return <article key={"alien-"+m.id} style={card}>
-    <h3>{t("Attacks against aliens","Атаки срещу извънземни")}</h3>
+    <h3>{t("Attacks against aliens","Атаки срещу извънземни")}{m.target&&<> · {coordinateLink(m.target.x,m.target.y)}</>}</h3>
+    {Number.isFinite(m.resolved_at)&&<time dateTime={new Date(m.resolved_at).toISOString()}>{new Date(m.resolved_at).toLocaleString(locale)}</time>}
     <p>{t("Mission #","Мисия №")}{m.id} · {t("Alien Base level","Извънземна база ниво")} {m.level} · {m.result.victory?t("Victory","ПОБЕДА"):t("Defeat","ПОРАЖЕНИЕ")}{returnStatus&&" · "+returnStatus}</p>
     {m.cyberKnightLevel&&<p>{t("Commander: Cyber Knight level","Командир: Cyber Knight ниво")} {m.cyberKnightLevel}</p>}
     <p>{t("Rounds","Рундове")}: {m.result.rounds??"—"} · {t("Remaining alien defenders","Оставащи извънземни защитници")}: {m.result.defendersRemaining??0}</p>
@@ -176,6 +183,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     {Number(m.result.redCrystals)>0&&<p>🎁 🔴 {t("Red crystals","Червени кристали")}: {Number(m.result.redCrystals).toLocaleString(locale)}</p>}
     {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {list(m.result.wounded)}</p>}
     <DesertionReport report={m.result.report} />
+    <div className="battle-report-actions"><FullBattleReport result={m.result} />{shareControls("alien",m.id)}</div>
     {army(t("Starting army","Начална армия"),m.units)}{army(t("Losses","Загуби"),diff(m.units,m.result.survivors||{}))}{army(t("Survivors","Оцелели"),m.result.survivors||{})}
   </article>;
   };
@@ -184,6 +192,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     <p><strong>{t("Damage dealt","Нанесени щети")}:</strong> {Number(report.damage).toLocaleString(locale)} · {Number(report.xp).toLocaleString(locale)} XP</p>
     <p>{new Date(report.resolved_at).toLocaleString(locale)} · {t("Cyber Knight level","Ниво на Cyber Knight")} {report.knight_level}</p>
     {army(t("Deployed army","Изпратена армия"),report.army)}
+    <details><summary>{t("Knight equipment","Екипировка на рицаря")}</summary><BattleKnights knights={report.knights} /></details>
     <details><summary>{t("Formation","Формация")}</summary>
       {[...new Set(report.formation.map(group=>group.row))].sort((a,b)=>a-b).map(row=><div key={row}>
         {t("Row","Ред")} {row} · {report.formation.filter(group=>group.row===row).map(group=>localLabel(group.unit)+" × "+Number(group.count).toLocaleString(locale)).join(", ")}
@@ -239,6 +248,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
           {orangeEmpireReports.map(report=><article key={report.id} style={card}>
             <h3>{t("The Orange Empire","Оранжевата империя")} · {report.commander_id===10?t("Emperor","Император"):t("Commander","Командир")+" "+report.commander_id} · {coordinateLink(report.x,report.y)}</h3>
             <p>{new Date(report.arrives_at).toLocaleString(locale)} · {report.result.cancelled?t("Attack cancelled","Нападението е отменено"):report.result.victory?t("Orange Empire victory","Победа за Оранжевата империя"):t("Defense held","Защитата устоя")}</p>
+            <BattleArmySummary result={report.result} />
             <DesertionReport report={report.result.report} />
             {!report.result.cancelled&&<FullBattleReport result={report.result} />}
             {report.result.loot&&<p><strong>{t("Resources plundered","Отнети ресурси")}:</strong> {lootSummary(report.result)}</p>}
@@ -255,8 +265,8 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     </div></section></div>;
 }
 const tabButton={border:"1px solid #64839a",borderRadius:6,color:"white",padding:"9px 14px",cursor:"pointer",fontWeight:"bold"};
-const overlay={position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,.8)",display:"grid",placeItems:"center",padding:12};
-const panel={width:"min(100%,1050px)",maxHeight:"90vh",background:"#111",border:"3px solid #777",color:"#eef5ff",overflow:"hidden",boxShadow:"0 10px 40px #000"};
+const overlay={position:"fixed",inset:0,zIndex:10000,background:"rgba(0,0,0,.8)",display:"grid",gridTemplateColumns:"minmax(0,1fr)",placeItems:"center",padding:12};
+const panel={width:"min(100%,1050px)",boxSizing:"border-box",maxHeight:"90vh",background:"#111",border:"3px solid #777",color:"#eef5ff",overflow:"hidden",boxShadow:"0 10px 40px #000"};
 const header={position:"sticky",top:0,display:"flex",alignItems:"center",justifyContent:"space-between",background:"#333",padding:"14px 20px",fontSize:22};
 const close={background:"red",color:"white",border:0,fontSize:28,fontWeight:"bold",width:44,height:44,cursor:"pointer"};
 const card={border:"1px solid #64839a",borderRadius:10,background:"#182c3e",padding:"12px 16px",marginBottom:12,lineHeight:1.7};

@@ -1,3 +1,5 @@
+import BattleReplay from "../shared/BattleReplay";
+import BattleKnights from "../shared/BattleKnights";
 import {battleEventText} from "../shared/localizedMessages";
 import { createPortal } from "react-dom";
 import { useLanguage } from "../language";
@@ -397,7 +399,9 @@ function EventsPanel({onOpenInventory}) {
             <summary>{result?.eliminated?t("Attack cancelled: no army","Атаката е отменена: няма армия"):result?t("Battle report","Бойни доклади"):t("Alien attack in transit","Извънземна атака на път")} #{attack.id} · {t("Alien base level","Ниво на извънземната база")} {attack.level}{!result&&` · ${remaining} ${t("seconds remaining","секунди остават")}`}</summary>
             {result&&<>
               <p>{Number(result.alienCasualties||0).toLocaleString(locale)} {t("aliens eliminated","извънземни елиминирани")} · {Number(result.troopsLost||0).toLocaleString(locale)} {t("troops wounded","войници ранени")} · {Number(result.remaining||0).toLocaleString(locale)} {t("troops remaining","войници остават")}</p>
-              {(result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
+              {result.traceVersion&&<><BattleKnights knights={result.knights} /><BattleReplay result={result} /></>}
+              {!result.traceVersion&&<BattleReplay result={result} />}
+              {!result.traceVersion&&(result.report||[]).map(round=><details key={round.round}><summary>{t("Round","Рунд")} {round.round}</summary>
                 {round.events.map((event,index)=><p key={index} style={{fontSize:12,margin:"4px 0"}}>{battleEventText(event,label,t)}</p>)}
               </details>)}
             </>}

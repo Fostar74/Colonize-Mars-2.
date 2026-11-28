@@ -168,7 +168,8 @@ function settleAttack(db, game, attack, now) {
       infantryAttack:value("Infantry Command"), infantryHealth:value("Infantry Command"), mobileAttack:value("Mobile Warfare"),
       artilleryAttack:value("Heavy Artillery"), dodge:value("Evasion Protocol"), revive:value("Combat Recovery")
     },{
-      playerDefense:true, trackCasualties:true, trace:true, hospitalSides:[1], defenderFormation:defender.formation, defenderBonuses:defender.bonuses,
+      playerDefense:true, trackCasualties:true, trace:true,
+      defenseGridLevel:attack.station_id?0:current.structures["Defense Grid"], hospitalSides:[1], defenderFormation:defender.formation, defenderBonuses:defender.bonuses,
       defenderContingents:contingents, random:()=>{rng=(Math.imul(rng,1664525)+1013904223)>>>0;return rng/4294967296;}
     });
     const wounds = (id, initial, survivors) => game.recordHospitalWounds(id,"orange-empire-defense",attack.id,
@@ -176,10 +177,12 @@ function settleAttack(db, game, attack, now) {
       "waiting",null,now);
     result.combatXp = Object.fromEntries(Object.entries(result.creditedKills)
       .map(([owner,kills])=>[owner,xpForKills(kills)]));
-    awardHuman(db,attack.player_id,result.combatXp.defender);
+    result.combatXp.defender=awardHuman(db,attack.player_id,result.combatXp.defender);
     const commander = db.prepare("SELECT state FROM orange_empire_commanders WHERE id=?").get(attack.commander_id);
     const state = JSON.parse(commander.state);
+    const beforeXp=state.xp;
     state.xp = Math.min(Number.MAX_SAFE_INTEGER,state.xp+(result.combatXp.attacker||0));
+    result.combatXp.attacker=state.xp-beforeXp;
     db.prepare("UPDATE orange_empire_commanders SET state=? WHERE id=?").run(JSON.stringify(state),attack.commander_id);
     tactics.recordBattle(db,snapshot.plan||"balanced",result,attackerArmy);
     wounds(attack.player_id,deployed,result.defenderSurvivors);
@@ -216,14 +219,20 @@ function settleAttack(db, game, attack, now) {
     for (const row of eligibleSupport) {
       const id = row.sender_id ?? row.user_id;
       const survivors = result.contingentSurvivors[row.id ?? row.user_id];
-      awardHuman(db,id,result.combatXp["support:"+(row.id ?? row.user_id)]);
+      const ownerKey="support:"+(row.id ?? row.user_id);
+      result.combatXp[ownerKey]=awardHuman(db,id,result.combatXp[ownerKey]);
       wounds(id,JSON.parse(row.army),survivors);
       if (attack.station_id) settleStationArmy(id,row.id ?? row.user_id,survivors);
       else db.prepare("UPDATE orange_empire_support SET army=? WHERE id=?").run(JSON.stringify(survivors),row.id);
     }
     result.commanderKnightLevel = snapshot.knight?.level || 1;
+    result.participants = {
+      attacker:{kind:"orange",commanderId:attack.commander_id,level:maxPlayerLevel+5,protocolTiers:snapshot.protocols||{},
+        coordinates:{x:attack.origin_x,y:attack.origin_y}},
+      defender:game.battleParticipant(attack.player_id,{x:attack.x,y:attack.y}),
+    };
     result.knights = {
-      attacker:{kind:attack.commander_id===10?"emperor":"inferno",level:result.commanderKnightLevel,equipped:snapshot.knight?.equippedItems||{}},
+      attacker:{kind:attack.commander_id===10?"emperor":"inferno",commanderId:attack.commander_id,level:result.commanderKnightLevel,equipped:snapshot.knight?.equippedItems||{}},
       defender:{kind:"cyber",level:game.knightLevelForReport(attack.player_id),equipped:defender.equipped}
     };
   }
@@ -274,21 +283,22 @@ function reports(db,userId,limit=20,includeReplay=false) {
   return db.prepare(`SELECT a.id,a.commander_id,a.player_id,a.station_id,a.arrives_at,
       a.x,a.y,json_extract(a.result,'$.cancelled') AS cancelled, json_extract(a.result,'$.victory') AS victory,
       json_extract(a.result,'$.loot') AS loot,json_extract(a.result,'$.totalLoot') AS totalLoot,
-      json_extract(a.result,'$.cargoCapacity') AS cargoCapacity, json_extract(a.result,'$.report') AS report, json_extract(a.result,'$.knights') AS knights, json_extract(a.result,'$.traceVersion') AS traceVersion
+      json_extract(a.result,'$.cargoCapacity') AS cargoCapacity, json_extract(a.result,'$.report') AS report, json_extract(a.result,'$.knights') AS knights, json_extract(a.result,'$.traceVersion') AS traceVersion,
+      json_extract(a.result,'$.participants') AS participants,json_extract(a.result,'$.combatXp') AS combatXp
     FROM orange_empire_attacks a WHERE a.result IS NOT NULL AND (a.player_id=? OR EXISTS
       (SELECT 1 FROM orange_empire_support s WHERE s.attack_id=a.id AND s.sender_id=?) OR
       (a.station_id IS NOT NULL AND EXISTS (
         SELECT 1 FROM json_each(a.result,'$.contingentSurvivors') WHERE CAST(key AS INTEGER)=?
       )))
     ORDER BY a.arrives_at DESC,a.id DESC LIMIT ?`).all(userId,userId,userId,limit)
-    .map(({cancelled,victory,loot,totalLoot,cargoCapacity,report,knights,traceVersion,...row})=>{
+    .map(({cancelled,victory,loot,totalLoot,cargoCapacity,report,knights,traceVersion,participants,combatXp,...row})=>{
       const rounds=JSON.parse(report||"[]");
       return {...row,result:{
         cancelled:!!cancelled,victory:!!victory,...(loot?{loot:JSON.parse(loot),totalLoot,cargoCapacity}:{}),
         report:rounds.map(round=>({
           round:round.round,events:(round.events||[]).filter(event=>event.deserted>0)
         })).filter(round=>round.events.length),
-        ...(includeReplay?{knights:knights?JSON.parse(knights):null,replay:traceVersion?{traceVersion,report:rounds}:null}:{})
+        ...(includeReplay?{participants:participants?JSON.parse(participants):null,combatXp:combatXp?JSON.parse(combatXp):null,knights:knights?JSON.parse(knights):null,replay:traceVersion?{traceVersion,report:rounds}:null}:{})
       }};
     });
 }

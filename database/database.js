@@ -256,6 +256,7 @@ function initializeDatabase() {
     db.exec("CREATE TABLE IF NOT EXISTS mothership_events (id INTEGER PRIMARY KEY AUTOINCREMENT, week_start INTEGER NOT NULL UNIQUE, starts_at INTEGER NOT NULL, ends_at INTEGER NOT NULL, hp_remaining INTEGER NOT NULL, rewards_distributed INTEGER NOT NULL DEFAULT 0)");
     db.exec("CREATE TABLE IF NOT EXISTS mothership_attacks (id INTEGER PRIMARY KEY AUTOINCREMENT, event_id INTEGER NOT NULL REFERENCES mothership_events(id), user_id INTEGER NOT NULL REFERENCES users(id), army TEXT NOT NULL, formation TEXT NOT NULL, origin_x INTEGER NOT NULL, origin_y INTEGER NOT NULL, knight_level INTEGER NOT NULL DEFAULT 1, launched_at INTEGER NOT NULL, arrives_at INTEGER NOT NULL, resolved_at INTEGER, damage INTEGER NOT NULL DEFAULT 0, xp INTEGER NOT NULL DEFAULT 0)");
     if(!db.prepare("PRAGMA table_info(mothership_attacks)").all().some(c=>c.name==="knight_level"))db.exec("ALTER TABLE mothership_attacks ADD COLUMN knight_level INTEGER NOT NULL DEFAULT 1");
+    if(!db.prepare("PRAGMA table_info(mothership_attacks)").all().some(c=>c.name==="knight_snapshot"))db.exec("ALTER TABLE mothership_attacks ADD COLUMN knight_snapshot TEXT");
     db.exec("CREATE INDEX IF NOT EXISTS mothership_attacks_event ON mothership_attacks(event_id,id)");
     db.exec("CREATE TABLE IF NOT EXISTS mothership_hospital (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), event_id INTEGER NOT NULL REFERENCES mothership_events(id), wounded TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'waiting', healing_cost TEXT NOT NULL, created_at INTEGER NOT NULL, heals_at INTEGER)");
     db.exec("CREATE TABLE IF NOT EXISTS hospital_entries (id INTEGER PRIMARY KEY AUTOINCREMENT, user_id INTEGER NOT NULL REFERENCES users(id), source TEXT NOT NULL, source_id INTEGER NOT NULL, wounded TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'waiting', healing_cost TEXT NOT NULL DEFAULT '{}', created_at INTEGER NOT NULL, heals_at INTEGER, recovered_at INTEGER)");
@@ -1101,6 +1102,15 @@ class DatabaseManager {
     const protocol=this.talentCatalog().find(item=>item.name===name);
     return tier&&protocol?protocol.values[tier-1]:0;
   }
+  battleParticipant(userId,coordinates) {
+    const row=db.prepare(`SELECT u.username,a.name AS alliance,COALESCE(p.xp,0) AS xp,p.talents
+      FROM users u LEFT JOIN alliance_members m ON m.user_id=u.id LEFT JOIN alliances a ON a.id=m.alliance_id
+      LEFT JOIN player_talents p ON p.user_id=u.id WHERE u.id=?`).get(userId);
+    if(!row)return null;
+    return {name:row.username,alliance:row.alliance,level:this.playerLevel(row.xp),
+      coordinates:{x:coordinates?.x,y:coordinates?.y},protocolTiers:JSON.parse(row.talents||"{}")};
+  }
+
   knightLevelForReport(userId) {
     return Number(db.prepare("SELECT knight_level FROM alien_rewards WHERE user_id=?").get(userId)?.knight_level)||1;
   }
@@ -1341,7 +1351,11 @@ class DatabaseManager {
     const row=db.prepare(`SELECT result FROM ${table} WHERE id=? AND resolved_at IS NOT NULL`).get(attachment.id);
     if(!row?.result)return null;
     const result=JSON.parse(row.result);
-    return {knights:result.knights??null,traceVersion:result.traceVersion,report:result.traceVersion?result.report:[]};
+    return {
+      knights:result.knights??null,traceVersion:result.traceVersion,report:result.traceVersion?result.report:[],
+      participants:result.participants,combatXp:result.combatXp,xpEarned:result.xpEarned,
+      victory:result.victory,loot:result.loot
+    };
   }
 
   listMessages(userId, scope){
@@ -2255,14 +2269,19 @@ class DatabaseManager {
       const defenderCombat={...defenderProtocols,protocolTrace:defenderProtocols,unitResearch:defenderAlliance.units||{},allAttack:Number(defenderAlliance.attack)||0,allHealth:Number(defenderAlliance.health)||0,unitEffects:defenderGear.unitEffects,enemyDebuffs:defenderGear.enemyDebuffs};
       const result=fight(data.units||{},validDefenders,data.formation,attackerCombat,{
         playerDefense:true,trackCasualties:true,trace:true,hospitalSides:[0,1],
+        defenseGridLevel:defender.structures["Defense Grid"],
         random:missionRandom(mission),
         defenderUnitUpgrades:defender.unitUpgrades||{},
         defenderFormation:defenseFormation.filter(group=>validDefenders[group.unit]),
         defenderBonuses:defenderCombat
       });
+      result.participants={
+        attacker:this.battleParticipant(mission.attacker_id, data.origin),
+        defender:this.battleParticipant(mission.defender_id, data.target),
+      };
       result.combatXp = {attacker:xpForKills(result.creditedKills.attacker),defender:xpForKills(result.creditedKills.defender)};
-      awardHuman(db,mission.attacker_id,result.combatXp.attacker);
-      awardHuman(db,mission.defender_id,result.combatXp.defender);
+      result.combatXp.attacker=awardHuman(db,mission.attacker_id,result.combatXp.attacker);
+      result.combatXp.defender=awardHuman(db,mission.defender_id,result.combatXp.defender);
       result.cyberKnightLevel=data.includeCyberKnight?data.cyberKnightLevel:null;
       result.knights={
         attacker:data.includeCyberKnight?{kind:"cyber",level:data.cyberKnightLevel,equipped:attackerEquipment}:false,
@@ -2626,7 +2645,8 @@ class DatabaseManager {
       const current=this.syncGame(attack.user_id,attack.arrives_at),army=JSON.parse(attack.army),formation=JSON.parse(attack.formation);
       if(!current)throw new Error("Mothership march has no player progress");
       const {playerTypes}=require("../shared/combatEngine");
-      const gear=this.getUserEquipment(attack.user_id),items=Object.values(gear?.equippedItems||{}),gearEffects=this.equipmentBonuses(attack.user_id);
+      const equipped=this.getUserEquipment(attack.user_id)?.equippedItems||{};
+      const items=Object.values(equipped),gearEffects=equipmentCombatBonuses(equipped);
       let gearAttack=0,gearXp=0;
       for(const item of items)for(const stat of item?.stats||[]){
         if(typeof stat!=="string")continue;
@@ -2665,7 +2685,8 @@ class DatabaseManager {
       // Mother Ship attacks are score runs: return the entire committed army after every battle.
       for(const [unit,count] of Object.entries(army))current.army[unit]=(Number(current.army[unit])||0)+Math.max(0,Number(count)||0);
       db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(current.army),attack.user_id);
-      db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=? WHERE id=?").run(attack.arrives_at,damage,xp,attack.id);
+      db.prepare("UPDATE mothership_attacks SET resolved_at=?,damage=?,xp=?,knight_snapshot=? WHERE id=?")
+        .run(attack.arrives_at,damage,xp,JSON.stringify({kind:"cyber",level:attack.knight_level,equipped}),attack.id);
       this.sideQuests.record(attack.user_id,"mothership",null,1,attack.arrives_at);
       db.prepare("UPDATE mothership_events SET hp_remaining=MAX(1,hp_remaining-?) WHERE id=?").run(damage,eventId);
     }
@@ -2803,13 +2824,14 @@ class DatabaseManager {
           const formations=require("../src/shared/formations"),combat=require("../shared/combatEngine");
           const defaultRows=formations.defaultFormation();
           const defense=this.getFormations(attack.user_id),preset=defense.defensePresets?.[String(defense.defenseSlot)]||{};
-          const defenseFormation=Object.entries(army).map(([unit,count])=>({unit,count,row:Number(preset[unit])||Number(defaultRows[unit])||1}));
+          const defenseFormation=Object.entries(army).map(([unit,count])=>({unit,count,row:Number(preset[unit])||Number(defaultRows[unit])||1,column:preset.columns?.[unit]}));
           const alliance=current.allianceBonuses||{};
-          const gear=this.equipmentBonuses(attack.user_id),protocols=this.protocolCombatBonuses(attack.user_id,gear);
+          const equipped=this.getUserEquipment(attack.user_id)?.equippedItems||{};
+          const gear=equipmentCombatBonuses(equipped),protocols=this.protocolCombatBonuses(attack.user_id,gear);
           const result=combat.fight(aliens,army,null,{
-            ...protocols,unitResearch:alliance.units||{},unitUpgrades:current.unitUpgrades,allAttack:Number(alliance.attack)||0,allHealth:protocols.allHealth+(Number(alliance.health)||0),
+            ...protocols,protocolTrace:protocols,unitResearch:alliance.units||{},unitUpgrades:current.unitUpgrades,allAttack:Number(alliance.attack)||0,allHealth:protocols.allHealth+(Number(alliance.health)||0),
             unitEffects:gear.unitEffects,enemyDebuffs:gear.enemyDebuffs
-          },{playerDefense:true,defenderFormation: defenseFormation,attackerIsAlien:true,random:missionRandom({id:attack.id,defender_id:attack.user_id,launched_at:attack.launched_at})});
+          },{playerDefense:true,trace:true,defenderFormation: defenseFormation,attackerIsAlien:true,random:missionRandom({id:attack.id,defender_id:attack.user_id,launched_at:attack.launched_at})});
           const survivors=result.defenderSurvivors||{},wounded={};
           for(const [unit,count] of Object.entries(army)){const lost=Math.max(0,(Number(count)||0)-(Number(survivors[unit])||0));if(lost>0)wounded[unit]=lost;}
           const lost=Object.values(wounded).reduce((sum,count)=>sum+Number(count||0),0);
@@ -2819,7 +2841,9 @@ class DatabaseManager {
           const score=Math.max(0,enemyCount-enemyRemaining);
           db.prepare("UPDATE game_runtime SET army=? WHERE user_id=?").run(JSON.stringify(survivors),attack.user_id);
           const remaining=Object.values(survivors).reduce((sum,count)=>sum+Number(count||0),0),eliminated=remaining<=0;
-          const battle={level,rounds:result.rounds,report:result.report,enemyUnits:enemyCount,alienCasualties:score,troopsLost:lost,troopsWounded:lost,remaining};
+          const battle={level,rounds:result.rounds,report:result.report,traceVersion:result.traceVersion,
+            knights:{attacker:false,defender:{kind:"cyber",level:this.knightLevelForReport(attack.user_id),equipped}},
+            enemyUnits:enemyCount,alienCasualties:score,troopsLost:lost,troopsWounded:lost,remaining};
           db.prepare("UPDATE saturday_invasion_members SET score=score+?,waves=waves+1,eliminated=?,last_battle=? WHERE run_id=? AND user_id=?").run(score,eliminated?1:0,JSON.stringify(battle),event.id,attack.user_id);
           db.prepare("UPDATE saturday_invasion_attacks SET resolved_at=?,result=? WHERE id=?").run(at,JSON.stringify(battle),attack.id);
           if(eliminated)cancelPendingAttacks(event.id,attack.user_id,at);
@@ -2967,10 +2991,11 @@ Rewards are distributed per participating player, not once per alliance. / На�
   }
 
   getMothershipReports(userId) {
-    return db.prepare(`SELECT id, resolved_at, damage, xp, knight_level, army, formation
+    return db.prepare(`SELECT id, resolved_at, damage, xp, knight_level, army, formation, knight_snapshot
       FROM mothership_attacks WHERE user_id=? AND resolved_at IS NOT NULL
-      ORDER BY resolved_at DESC,id DESC LIMIT 50`).all(userId).map(report=>({
-        ...report,army:JSON.parse(report.army),formation:JSON.parse(report.formation)
+      ORDER BY resolved_at DESC,id DESC LIMIT 50`).all(userId).map(({knight_snapshot,...report})=>({
+        ...report,army:JSON.parse(report.army),formation:JSON.parse(report.formation),
+        knights:knight_snapshot?{attacker:JSON.parse(knight_snapshot)}:null
       }));
   }
 
@@ -3593,6 +3618,10 @@ Rewards are distributed per participating player, not once per alliance. / На�
         },{trace:true});
         if(armyData.cyberKnightLevel)result.cyberKnightLevel=armyData.cyberKnightLevel;
         result.knights={attacker:{kind:"cyber",level:armyData.cyberKnightLevel||this.knightLevelForReport(userId),equipped},defender:false};
+        result.participants={
+          attacker:this.battleParticipant(userId,armyData.origin),
+          defender:{kind:"alien",level:mission.level,coordinates:armyData.target},
+        };
         const wounded={};
         for(const [unit,count] of Object.entries(armyData.units||{})){
           const saved=Math.floor(Math.max(0,Number(count||0)-Number(result.survivors?.[unit]||0))*0.30);

@@ -11,9 +11,10 @@ function xpForKills(kills={}) {
 }
 
 function awardHuman(db, id, xp) {
-  if (!xp) return;
-  db.prepare(`INSERT INTO player_talents(user_id,xp) VALUES (?,?)
-    ON CONFLICT(user_id) DO UPDATE SET xp=MIN(9007199254740991,xp+excluded.xp)`).run(id,xp);
+  if (!xp) return 0;
+  const before=db.prepare("SELECT xp FROM player_talents WHERE user_id=?").get(id)?.xp||0;
+  return db.prepare(`INSERT INTO player_talents(user_id,xp) VALUES (?,?)
+    ON CONFLICT(user_id) DO UPDATE SET xp=MIN(9007199254740991,xp+excluded.xp) RETURNING xp`).get(id,xp).xp-before;
 }
 
 module.exports = {xpForKills,awardHuman};
