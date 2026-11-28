@@ -32,8 +32,11 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
   const userId=sessionStorage.getItem("userId");
   const [data,setData]=useState(null);
   const [activeTab,setActiveTab]=useState(initialTab);
+  const [militaryTab,setMilitaryTab]=useState("player");
+  const [page,setPage]=useState(1);
+  useEffect(()=>{setPage(1);},[activeTab,militaryTab]);
   const [error,setError]=useState("");
-  const [newReportIds,setNewReportIds]=useState([]);
+  
   const [clock,setClock]=useState(Date.now);
   const [sharing,setSharing]=useState(null);
   const [shareScope,setShareScope]=useState("alliance");
@@ -82,8 +85,8 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
         if(active){
           let seen=[];try{seen=JSON.parse(localStorage.getItem(reportReadStorageKey(userId))||"[]");}catch{}
           const read=new Set(Array.isArray(seen)?seen:[]);
-          const unreadIds=[...(body.mothershipReports||[]).filter(report=>!read.has("mothership:"+report.id)).map(report=>"mothership:"+report.id),...(body.missions||[]).filter(m=>m.result&&!read.has("alien:"+m.id)).map(m=>"alien:"+m.id),...(body.playerMissions||[]).filter(m=>m.result&&!m.incoming&&!read.has("player:"+m.id)).map(m=>"player:"+m.id),...(body.gatheringReports||[]).filter(report=>!read.has("gathering:"+report.id)).map(report=>"gathering:"+report.id)];
-          setNewReportIds(unreadIds);setData(body);
+                  setData(body);
+          try{localStorage.setItem(reportReadStorageKey(userId),JSON.stringify([...new Set([...read,...unreadIds])]));}catch{}
         }
         await fetch(api+"/reports/read",{method:"POST",headers:{"Content-Type":"application/json",...auth()},body:JSON.stringify({userId})});
         onRead?.();
@@ -93,18 +96,12 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
   },[userId,onRead]);
   const allPlayer=(data?.playerMissions||[]).filter(m=>m.result);
   const activeIncoming=(data?.playerMissions||[]).filter(m=>m.incoming&&!m.result&&!m.returned_at);
-  const unreadIds=new Set(newReportIds);
-  const newPlayer=allPlayer.filter(m=>m.unread||unreadIds.has("player:"+m.id));
-  const previousPlayer=allPlayer.filter(m=>!newPlayer.includes(m));
   const alienReports=[
     ...(data?.missions||[]).filter(m=>m.result).map(report=>({type:"alien",report})),
     ...(data?.mothershipReports||[]).map(report=>({type:"mothership",report})),
   ].sort((a,b)=>b.report.resolved_at-a.report.resolved_at||b.report.id-a.report.id);
-  const newAlienCount=alienReports.filter(({type,report})=>unreadIds.has(type+":"+report.id)).length;
   const scoutReports=(data?.playerScoutMissions||[]).filter(m=>m.report);
   const gathering=(data?.gatheringReports||[]);
-  const newGathering=gathering.filter(report=>unreadIds.has("gathering:"+report.id));
-  const previousGathering=gathering.filter(report=>!newGathering.includes(report));
   const army=(title,units)=> <div><strong>{title}:</strong> {units===null?t("Not recorded","Не е записано"):list(units)}</div>;
   const lootSummary=result=>["Gold","Iron","Water","Solar"].map(key=>
     t(key,{Gold:"Злато",Iron:"Желязо",Water:"Вода",Solar:"Слънчева енергия"}[key])+": "+Number(result.loot[key]||0).toLocaleString(locale)
@@ -137,7 +134,6 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       {m.result.recalled&&<p>{t("No battle took place; the attacking army returned unchanged.","Битка не е имало; нападателната армия се е върнала непокътната.")}</p>}
       {!m.incoming&&!m.result.recalled&&m.result.defenderSurvivors&&army(t("Enemy surviving defenders","Оцелели защитници на противника"),m.result.defenderSurvivors)}
       {m.result.error&&<p>{localLabel(m.result.error)}</p>}
-      <BattleArmySummary result={m.result} />
       <BattleArmySummary result={m.result} />
     <DesertionReport report={m.result.report} />
       <div className="battle-report-actions">
@@ -228,6 +224,12 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     <p>{t("The attack is on the way. No battle report exists yet.","Походът е в движение. Все още няма боен доклад.")}</p>
     <p>{t("Expected arrival","Очаквано пристигане")}: {new Date(m.arrives_at).toLocaleTimeString(locale)}</p>
   </article>;
+  const reportTime=r=>Number(r.resolved_at??r.returnedAt??r.report?.scoutedAt??r.arrives_at)||0;
+  const selectedReports=activeTab==="economy"?gathering:activeTab==="espionage"?scoutReports:militaryTab==="player"?allPlayer:militaryTab==="orange"?orangeEmpireReports:alienReports.filter(x=>x.type===militaryTab).map(x=>x.report);
+  const orderedReports=[...selectedReports].sort((a,b)=>reportTime(b)-reportTime(a)||Number(b.id)-Number(a.id));
+  const pageCount=Math.max(1,Math.ceil(orderedReports.length/5));
+  const currentPage=Math.min(page,pageCount);
+  const visibleReports=orderedReports.slice((currentPage-1)*5,currentPage*5);
   return <div style={overlay} onClick={onClose}><section style={panel} onClick={e=>e.stopPropagation()}>
     <header style={header}><span>{t("REPORTS","ДОКЛАДИ")}</span><button onClick={onClose} style={close}>×</button></header>
     <div style={{padding:20,overflowY:"auto",maxHeight:"calc(90vh - 70px)"}}>
@@ -235,17 +237,16 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       {data&&<div style={{display:"flex",gap:8,marginBottom:16}}>
         <button type="button" onClick={()=>setActiveTab("military")} style={{...tabButton,background:activeTab==="military"?"#24629b":"#293443"}}>{t("Military","Военни")}</button>
         <button type="button" onClick={()=>setActiveTab("espionage")} style={{...tabButton,background:activeTab==="espionage"?"#24629b":"#293443"}}>🔎 {t("Espionage","Шпионажи")}</button>
-        <button type="button" onClick={()=>setActiveTab("economy")} style={{...tabButton,background:activeTab==="economy"?"#24629b":"#293443"}}>{t("Economy","Икономика")}{newGathering.length>0?" · "+newGathering.length:""}</button>
+        <button type="button" onClick={()=>setActiveTab("economy")} style={{...tabButton,background:activeTab==="economy"?"#24629b":"#293443"}}>{t("Economy","Икономика")}</button>
       </div>}
-      {data&&activeTab==="military"&&<>{activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}
-        {newPlayer.length>0&&<><h2>{t("New battle reports","Нови бойни доклади")}</h2>{newPlayer.map(playerReport)}</>}
-        {newPlayer.length===0&&newAlienCount===0&&<p>{activeIncoming.length?t("No new report yet. It will appear after the battle.","Още няма нов доклад. Ще се появи след битката."):t("No new reports.","Няма нови доклади.")}</p>}
-        {alienReports.length>0&&<><h2>{t("Alien battle reports","Доклади от битки с извънземните")}{newAlienCount?" · "+t("New","Нови")+": "+newAlienCount:""}</h2>
-          {alienReports.map(({type,report})=>type==="alien"?alienReport(report):mothershipReport(report))}
-        </>}
-        {orangeEmpireReports.length>0&&<details style={{marginTop:20}}>
-          <summary>{t("Orange Empire reports","Доклади за Оранжевата империя")}</summary>
-          {orangeEmpireReports.map(report=><article key={report.id} style={card}>
+      {data&&activeTab==="military"&&<><div style={{display:"flex",flexWrap:"wrap",gap:8,marginBottom:12}}>
+        {[["player",t("Player battles","Битки с играчи")],["alien",t("Alien bases","Извънземни бази")],["mothership",t("Command ship","Команден кораб")],["orange",t("Orange Empire","Оранжева империя")]].map(([key,label])=><button key={key} type="button" style={{...tabButton,background:militaryTab===key?"#24629b":"#293443"}} onClick={()=>{setMilitaryTab(key);setPage(1);}}>{label}</button>)}
+      </div>{militaryTab==="player"&&activeIncoming.length>0&&<><h2>{t("Attacks in progress","Походи към теб")}</h2>{activeIncoming.map(incomingMarch)}</>}</>}
+      {data&&visibleReports.length===0&&<p>{t("No reports yet.","Все още няма доклади.")}</p>}
+      {data&&activeTab==="military"&&militaryTab==="player"&&visibleReports.map(playerReport)}
+      {data&&activeTab==="military"&&militaryTab==="alien"&&visibleReports.map(alienReport)}
+      {data&&activeTab==="military"&&militaryTab==="mothership"&&visibleReports.map(mothershipReport)}
+      {data&&activeTab==="military"&&militaryTab==="orange"&&visibleReports.map(report=><article key={report.id} style={card}>
             <h3>{t("The Orange Empire","Оранжевата империя")} · {report.commander_id===10?t("Emperor","Император"):t("Commander","Командир")+" "+report.commander_id} · {coordinateLink(report.x,report.y)}</h3>
             <p>{new Date(report.arrives_at).toLocaleString(locale)} · {report.result.cancelled?t("Attack cancelled","Нападението е отменено"):report.result.victory?t("Orange Empire victory","Победа за Оранжевата империя"):t("Defense held","Защитата устоя")}</p>
             <BattleArmySummary result={report.result} />
@@ -253,15 +254,9 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
             {!report.result.cancelled&&<FullBattleReport result={report.result} />}
             {report.result.loot&&<p><strong>{t("Resources plundered","Отнети ресурси")}:</strong> {lootSummary(report.result)}</p>}
           </article>)}
-        </details>}
-        {previousPlayer.length>0&&<details style={{marginTop:20}}><summary>{t("Previous player reports","Предишни доклади от битки с играчи")}</summary>{previousPlayer.map(playerReport)}</details>}
-      </>}
-      {data&&activeTab==="espionage"&&<>{scoutReports.length?scoutReports.map(espionageReport):<p>{t("No espionage reports yet.","Все още няма доклади от шпионаж.")}</p>}</>}
-      {data&&activeTab==="economy"&&<>
-        {newGathering.length>0&&<><h2>{t("New resource gathering reports","Нови доклади от добив")}</h2>{newGathering.map(gatheringReport)}</>}
-        {previousGathering.length>0&&<><h2>{t("Previous resource gathering reports","Предишни доклади от добив")}</h2>{previousGathering.map(gatheringReport)}</>}
-        {gathering.length===0&&<p>{t("No economic reports yet.","Все още няма икономически доклади.")}</p>}
-      </>}
+      {data&&activeTab==="espionage"&&visibleReports.map(espionageReport)}
+      {data&&activeTab==="economy"&&visibleReports.map(gatheringReport)}
+      {data&&pageCount>1&&<nav style={{display:"flex",alignItems:"center",justifyContent:"center",gap:12}}><button type="button" disabled={currentPage===1} onClick={()=>setPage(currentPage-1)}>{t("Previous","Предишна")}</button><span>{currentPage} / {pageCount}</span><button type="button" disabled={currentPage===pageCount} onClick={()=>setPage(currentPage+1)}>{t("Next","Следваща")}</button></nav>}
     </div></section></div>;
 }
 const tabButton={border:"1px solid #64839a",borderRadius:6,color:"white",padding:"9px 14px",cursor:"pointer",fontWeight:"bold"};
