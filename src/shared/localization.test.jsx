@@ -56,3 +56,14 @@ test("renders revived units and battle actor names from historic records",()=>{
   expect(battleEventText({attacker:"Player Defense",unit:"Railgunner",units:2,target:"Alien Infantry",damage:8},label,t))
     .toContain("Защита на играча: 2 Релсов стрелец → Извънземна пехота");
 });
+
+test("reports actual Neural Command desertion in both languages",()=>{
+  const event={deserted:3,side:"defender",contingentId:7,unit:"Railgunner"};
+  expect(battleEventText(event,value=>localizedLabel(value,"en"),(en,bg)=>en))
+    .toBe("Neural Command · Reinforcement #7: 3 Railgunner deserted and returned alive");
+  expect(battleEventText(event,value=>localizedLabel(value,"bg"),(en,bg)=>bg))
+    .toBe("Невронно командване · Подкрепление #7: 3 Релсов стрелец се оттеглиха и се върнаха живи");
+  const shared="⚔️ Battle report / Боен доклад #9\nAttacker survivors / Оцелели нападатели: 10\nRound 2 / Рунд 2 · Defender desertion / Дезертирали защитници: Railgunner: 3";
+  expect(renderMessage(shared,"private","en")).toContain("Round 2 · Defender desertion: Railgunner: 3");
+  expect(renderMessage(shared,"private","bg")).toContain("Рунд 2 · Дезертирали защитници: Релсов стрелец: 3");
+});

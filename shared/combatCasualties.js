@@ -13,7 +13,7 @@ function trackVolleys(shots, hits, casualties) {
 function creditedKills(sides, hospitalSides) {
   const casualties = new Map();
   for (let side=0;side<2;side++) for (const group of sides[side]) {
-    const lost = group.original-group.count;
+    const lost = group.original-group.count-(group.deserted||0);
     if (!lost) continue;
     const key = owner(side,group)+"/"+group.unit;
     if (!casualties.has(key)) casualties.set(key,{unit:group.unit,lost:0,side,credit:{}});

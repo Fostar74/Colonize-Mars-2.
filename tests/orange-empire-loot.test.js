@@ -5,6 +5,7 @@ const {tmpdir} = require("node:os");
 const {join} = require("node:path");
 const {spawnSync} = require("node:child_process");
 const SQLite = require("better-sqlite3");
+const {calculateCargoCapacity} = require("../database/pvpLoot");
 
 const folder = mkdtempSync(join(tmpdir(),"orange-empire-loot-"));
 process.env.DATABASE_PATH = join(folder,"game.sqlite");
@@ -44,6 +45,8 @@ test("home-base loot observes PvP protection and cargo, then survives restart an
     game.advanceOrangeEmpire(now);
     const empty=human("Empty"), cargo=human("Cargo"), defended=human("Defended",{"Explorer Trooper":10000});
     const shielded=human("Shielded"), ally=human("Ally");
+    const commanderDefense=human("Commanded",{"Explorer Trooper":30});
+    sql.prepare("UPDATE player_talents SET talents=? WHERE user_id=?").run('{"Battle Command":3}',commanderDefense.userId);
     game.createAlliance(ally.userId,"Station owners");
     const allianceId=game.allianceState(ally.userId).alliance.id;
     sql.prepare("INSERT INTO alliance_space_stations(station_id,alliance_id,unlocked_at,spaceport_status) VALUES (1,?,?,'building')")
@@ -52,6 +55,7 @@ test("home-base loot observes PvP protection and cargo, then survives restart an
       .run(shielded.userId,now+600001);
     const emptyId=launch(empty,100), cargoId=launch(cargo,1), defendedId=launch(defended,1);
     const shieldedId=launch(shielded,100), stationId=launch(ally,100,{id:1,allianceId});
+    const commandId=launch(commanderDefense,1000);
     const npcBefore = commander();
     game.advanceCampaignTimeline(now+300000);
 
@@ -67,6 +71,12 @@ test("home-base loot observes PvP protection and cargo, then survives restart an
     assert.deepEqual(balance(empty),afterLoot(wideLoot));
     assert.deepEqual(balance(cargo),afterLoot(limitedLoot));
     assert.equal(result(defendedId).victory,false);
+    const commanded = result(commandId);
+    assert.equal(commanded.victory,true);
+    assert.equal(commanded.report[0].events[0].deserted,60);
+    assert.ok(commanded.survivors["Explorer Trooper"]>commanded.activeSurvivors["Explorer Trooper"]);
+    assert.equal(commanded.cargoCapacity,calculateCargoCapacity(commanded.activeSurvivors));
+    assert.deepEqual(balance(commanderDefense),afterLoot(commanded.loot));
     assert.equal(result(shieldedId).cancelled,true);
     assert.equal(result(stationId).victory,true);
     for (const [target,id] of [[defended,defendedId],[shielded,shieldedId],[ally,stationId]]) {
@@ -84,8 +94,11 @@ test("home-base loot observes PvP protection and cargo, then survives restart an
     assert.equal(restart.status,0,restart.stderr);
     const npcAfter = commander();
     assert.deepEqual(npcAfter.resources,Object.fromEntries(Object.entries(npcBefore.resources)
-      .map(([key,value])=>[key,value+wideLoot[key]+limitedLoot[key]])));
+      .map(([key,value])=>[key,value+wideLoot[key]+limitedLoot[key]+commanded.loot[key]])));
     assert.equal(getAttack(emptyId).returned_at,now+600000);
+    const returnedTroops = [emptyId,cargoId,defendedId,shieldedId,stationId,commandId].reduce((sum,id)=>
+      sum+(result(id).cancelled?JSON.parse(getAttack(id).army):result(id).survivors)["Explorer Trooper"],0);
+    assert.equal(npcAfter.army["Explorer Trooper"],npcBefore.army["Explorer Trooper"]+returnedTroops);
     game.advanceCampaignTimeline(now+700000);
     assert.deepEqual(commander(),npcAfter);
     assert.deepEqual(balance(empty),afterLoot(wideLoot));

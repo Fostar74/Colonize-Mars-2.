@@ -634,7 +634,7 @@ const labelsBg = {
   "% ranged attack": "% атака на стрелковите единици",
   "% unit HP": "% здраве на единиците",
   "% infantry attack and HP": "% атака и здраве на пехотата",
-  "% army attack (leadership)": "% атака на армията (командване)",
+  "% enemy desertion per round": "% противниково дезертьорство на рунд",
   "% reconnaissance resource discount": "% отстъпка за разузнаване",
   "% evade": "% избягване",
   "% revive": "% възстановяване",

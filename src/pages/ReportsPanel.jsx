@@ -1,3 +1,4 @@
+import DesertionReport from "../shared/DesertionReport";
 import React, { useEffect, useState } from "react";
 import { useLanguage } from "../language";
 import { useNavigate } from "react-router-dom";
@@ -121,6 +122,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
       {m.result.recalled&&<p>{t("No battle took place; the attacking army returned unchanged.","Битка не е имало; нападателната армия се е върнала непокътната.")}</p>}
       {!m.incoming&&!m.result.recalled&&m.result.defenderSurvivors&&army(t("Enemy surviving defenders","Оцелели защитници на противника"),m.result.defenderSurvivors)}
       {m.result.error&&<p>{localLabel(m.result.error)}</p>}
+      <DesertionReport report={m.result.report} />
       {shareControls("player",m.id)}}
     </article>;
   };
@@ -159,6 +161,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
     {Number(m.result.greenCrystals)>0&&<p>🎁 💚 {t("Green crystals","Зелени кристали")}: {Number(m.result.greenCrystals).toLocaleString(locale)}</p>}
     {Number(m.result.redCrystals)>0&&<p>🎁 🔴 {t("Red crystals","Червени кристали")}: {Number(m.result.redCrystals).toLocaleString(locale)}</p>}
     {m.result.wounded&&Object.keys(m.result.wounded).length>0&&<p>{t("Sent to hospital (30%)","Изпратени в болницата (30%)")}: {list(m.result.wounded)}</p>}
+    <DesertionReport report={m.result.report} />
     {army(t("Starting army","Начална армия"),m.units)}{army(t("Losses","Загуби"),diff(m.units,m.result.survivors||{}))}{army(t("Survivors","Оцелели"),m.result.survivors||{})}
   </article>;
   };
@@ -222,6 +225,7 @@ export default function ReportsPanel({onClose,onRead,initialTab="military"}) {
           {orangeEmpireReports.map(report=><article key={report.id} style={card}>
             <h3>{t("The Orange Empire","Оранжевата империя")} · {report.commander_id===10?t("Emperor","Император"):t("Commander","Командир")+" "+report.commander_id} · {coordinateLink(report.x,report.y)}</h3>
             <p>{new Date(report.arrives_at).toLocaleString(locale)} · {report.result.cancelled?t("Attack cancelled","Нападението е отменено"):report.result.victory?t("Orange Empire victory","Победа за Оранжевата империя"):t("Defense held","Защитата устоя")}</p>
+            <DesertionReport report={report.result.report} />
             {report.result.loot&&<p><strong>{t("Resources plundered","Отнети ресурси")}:</strong> {lootSummary(report.result)}</p>}
           </article>)}
         </details>}

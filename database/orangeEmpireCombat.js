@@ -163,7 +163,7 @@ function settleAttack(db, game, attack, now) {
     let rng = seed;
     result = fight(attackerArmy,deployed,snapshot.formation||formation(attackerArmy,defaultFormation()),{
       unitUpgrades:snapshot.upgrades, unitEffects:npcGear.unitEffects, enemyDebuffs:npcGear.enemyDebuffs,
-      leadership:value("Battle Command"), allHealth:value("Reinforced Armor"), rangedAttack:value("Precision Fire"),
+      desertion:value("Battle Command"), allHealth:value("Reinforced Armor"), rangedAttack:value("Precision Fire"),
       infantryAttack:value("Infantry Command"), infantryHealth:value("Infantry Command"), mobileAttack:value("Mobile Warfare"),
       artilleryAttack:value("Heavy Artillery"), dodge:value("Evasion Protocol"), revive:value("Combat Recovery")
     },{
@@ -185,7 +185,7 @@ function settleAttack(db, game, attack, now) {
     if (!attack.station_id) {
       writeArmy(db,attack.player_id,{...homeArmy,...result.defenderSurvivors});
       if (result.victory) {
-        result.cargoCapacity = calculateCargoCapacity(result.survivors);
+        result.cargoCapacity = calculateCargoCapacity(result.activeSurvivors);
         result.loot = calculateLoot(current.resources,result.cargoCapacity);
         result.totalLoot = Object.values(result.loot).reduce((sum,amount)=>sum+amount,0);
         if (result.totalLoot) {
@@ -198,13 +198,26 @@ function settleAttack(db, game, attack, now) {
       }
     }
     const setStationArmy = db.prepare("UPDATE alliance_station_defenders SET army=? WHERE station_id=? AND user_id=?");
-    if (owner) setStationArmy.run(JSON.stringify(result.defenderSurvivors),attack.station_id,owner.user_id);
+    const settleStationArmy = (id, contingentId, survivors) => {
+      const stationed = {...survivors};
+      const home = JSON.parse(game.runtime(id).army);
+      let returned = false;
+      for (const round of result.report) for (const event of round.events) {
+        if (!event.deserted || event.side !== "defender" || event.contingentId !== contingentId) continue;
+        stationed[event.unit] -= event.deserted;
+        home[event.unit] = (home[event.unit] || 0) + event.deserted;
+        returned = true;
+      }
+      if (returned) writeArmy(db,id,home);
+      setStationArmy.run(JSON.stringify(stationed),attack.station_id,id);
+    };
+    if (owner) settleStationArmy(owner.user_id,undefined,result.defenderSurvivors);
     for (const row of eligibleSupport) {
       const id = row.sender_id ?? row.user_id;
       const survivors = result.contingentSurvivors[row.id ?? row.user_id];
       awardHuman(db,id,result.combatXp["support:"+(row.id ?? row.user_id)]);
       wounds(id,JSON.parse(row.army),survivors);
-      if (attack.station_id) setStationArmy.run(JSON.stringify(survivors),attack.station_id,id);
+      if (attack.station_id) settleStationArmy(id,row.id ?? row.user_id,survivors);
       else db.prepare("UPDATE orange_empire_support SET army=? WHERE id=?").run(JSON.stringify(survivors),row.id);
     }
     result.commanderKnightLevel = snapshot.knight?.level || 1;
@@ -256,12 +269,18 @@ function reports(db,userId,limit=20) {
   return db.prepare(`SELECT a.id,a.commander_id,a.player_id,a.station_id,a.arrives_at,
       a.x,a.y,json_extract(a.result,'$.cancelled') AS cancelled, json_extract(a.result,'$.victory') AS victory,
       json_extract(a.result,'$.loot') AS loot,json_extract(a.result,'$.totalLoot') AS totalLoot,
-      json_extract(a.result,'$.cargoCapacity') AS cargoCapacity
+      json_extract(a.result,'$.cargoCapacity') AS cargoCapacity, json_extract(a.result,'$.report') AS report
     FROM orange_empire_attacks a WHERE a.result IS NOT NULL AND (a.player_id=? OR EXISTS
-      (SELECT 1 FROM orange_empire_support s WHERE s.attack_id=a.id AND s.sender_id=?))
-    ORDER BY a.arrives_at DESC,a.id DESC LIMIT ?`).all(userId,userId,limit)
-    .map(({cancelled,victory,loot,totalLoot,cargoCapacity,...row})=>({...row,result:{
-      cancelled:!!cancelled,victory:!!victory,...(loot?{loot:JSON.parse(loot),totalLoot,cargoCapacity}:{})
+      (SELECT 1 FROM orange_empire_support s WHERE s.attack_id=a.id AND s.sender_id=?) OR
+      (a.station_id IS NOT NULL AND EXISTS (
+        SELECT 1 FROM json_each(a.result,'$.contingentSurvivors') WHERE CAST(key AS INTEGER)=?
+      )))
+    ORDER BY a.arrives_at DESC,a.id DESC LIMIT ?`).all(userId,userId,userId,limit)
+    .map(({cancelled,victory,loot,totalLoot,cargoCapacity,report,...row})=>({...row,result:{
+      cancelled:!!cancelled,victory:!!victory,...(loot?{loot:JSON.parse(loot),totalLoot,cargoCapacity}:{}),
+      report:JSON.parse(report||"[]").map(round=>({
+        round:round.round,events:round.events.filter(event=>event.deserted>0)
+      })).filter(round=>round.events.length)
     }}));
 }
 
